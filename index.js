@@ -3,18 +3,18 @@ PLASM('plasm').globalize();
 
 var $ = require('jquery');
 
-var input_from = $('.from');
-var input_to = $('.to');
+var input_from = $('[name="from"]');
+var input_to = $('[name="to"]');
 var button_run = $('.run');
 
-var wall_color = [0.25,0.25,0.25];
+var wall_color = [0.25,0.25,0.25,0.5];
 var wall_quote = [1];
 var path_color = [0.05,0.75,0];
 var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
 var equipment_quote = [1];
 
-// var g = new Graph(input.graph);
+var g = new Graph(input.graph);
 var current_path = null;
 
 draw_walls(input.walls);
@@ -35,7 +35,7 @@ function draw_path (path) {
     current_path.hide();
   }
   var points = path.map(function (id) {
-    return input[id].position;
+    return input.graph[id].position;
   });
   var polyline = POLYLINE(points);
   polyline.color(path_color);
@@ -78,7 +78,7 @@ function draw_walls (walls) {
     color = wall.color || wall_color;
     polyline = POLYLINE(wall.points);
     polyline.color(color);
-    polyline.extrude(wall_quote);
+    polyline = polyline.extrude(wall_quote);
     DRAW(polyline);
   }
 }
@@ -94,12 +94,12 @@ function draw_equipments (equipments) {
     equipment = equipments[id];
     color = equipment.color || equipment_color;
     if (equipment.type === 'circle') {
-      model = CIRCLE(equipment.dimensions[0])(32,32);
+      model = DISK(equipment.dimensions[0])([16,2]);
     } else {
       model = CUBOID(equipment.dimensions);
     }
     model.translate([0,1], equipment.position);
-    model.extrude(equipment_quote);
+    model = model.extrude(equipment_quote);
     model.color(color);
     DRAW(model);
   } 

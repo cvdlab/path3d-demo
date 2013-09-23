@@ -23,6 +23,12 @@ var input = {
       dimensions: [0.5,0.5],
       type: 'circle',
       color: [1,200/255,0]
+    },
+    2: {
+      position: [6, 5.5],
+      dimensions: [1.5,1],
+      type: 'rect',
+      color: [1,0,1]
     }
   },
   graph: {
@@ -36,7 +42,7 @@ var input = {
       position: [1.25,4.75],
       adj: {
         3: 1,
-        10: 1
+        10: 100
       }
     },
     3: {
