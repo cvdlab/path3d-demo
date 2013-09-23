@@ -1,0 +1,43 @@
+#app {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  font-size: 20px;
+}
+
+.direction {
+  position: absolute;
+  top: 30px;
+  left: 30px;
+  background-color: rgba(238,238,238,0.75);
+}
+
+.direction label {
+  width: 30px;
+  height: 30px;
+}
+
+.direction input {
+  border: none;
+  width: 90px;
+  height: 30px;
+  font-size: 20px;
+  margin-right: 20px;
+}
+
+.direction button {
+  width: 90px;
+  height: 30px;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.direction button:hover {
+  outline: 0px;
+  background-color: rgb(238,238,238);
+}
+
+:focus {
+  outline: 0px;
+}

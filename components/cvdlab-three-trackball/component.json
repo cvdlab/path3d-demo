@@ -1,0 +1,17 @@
+{
+  "name": "three-trackball",
+  "repo": "cvdlab/three-trackball",
+  "description": "Three.js trackball component",
+  "version": "0.1.0",
+  "keywords": [
+    "three.js",
+    "trackball camera"
+  ],
+  "scripts": [
+    "index.js"
+  ],
+  "dependencies": {
+    "cvdlab/three": "*"
+  },
+  "license": "MIT"
+}

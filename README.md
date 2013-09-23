@@ -1,4 +1,3 @@
-path3d-demo
-===========
+# path3d-demo
 
 Path3D project demo

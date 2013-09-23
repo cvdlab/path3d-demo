@@ -1,0 +1,16 @@
+{
+  "name": "globalize",
+  "repo": "enricomarino/globalize",
+  "description": "globalize component",
+  "version": "0.0.1",
+  "keywords": [
+    "global",
+    "object"
+  ],
+  "dependencies": {},
+  "development": {},
+  "scripts": [
+    "index.js"
+  ],
+  "license": "MIT"
+}

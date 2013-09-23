@@ -1,0 +1,68 @@
+/**
+ * css-reset
+ * CSS reset
+ *
+ * @copyright 2012 Enrico Marino
+ * @license MIT
+ */
+
+html, body, div,
+article, aside, details, footer, header, section, 
+applet, iframe, embed, object, 
+h1, h2, h3, h4, h5, h6, hgroup
+blockquote, p, pre, span, 
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, ins, kbd, q, ruby, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+label, legend, fieldset, form, 
+table, caption, tbody, tfoot, thead, tr, th, td,
+img, figure, figcaption, 
+menu, nav, output, summary,
+time, mark, canvas, audio, video {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  vertical-align: baseline;
+}
+
+html {
+  font-size: 62.5%; 
+}
+
+body { 
+  background: #fff; 
+  font-family: "Helvetica Neue", "HelveticaNeue", Helvetica, Arial, "Lucida Grande", sans-serif; 
+  font-size: 14px; 
+  line-height: 1em; 
+  color: #555; 
+  position: relative; 
+  -webkit-font-smoothing: antialiased; 
+  box-sizing: border-box;
+}
+
+article, aside, details, figcaption, figure, 
+footer, header, hgroup, menu, nav, section {
+  display: block;
+}
+
+blockquote, q {
+  quotes: none;
+}
+
+blockquote:before, blockquote:after,
+q:before, q:after {
+  content: '';
+  content: none;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+ol, ul {
+  list-style: none;
+}

@@ -1,0 +1,13 @@
+{
+  "name": "css-reset",
+  "repo": "enricomarino/css-reset",
+  "description": "CSS reset component",
+  "keywords": [
+    "css",
+    "reset"
+  ],
+  "license": "MIT",
+  "styles": [
+    "index.css"
+  ]
+}

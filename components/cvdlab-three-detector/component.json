@@ -1,0 +1,15 @@
+{
+  "name": "three-detector",
+  "repo": "cvdlab/three-detector",
+  "description": "Three.js detector component",
+  "version": "0.1.0",
+  "keywords": [
+    "three.js",
+    "detector"
+  ],
+  "scripts": [
+    "index.js"
+  ],
+  "dependencies": {},
+  "license": "MIT"
+}

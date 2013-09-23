@@ -1,0 +1,15 @@
+html, body {
+  overflow: hidden;
+  margin: 0px;
+  height: 100%;
+}
+
+#plasm {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  margin-bottom: auto;
+  margin: 0px;
+  border: 20px solid #fff;
+  box-sizing: border-box;
+}
