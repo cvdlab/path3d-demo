@@ -10,11 +10,16 @@ var button_run = $('.run');
 var wall_color = [0.25,0.25,0.25];
 var wall_quote = [1];
 var path_color = [0.05,0.75,0];
+var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
 var equipment_quote = [1];
 
-var g = new Graph(input);
+// var g = new Graph(input.graph);
 var current_path = null;
+
+draw_walls(input.walls);
+draw_equipments(input.equipments);
+draw_graph(input.graph);
 
 button_run.click(function (event){
   event.preventDefault();
@@ -40,10 +45,11 @@ function draw_path (path) {
 }
 
 function draw_graph (graph) {
-  var points = graph.map(function (id) {
-    return input[id].position;
+  var points = Object.keys(graph).map(function (id) {
+    return graph[id].position;
   }); 
-  var polypoints = POLYPOINTS(points);
+
+  var polypoint = POLYPOINT(points);
   var from_id;
   var from;
   var to_id;
@@ -54,9 +60,12 @@ function draw_graph (graph) {
     for (to_id in from.adj) {
       to = graph[to_id];
       line = POLYLINE([from.position, to.position]);
+      line.color(graph_color);
       DRAW(line);
     }
   }
+  polypoint.color(graph_color);
+  DRAW(polypoint);
 }
 
 function draw_walls (walls) {
@@ -84,8 +93,12 @@ function draw_equipments (equipments) {
   for (id in equipments) {
     equipment = equipments[id];
     color = equipment.color || equipment_color;
-    shape = type === 'circle' ? CIRCLE : CUBOID;
-    model = shape(dimensions).translate([0,1], position);
+    if (equipment.type === 'circle') {
+      model = CIRCLE(equipment.dimensions[0])(32,32);
+    } else {
+      model = CUBOID(equipment.dimensions);
+    }
+    model.translate([0,1], equipment.position);
     model.extrude(equipment_quote);
     model.color(color);
     DRAW(model);
