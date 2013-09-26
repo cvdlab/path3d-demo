@@ -452,14 +452,14 @@
         }
       }
 
-      this.djik = new Djikstra(graph, graph.nodeAt(0));
+      // this.djik = new Djikstra(graph, graph.nodeAt(0));
     };
 
-    Graph.prototype.min_path = function(from, to) {
-      var path = [];
-      path = this.djik.bestPath(from, to);
-      return path;
-    };
+    // Graph.prototype.min_path = function(from, to) {
+    //   var path = [];
+    //   path = this.djik.bestPath(from, to);
+    //   return path;
+    // };
 
     window.Graph = Graph;
 
