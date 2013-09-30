@@ -14,18 +14,19 @@ var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
 var equipment_quote = [1];
 
-var g = new Graph(input.graph);
+var g = new Graph(graph);
 var current_path = null;
 
-draw_walls(input.walls);
-draw_equipments(input.equipments);
-draw_graph(input.graph);
+draw_walls(walls);
+draw_equipments(equipments);
+draw_graph(graph);
 
 button_run.click(function (event){
   event.preventDefault();
   var from = input_from.val();
   var to = input_to.val();
-  var path = g.min_path(from, to);
+  // var path = g.min_path(from, to);
+  var path = g.findShortestPath(from, to);
 
   draw_path(path);
 });
@@ -35,7 +36,7 @@ function draw_path (path) {
     current_path.hide();
   }
   var points = path.map(function (id) {
-    return input.graph[id].position;
+    return graph[id].position;
   });
   var polyline = POLYLINE(points);
   polyline.color(path_color);
@@ -104,3 +105,25 @@ function draw_equipments (equipments) {
     DRAW(model);
   } 
 }
+
+function color_graph () {
+  var c = graph;
+  var draw_adj = function (n) {
+    if (c[n].visited) {
+      return;
+    }
+
+    var adj = c[n].adj;
+    var x;
+    c[n].visited = true;
+    for (x in adj) {
+      DRAW(POLYLINE([c[n].position, c[x].position]).color([1,0,0]));
+      draw_adj(x);
+    }
+  };
+
+  draw_adj(20);
+}
+
+// color_graph();
+
