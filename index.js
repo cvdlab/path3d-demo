@@ -36,7 +36,7 @@ function draw_path (path) {
     current_path.hide();
   }
   var points = path.map(function (id) {
-    return graph[id].position;
+    return graph[id].pos;
   });
   var polyline = POLYLINE(points);
   polyline.color(path_color);
@@ -47,7 +47,7 @@ function draw_path (path) {
 
 function draw_graph (graph) {
   var points = Object.keys(graph).map(function (id) {
-    return graph[id].position;
+    return graph[id].pos;
   }); 
 
   var polypoint = POLYPOINT(points);
@@ -60,7 +60,7 @@ function draw_graph (graph) {
     from = graph[from_id];
     for (to_id in from.adj) {
       to = graph[to_id];
-      line = POLYLINE([from.position, to.position]);
+      line = POLYLINE([from.pos, to.pos]);
       line.color(graph_color);
       DRAW(line);
     }
@@ -95,11 +95,11 @@ function draw_equipments (equipments) {
     equipment = equipments[id];
     color = equipment.color || equipment_color;
     if (equipment.type === 'circle') {
-      model = DISK(equipment.dimensions[0])([16,2]);
+      model = DISK(equipment.dim[0])([16,2]);
     } else {
-      model = CUBOID(equipment.dimensions);
+      model = CUBOID(equipment.dim);
     }
-    model.translate([0,1], equipment.position);
+    model.translate([0,1], equipment.pos);
     model = model.extrude(equipment_quote);
     model.color(color);
     DRAW(model);
@@ -117,7 +117,7 @@ function color_graph () {
     var x;
     c[n].visited = true;
     for (x in adj) {
-      DRAW(POLYLINE([c[n].position, c[x].position]).color([1,0,0]));
+      DRAW(POLYLINE([c[n].pos, c[x].pos]).color([1,0,0]));
       draw_adj(x);
     }
   };
