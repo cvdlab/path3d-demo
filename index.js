@@ -12,12 +12,12 @@ var wall_quote = [1];
 var path_color = [0.05,0.75,0];
 var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
-var equipment_quote = [1];
+var equipment_quote = [20];
 
 var g = new Graph(graph);
 var current_path = null;
 
-draw_walls(walls);
+//draw_walls(walls);
 draw_equipments(equipments);
 draw_graph(graph);
 
