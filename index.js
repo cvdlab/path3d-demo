@@ -8,7 +8,7 @@ var input_to = $('[name="to"]');
 var button_run = $('.run');
 
 var wall_color = [0.25,0.25,0.25,0.5];
-var wall_quote = [1];
+var wall_quote = [30];
 var path_color = [0.05,0.75,0];
 var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
@@ -17,9 +17,9 @@ var equipment_quote = [20];
 var g = new Graph(graph);
 var current_path = null;
 
-//draw_walls(walls);
+draw_walls(walls);
 draw_equipments(equipments);
-draw_graph(graph);
+// draw_graph(graph);
 
 button_run.click(function (event){
   event.preventDefault();
