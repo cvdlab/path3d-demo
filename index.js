@@ -39,6 +39,10 @@ function draw_path (path) {
     return graph[id].pos;
   });
   var polyline = POLYLINE(points);
+  
+  // var domain = INTERVALS(1)(20);
+  // var polyline = SPLINE(CUBIC_CARDINAL(domain))(points);
+  
   polyline.color(path_color);
   DRAW(polyline);
   current_path = polyline;
