@@ -26,10 +26,14 @@ function require(path, parent, orig) {
   // perform real require()
   // by invoking the module's
   // registered function
-  if (!module.exports) {
-    module.exports = {};
-    module.client = module.component = true;
-    module.call(this, module.exports, require.relative(resolved), module);
+  if (!module._resolving && !module.exports) {
+    var mod = {};
+    mod.exports = {};
+    mod.client = mod.component = true;
+    module._resolving = true;
+    module.call(this, mod.exports, require.relative(resolved), mod);
+    delete module._resolving;
+    module.exports = mod.exports;
   }
 
   return module.exports;
@@ -3709,11 +3713,12 @@ require.register("cvdlab-three/index.js", Function("exports, require, module",
 "/**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author Larry Battle / http://bateru.com/news\n\
+ * @author bhouston / http://exocortex.com\n\
  */\n\
 \n\
-var THREE = exports;\n\
+var THREE = exports; \n\
 \n\
-THREE.REVISION = '54';\n\
+THREE.REVISION = '60';\n\
 \n\
 self.console = self.console || {\n\
 \n\
@@ -3725,61 +3730,71 @@ self.console = self.console || {\n\
 \n\
 };\n\
 \n\
-self.Int32Array = self.Int32Array || Array;\n\
-self.Float32Array = self.Float32Array || Array;\n\
-\n\
-// Shims for \"startsWith\", \"endsWith\", and \"trim\" for browsers where this is not yet implemented\n\
-// not sure we should have this, or at least not have it here\n\
-\n\
-// http://stackoverflow.com/questions/646628/javascript-startswith\n\
-// http://stackoverflow.com/questions/498970/how-do-i-trim-a-string-in-javascript\n\
-// http://wiki.ecmascript.org/doku.php?id=harmony%3astring_extras\n\
-\n\
-String.prototype.startsWith = String.prototype.startsWith || function ( str ) {\n\
-\n\
-\treturn this.slice( 0, str.length ) === str;\n\
-\n\
-};\n\
-\n\
-String.prototype.endsWith = String.prototype.endsWith || function ( str ) {\n\
-\n\
-\tvar t = String( str );\n\
-\tvar index = this.lastIndexOf( t );\n\
-\treturn ( -1 < index && index ) === (this.length - t.length);\n\
-\n\
-};\n\
-\n\
 String.prototype.trim = String.prototype.trim || function () {\n\
 \n\
 \treturn this.replace( /^\\s+|\\s+$/g, '' );\n\
 \n\
 };\n\
 \n\
+// based on https://github.com/documentcloud/underscore/blob/bf657be243a075b5e72acc8a83e6f12a564d8f55/underscore.js#L767\n\
+THREE.extend = function ( obj, source ) {\n\
+\n\
+\t// ECMAScript5 compatibility based on: http://www.nczonline.net/blog/2012/12/11/are-your-mixins-ecmascript-5-compatible/\n\
+\tif ( Object.keys ) {\n\
+\n\
+\t\tvar keys = Object.keys( source );\n\
+\n\
+\t\tfor (var i = 0, il = keys.length; i < il; i++) {\n\
+\n\
+\t\t\tvar prop = keys[i];\n\
+\t\t\tObject.defineProperty( obj, prop, Object.getOwnPropertyDescriptor( source, prop ) );\n\
+\n\
+\t\t}\n\
+\n\
+\t} else {\n\
+\n\
+\t\tvar safeHasOwnProperty = {}.hasOwnProperty;\n\
+\n\
+\t\tfor ( var prop in source ) {\n\
+\n\
+\t\t\tif ( safeHasOwnProperty.call( source, prop ) ) {\n\
+\n\
+\t\t\t\tobj[prop] = source[prop];\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
+\treturn obj;\n\
+\n\
+};\n\
 \n\
 // http://paulirish.com/2011/requestanimationframe-for-smart-animating/\n\
 // http://my.opera.com/emoller/blog/2011/12/20/requestanimationframe-for-smart-er-animating\n\
 \n\
 // requestAnimationFrame polyfill by Erik Möller\n\
 // fixes from Paul Irish and Tino Zijdel\n\
-\n\
+// using 'self' instead of 'window' for compatibility with both NodeJS and IE10.\n\
 ( function () {\n\
 \n\
 \tvar lastTime = 0;\n\
 \tvar vendors = [ 'ms', 'moz', 'webkit', 'o' ];\n\
 \n\
-\tfor ( var x = 0; x < vendors.length && !window.requestAnimationFrame; ++ x ) {\n\
+\tfor ( var x = 0; x < vendors.length && !self.requestAnimationFrame; ++ x ) {\n\
 \n\
-\t\twindow.requestAnimationFrame = window[ vendors[ x ] + 'RequestAnimationFrame' ];\n\
-\t\twindow.cancelAnimationFrame = window[ vendors[ x ] + 'CancelAnimationFrame' ] || window[ vendors[ x ] + 'CancelRequestAnimationFrame' ];\n\
+\t\tself.requestAnimationFrame = self[ vendors[ x ] + 'RequestAnimationFrame' ];\n\
+\t\tself.cancelAnimationFrame = self[ vendors[ x ] + 'CancelAnimationFrame' ] || self[ vendors[ x ] + 'CancelRequestAnimationFrame' ];\n\
 \n\
 \t}\n\
 \n\
-\tif ( window.requestAnimationFrame === undefined ) {\n\
+\tif ( self.requestAnimationFrame === undefined && self['setTimeout'] !== undefined ) {\n\
 \n\
-\t\twindow.requestAnimationFrame = function ( callback, element ) {\n\
+\t\tself.requestAnimationFrame = function ( callback ) {\n\
 \n\
 \t\t\tvar currTime = Date.now(), timeToCall = Math.max( 0, 16 - ( currTime - lastTime ) );\n\
-\t\t\tvar id = window.setTimeout( function() { callback( currTime + timeToCall ); }, timeToCall );\n\
+\t\t\tvar id = self.setTimeout( function() { callback( currTime + timeToCall ); }, timeToCall );\n\
 \t\t\tlastTime = currTime + timeToCall;\n\
 \t\t\treturn id;\n\
 \n\
@@ -3787,7 +3802,11 @@ String.prototype.trim = String.prototype.trim || function () {\n\
 \n\
 \t}\n\
 \n\
-\twindow.cancelAnimationFrame = window.cancelAnimationFrame || function ( id ) { window.clearTimeout( id ) };\n\
+\tif( self.cancelAnimationFrame === undefined && self['clearTimeout'] !== undefined ) {\n\
+\n\
+\t\tself.cancelAnimationFrame = function ( id ) { self.clearTimeout( id ) };\n\
+\n\
+\t}\n\
 \n\
 }() );\n\
 \n\
@@ -3938,6 +3957,7 @@ THREE.RGB_PVRTC_2BPPV1_Format = 2101;\n\
 THREE.RGBA_PVRTC_4BPPV1_Format = 2102;\n\
 THREE.RGBA_PVRTC_2BPPV1_Format = 2103;\n\
 */\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -3956,150 +3976,23 @@ THREE.Color.prototype = {\n\
 \n\
 \tr: 1, g: 1, b: 1,\n\
 \n\
-\tcopy: function ( color ) {\n\
-\n\
-\t\tthis.r = color.r;\n\
-\t\tthis.g = color.g;\n\
-\t\tthis.b = color.b;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tcopyGammaToLinear: function ( color ) {\n\
-\n\
-\t\tthis.r = color.r * color.r;\n\
-\t\tthis.g = color.g * color.g;\n\
-\t\tthis.b = color.b * color.b;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tcopyLinearToGamma: function ( color ) {\n\
-\n\
-\t\tthis.r = Math.sqrt( color.r );\n\
-\t\tthis.g = Math.sqrt( color.g );\n\
-\t\tthis.b = Math.sqrt( color.b );\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tconvertGammaToLinear: function () {\n\
-\n\
-\t\tvar r = this.r, g = this.g, b = this.b;\n\
-\n\
-\t\tthis.r = r * r;\n\
-\t\tthis.g = g * g;\n\
-\t\tthis.b = b * b;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tconvertLinearToGamma: function () {\n\
-\n\
-\t\tthis.r = Math.sqrt( this.r );\n\
-\t\tthis.g = Math.sqrt( this.g );\n\
-\t\tthis.b = Math.sqrt( this.b );\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
 \tset: function ( value ) {\n\
 \n\
-\t\tswitch ( typeof value ) {\n\
+\t\tif ( value instanceof THREE.Color ) {\n\
 \n\
-\t\t\tcase \"number\":\n\
-\t\t\t\tthis.setHex( value );\n\
-\t\t\t\tbreak;\n\
+\t\t\tthis.copy( value );\n\
 \n\
-\t\t\tcase \"string\":\n\
-\t\t\t\tthis.setStyle( value );\n\
-\t\t\t\tbreak;\n\
+\t\t} else if ( typeof value === 'number' ) {\n\
 \n\
-\t\t}\n\
+\t\t\tthis.setHex( value );\n\
 \n\
-\t},\n\
+\t\t} else if ( typeof value === 'string' ) {\n\
 \n\
-\tsetRGB: function ( r, g, b ) {\n\
-\n\
-\t\tthis.r = r;\n\
-\t\tthis.g = g;\n\
-\t\tthis.b = b;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsetHSV: function ( h, s, v ) {\n\
-\n\
-\t\t// based on MochiKit implementation by Bob Ippolito\n\
-\t\t// h,s,v ranges are < 0.0 - 1.0 >\n\
-\n\
-\t\tvar i, f, p, q, t;\n\
-\n\
-\t\tif ( v === 0 ) {\n\
-\n\
-\t\t\tthis.r = this.g = this.b = 0;\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\ti = Math.floor( h * 6 );\n\
-\t\t\tf = ( h * 6 ) - i;\n\
-\t\t\tp = v * ( 1 - s );\n\
-\t\t\tq = v * ( 1 - ( s * f ) );\n\
-\t\t\tt = v * ( 1 - ( s * ( 1 - f ) ) );\n\
-\n\
-\t\t\tif ( i === 0 ) {\n\
-\n\
-\t\t\t\tthis.r = v;\n\
-\t\t\t\tthis.g = t;\n\
-\t\t\t\tthis.b = p;\n\
-\n\
-\t\t\t} else if ( i === 1 ) {\n\
-\n\
-\t\t\t\tthis.r = q;\n\
-\t\t\t\tthis.g = v;\n\
-\t\t\t\tthis.b = p;\n\
-\n\
-\t\t\t} else if ( i === 2 ) {\n\
-\n\
-\t\t\t\tthis.r = p;\n\
-\t\t\t\tthis.g = v;\n\
-\t\t\t\tthis.b = t;\n\
-\n\
-\t\t\t} else if ( i === 3 ) {\n\
-\n\
-\t\t\t\tthis.r = p;\n\
-\t\t\t\tthis.g = q;\n\
-\t\t\t\tthis.b = v;\n\
-\n\
-\t\t\t} else if ( i === 4 ) {\n\
-\n\
-\t\t\t\tthis.r = t;\n\
-\t\t\t\tthis.g = p;\n\
-\t\t\t\tthis.b = v;\n\
-\n\
-\t\t\t} else if ( i === 5 ) {\n\
-\n\
-\t\t\t\tthis.r = v;\n\
-\t\t\t\tthis.g = p;\n\
-\t\t\t\tthis.b = q;\n\
-\n\
-\t\t\t}\n\
+\t\t\tthis.setStyle( value );\n\
 \n\
 \t\t}\n\
 \n\
 \t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tgetHex: function () {\n\
-\n\
-\t\treturn ( this.r * 255 ) << 16 ^ ( this.g * 255 ) << 8 ^ ( this.b * 255 ) << 0;\n\
 \n\
 \t},\n\
 \n\
@@ -4115,15 +4008,47 @@ THREE.Color.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tgetHexString: function () {\n\
+\tsetRGB: function ( r, g, b ) {\n\
 \n\
-\t\treturn ( '000000' + this.getHex().toString( 16 ) ).slice( - 6 );\n\
+\t\tthis.r = r;\n\
+\t\tthis.g = g;\n\
+\t\tthis.b = b;\n\
+\n\
+\t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tgetStyle: function () {\n\
+\tsetHSL: function ( h, s, l ) {\n\
 \n\
-\t\treturn 'rgb(' + ( ( this.r * 255 ) | 0 )  + ',' + ( ( this.g * 255 ) | 0 ) + ',' + ( ( this.b * 255 ) | 0 ) + ')';\n\
+\t\t// h,s,l ranges are in 0.0 - 1.0\n\
+\n\
+\t\tif ( s === 0 ) {\n\
+\n\
+\t\t\tthis.r = this.g = this.b = l;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\tvar hue2rgb = function ( p, q, t ) {\n\
+\n\
+\t\t\t\tif ( t < 0 ) t += 1;\n\
+\t\t\t\tif ( t > 1 ) t -= 1;\n\
+\t\t\t\tif ( t < 1 / 6 ) return p + ( q - p ) * 6 * t;\n\
+\t\t\t\tif ( t < 1 / 2 ) return q;\n\
+\t\t\t\tif ( t < 2 / 3 ) return p + ( q - p ) * 6 * ( 2 / 3 - t );\n\
+\t\t\t\treturn p;\n\
+\n\
+\t\t\t};\n\
+\n\
+\t\t\tvar p = l <= 0.5 ? l * ( 1 + s ) : l + s - ( l * s );\n\
+\t\t\tvar q = ( 2 * l ) - p;\n\
+\n\
+\t\t\tthis.r = hue2rgb( q, p, h + 1 / 3 );\n\
+\t\t\tthis.g = hue2rgb( q, p, h );\n\
+\t\t\tthis.b = hue2rgb( q, p, h - 1 / 3 );\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this;\n\
 \n\
 \t},\n\
 \n\
@@ -4194,82 +4119,216 @@ THREE.Color.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tgetHSV: function ( hsv ) {\n\
+\tcopy: function ( color ) {\n\
 \n\
-\t\t// based on MochiKit implementation by Bob Ippolito\n\
-\t\t// h,s,v ranges are < 0.0 - 1.0 >\n\
+\t\tthis.r = color.r;\n\
+\t\tthis.g = color.g;\n\
+\t\tthis.b = color.b;\n\
 \n\
-\t\tvar r = this.r;\n\
-\t\tvar g = this.g;\n\
-\t\tvar b = this.b;\n\
-\n\
-\t\tvar max = Math.max( Math.max( r, g ), b );\n\
-\t\tvar min = Math.min( Math.min( r, g ), b );\n\
-\n\
-\t\tvar hue;\n\
-\t\tvar saturation;\n\
-\t\tvar value = max;\n\
-\n\
-\t\tif ( min === max )\t{\n\
-\n\
-\t\t\thue = 0;\n\
-\t\t\tsaturation = 0;\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tvar delta = ( max - min );\n\
-\t\t\tsaturation = delta / max;\n\
-\n\
-\t\t\tif ( r === max ) {\n\
-\n\
-\t\t\t\thue = ( g - b ) / delta;\n\
-\n\
-\t\t\t} else if ( g === max ) {\n\
-\n\
-\t\t\t\thue = 2 + ( ( b - r ) / delta );\n\
-\n\
-\t\t\t} else\t{\n\
-\n\
-\t\t\t\thue = 4 + ( ( r - g ) / delta );\n\
-\t\t\t}\n\
-\n\
-\t\t\thue /= 6;\n\
-\n\
-\t\t\tif ( hue < 0 ) {\n\
-\n\
-\t\t\t\thue += 1;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( hue > 1 ) {\n\
-\n\
-\t\t\t\thue -= 1;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( hsv === undefined ) {\n\
-\n\
-\t\t\thsv = { h: 0, s: 0, v: 0 };\n\
-\n\
-\t\t}\n\
-\n\
-\t\thsv.h = hue;\n\
-\t\thsv.s = saturation;\n\
-\t\thsv.v = value;\n\
-\n\
-\t\treturn hsv;\n\
+\t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tlerpSelf: function ( color, alpha ) {\n\
+\tcopyGammaToLinear: function ( color ) {\n\
+\n\
+\t\tthis.r = color.r * color.r;\n\
+\t\tthis.g = color.g * color.g;\n\
+\t\tthis.b = color.b * color.b;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tcopyLinearToGamma: function ( color ) {\n\
+\n\
+\t\tthis.r = Math.sqrt( color.r );\n\
+\t\tthis.g = Math.sqrt( color.g );\n\
+\t\tthis.b = Math.sqrt( color.b );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tconvertGammaToLinear: function () {\n\
+\n\
+\t\tvar r = this.r, g = this.g, b = this.b;\n\
+\n\
+\t\tthis.r = r * r;\n\
+\t\tthis.g = g * g;\n\
+\t\tthis.b = b * b;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tconvertLinearToGamma: function () {\n\
+\n\
+\t\tthis.r = Math.sqrt( this.r );\n\
+\t\tthis.g = Math.sqrt( this.g );\n\
+\t\tthis.b = Math.sqrt( this.b );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tgetHex: function () {\n\
+\n\
+\t\treturn ( this.r * 255 ) << 16 ^ ( this.g * 255 ) << 8 ^ ( this.b * 255 ) << 0;\n\
+\n\
+\t},\n\
+\n\
+\tgetHexString: function () {\n\
+\n\
+\t\treturn ( '000000' + this.getHex().toString( 16 ) ).slice( - 6 );\n\
+\n\
+\t},\n\
+\n\
+\tgetHSL: function () {\n\
+\n\
+\t\tvar hsl = { h: 0, s: 0, l: 0 };\n\
+\n\
+\t\treturn function () {\n\
+\n\
+\t\t\t// h,s,l ranges are in 0.0 - 1.0\n\
+\n\
+\t\t\tvar r = this.r, g = this.g, b = this.b;\n\
+\n\
+\t\t\tvar max = Math.max( r, g, b );\n\
+\t\t\tvar min = Math.min( r, g, b );\n\
+\n\
+\t\t\tvar hue, saturation;\n\
+\t\t\tvar lightness = ( min + max ) / 2.0;\n\
+\n\
+\t\t\tif ( min === max ) {\n\
+\n\
+\t\t\t\thue = 0;\n\
+\t\t\t\tsaturation = 0;\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tvar delta = max - min;\n\
+\n\
+\t\t\t\tsaturation = lightness <= 0.5 ? delta / ( max + min ) : delta / ( 2 - max - min );\n\
+\n\
+\t\t\t\tswitch ( max ) {\n\
+\n\
+\t\t\t\t\tcase r: hue = ( g - b ) / delta + ( g < b ? 6 : 0 ); break;\n\
+\t\t\t\t\tcase g: hue = ( b - r ) / delta + 2; break;\n\
+\t\t\t\t\tcase b: hue = ( r - g ) / delta + 4; break;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\thue /= 6;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\thsl.h = hue;\n\
+\t\t\thsl.s = saturation;\n\
+\t\t\thsl.l = lightness;\n\
+\n\
+\t\t\treturn hsl;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tgetStyle: function () {\n\
+\n\
+\t\treturn 'rgb(' + ( ( this.r * 255 ) | 0 ) + ',' + ( ( this.g * 255 ) | 0 ) + ',' + ( ( this.b * 255 ) | 0 ) + ')';\n\
+\n\
+\t},\n\
+\n\
+\toffsetHSL: function ( h, s, l ) {\n\
+\n\
+\t\tvar hsl = this.getHSL();\n\
+\n\
+\t\thsl.h += h; hsl.s += s; hsl.l += l;\n\
+\n\
+\t\tthis.setHSL( hsl.h, hsl.s, hsl.l );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tadd: function ( color ) {\n\
+\n\
+\t\tthis.r += color.r;\n\
+\t\tthis.g += color.g;\n\
+\t\tthis.b += color.b;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\taddColors: function ( color1, color2 ) {\n\
+\n\
+\t\tthis.r = color1.r + color2.r;\n\
+\t\tthis.g = color1.g + color2.g;\n\
+\t\tthis.b = color1.b + color2.b;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\taddScalar: function ( s ) {\n\
+\n\
+\t\tthis.r += s;\n\
+\t\tthis.g += s;\n\
+\t\tthis.b += s;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tmultiply: function ( color ) {\n\
+\n\
+\t\tthis.r *= color.r;\n\
+\t\tthis.g *= color.g;\n\
+\t\tthis.b *= color.b;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tmultiplyScalar: function ( s ) {\n\
+\n\
+\t\tthis.r *= s;\n\
+\t\tthis.g *= s;\n\
+\t\tthis.b *= s;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tlerp: function ( color, alpha ) {\n\
 \n\
 \t\tthis.r += ( color.r - this.r ) * alpha;\n\
 \t\tthis.g += ( color.g - this.g ) * alpha;\n\
 \t\tthis.b += ( color.b - this.b ) * alpha;\n\
 \n\
 \t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tequals: function ( c ) {\n\
+\n\
+\t\treturn ( c.r === this.r ) && ( c.g === this.g ) && ( c.b === this.b );\n\
+\n\
+\t},\n\
+\n\
+\tfromArray: function ( array ) {\n\
+\n\
+\t\tthis.r = array[ 0 ];\n\
+\t\tthis.g = array[ 1 ];\n\
+\t\tthis.b = array[ 2 ];\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttoArray: function () {\n\
+\n\
+\t\treturn [ this.r, this.g, this.b ];\n\
 \n\
 \t},\n\
 \n\
@@ -4305,6 +4364,461 @@ THREE.ColorKeywords = { \"aliceblue\": 0xF0F8FF, \"antiquewhite\": 0xFAEBD7, \"a
 \"sienna\": 0xA0522D, \"silver\": 0xC0C0C0, \"skyblue\": 0x87CEEB, \"slateblue\": 0x6A5ACD, \"slategray\": 0x708090, \"slategrey\": 0x708090, \"snow\": 0xFFFAFA,\n\
 \"springgreen\": 0x00FF7F, \"steelblue\": 0x4682B4, \"tan\": 0xD2B48C, \"teal\": 0x008080, \"thistle\": 0xD8BFD8, \"tomato\": 0xFF6347, \"turquoise\": 0x40E0D0,\n\
 \"violet\": 0xEE82EE, \"wheat\": 0xF5DEB3, \"white\": 0xFFFFFF, \"whitesmoke\": 0xF5F5F5, \"yellow\": 0xFFFF00, \"yellowgreen\": 0x9ACD32 };\n\
+\n\
+/**\n\
+ * @author mikael emtinger / http://gomo.se/\n\
+ * @author alteredq / http://alteredqualia.com/\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+ * @author bhouston / http://exocortex.com\n\
+ */\n\
+\n\
+THREE.Quaternion = function ( x, y, z, w ) {\n\
+\n\
+\tthis._x = x || 0;\n\
+\tthis._y = y || 0;\n\
+\tthis._z = z || 0;\n\
+\tthis._w = ( w !== undefined ) ? w : 1;\n\
+\n\
+};\n\
+\n\
+THREE.Quaternion.prototype = {\n\
+\n\
+\tconstructor: THREE.Quaternion,\n\
+\n\
+\t_x: 0,_y: 0, _z: 0, _w: 0,\n\
+\n\
+\t_euler: undefined,\n\
+\n\
+\t_updateEuler: function ( callback ) {\n\
+\n\
+\t\tif ( this._euler !== undefined ) {\n\
+\n\
+\t\t\tthis._euler.setFromQuaternion( this, undefined, false );\n\
+\n\
+\t\t}\n\
+\n\
+\t},\n\
+\n\
+\tget x () {\n\
+\n\
+\t\treturn this._x;\n\
+\n\
+\t},\n\
+\n\
+\tset x ( value ) {\n\
+\n\
+\t\tthis._x = value;\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t},\n\
+\n\
+\tget y () {\n\
+\n\
+\t\treturn this._y;\n\
+\n\
+\t},\n\
+\n\
+\tset y ( value ) {\n\
+\n\
+\t\tthis._y = value;\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t},\n\
+\n\
+\tget z () {\n\
+\n\
+\t\treturn this._z;\n\
+\n\
+\t},\n\
+\n\
+\tset z ( value ) {\n\
+\n\
+\t\tthis._z = value;\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t},\n\
+\n\
+\tget w () {\n\
+\n\
+\t\treturn this._w;\n\
+\n\
+\t},\n\
+\n\
+\tset w ( value ) {\n\
+\n\
+\t\tthis._w = value;\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t},\n\
+\n\
+\tset: function ( x, y, z, w ) {\n\
+\n\
+\t\tthis._x = x;\n\
+\t\tthis._y = y;\n\
+\t\tthis._z = z;\n\
+\t\tthis._w = w;\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tcopy: function ( quaternion ) {\n\
+\n\
+\t\tthis._x = quaternion._x;\n\
+\t\tthis._y = quaternion._y;\n\
+\t\tthis._z = quaternion._z;\n\
+\t\tthis._w = quaternion._w;\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromEuler: function ( euler, update ) {\n\
+\n\
+\t\tif ( euler instanceof THREE.Euler === false ) {\n\
+\n\
+\t\t\tthrow new Error( 'ERROR: Quaternion\\'s .setFromEuler() now expects a Euler rotation rather than a Vector3 and order.  Please update your code.' );\n\
+\t\t}\n\
+\n\
+\t\t// http://www.mathworks.com/matlabcentral/fileexchange/\n\
+\t\t// \t20696-function-to-convert-between-dcm-euler-angles-quaternions-and-euler-vectors/\n\
+\t\t//\tcontent/SpinCalc.m\n\
+\n\
+\t\tvar c1 = Math.cos( euler._x / 2 );\n\
+\t\tvar c2 = Math.cos( euler._y / 2 );\n\
+\t\tvar c3 = Math.cos( euler._z / 2 );\n\
+\t\tvar s1 = Math.sin( euler._x / 2 );\n\
+\t\tvar s2 = Math.sin( euler._y / 2 );\n\
+\t\tvar s3 = Math.sin( euler._z / 2 );\n\
+\n\
+\t\tif ( euler.order === 'XYZ' ) {\n\
+\n\
+\t\t\tthis._x = s1 * c2 * c3 + c1 * s2 * s3;\n\
+\t\t\tthis._y = c1 * s2 * c3 - s1 * c2 * s3;\n\
+\t\t\tthis._z = c1 * c2 * s3 + s1 * s2 * c3;\n\
+\t\t\tthis._w = c1 * c2 * c3 - s1 * s2 * s3;\n\
+\n\
+\t\t} else if ( euler.order === 'YXZ' ) {\n\
+\n\
+\t\t\tthis._x = s1 * c2 * c3 + c1 * s2 * s3;\n\
+\t\t\tthis._y = c1 * s2 * c3 - s1 * c2 * s3;\n\
+\t\t\tthis._z = c1 * c2 * s3 - s1 * s2 * c3;\n\
+\t\t\tthis._w = c1 * c2 * c3 + s1 * s2 * s3;\n\
+\n\
+\t\t} else if ( euler.order === 'ZXY' ) {\n\
+\n\
+\t\t\tthis._x = s1 * c2 * c3 - c1 * s2 * s3;\n\
+\t\t\tthis._y = c1 * s2 * c3 + s1 * c2 * s3;\n\
+\t\t\tthis._z = c1 * c2 * s3 + s1 * s2 * c3;\n\
+\t\t\tthis._w = c1 * c2 * c3 - s1 * s2 * s3;\n\
+\n\
+\t\t} else if ( euler.order === 'ZYX' ) {\n\
+\n\
+\t\t\tthis._x = s1 * c2 * c3 - c1 * s2 * s3;\n\
+\t\t\tthis._y = c1 * s2 * c3 + s1 * c2 * s3;\n\
+\t\t\tthis._z = c1 * c2 * s3 - s1 * s2 * c3;\n\
+\t\t\tthis._w = c1 * c2 * c3 + s1 * s2 * s3;\n\
+\n\
+\t\t} else if ( euler.order === 'YZX' ) {\n\
+\n\
+\t\t\tthis._x = s1 * c2 * c3 + c1 * s2 * s3;\n\
+\t\t\tthis._y = c1 * s2 * c3 + s1 * c2 * s3;\n\
+\t\t\tthis._z = c1 * c2 * s3 - s1 * s2 * c3;\n\
+\t\t\tthis._w = c1 * c2 * c3 - s1 * s2 * s3;\n\
+\n\
+\t\t} else if ( euler.order === 'XZY' ) {\n\
+\n\
+\t\t\tthis._x = s1 * c2 * c3 - c1 * s2 * s3;\n\
+\t\t\tthis._y = c1 * s2 * c3 - s1 * c2 * s3;\n\
+\t\t\tthis._z = c1 * c2 * s3 + s1 * s2 * c3;\n\
+\t\t\tthis._w = c1 * c2 * c3 + s1 * s2 * s3;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( update !== false ) this._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromAxisAngle: function ( axis, angle ) {\n\
+\n\
+\t\t// from http://www.euclideanspace.com/maths/geometry/rotations/conversions/angleToQuaternion/index.htm\n\
+\t\t// axis have to be normalized\n\
+\n\
+\t\tvar halfAngle = angle / 2, s = Math.sin( halfAngle );\n\
+\n\
+\t\tthis._x = axis.x * s;\n\
+\t\tthis._y = axis.y * s;\n\
+\t\tthis._z = axis.z * s;\n\
+\t\tthis._w = Math.cos( halfAngle );\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromRotationMatrix: function ( m ) {\n\
+\n\
+\t\t// http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/index.htm\n\
+\n\
+\t\t// assumes the upper 3x3 of m is a pure rotation matrix (i.e, unscaled)\n\
+\n\
+\t\tvar te = m.elements,\n\
+\n\
+\t\t\tm11 = te[0], m12 = te[4], m13 = te[8],\n\
+\t\t\tm21 = te[1], m22 = te[5], m23 = te[9],\n\
+\t\t\tm31 = te[2], m32 = te[6], m33 = te[10],\n\
+\n\
+\t\t\ttrace = m11 + m22 + m33,\n\
+\t\t\ts;\n\
+\n\
+\t\tif ( trace > 0 ) {\n\
+\n\
+\t\t\ts = 0.5 / Math.sqrt( trace + 1.0 );\n\
+\n\
+\t\t\tthis._w = 0.25 / s;\n\
+\t\t\tthis._x = ( m32 - m23 ) * s;\n\
+\t\t\tthis._y = ( m13 - m31 ) * s;\n\
+\t\t\tthis._z = ( m21 - m12 ) * s;\n\
+\n\
+\t\t} else if ( m11 > m22 && m11 > m33 ) {\n\
+\n\
+\t\t\ts = 2.0 * Math.sqrt( 1.0 + m11 - m22 - m33 );\n\
+\n\
+\t\t\tthis._w = (m32 - m23 ) / s;\n\
+\t\t\tthis._x = 0.25 * s;\n\
+\t\t\tthis._y = (m12 + m21 ) / s;\n\
+\t\t\tthis._z = (m13 + m31 ) / s;\n\
+\n\
+\t\t} else if ( m22 > m33 ) {\n\
+\n\
+\t\t\ts = 2.0 * Math.sqrt( 1.0 + m22 - m11 - m33 );\n\
+\n\
+\t\t\tthis._w = (m13 - m31 ) / s;\n\
+\t\t\tthis._x = (m12 + m21 ) / s;\n\
+\t\t\tthis._y = 0.25 * s;\n\
+\t\t\tthis._z = (m23 + m32 ) / s;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\ts = 2.0 * Math.sqrt( 1.0 + m33 - m11 - m22 );\n\
+\n\
+\t\t\tthis._w = ( m21 - m12 ) / s;\n\
+\t\t\tthis._x = ( m13 + m31 ) / s;\n\
+\t\t\tthis._y = ( m23 + m32 ) / s;\n\
+\t\t\tthis._z = 0.25 * s;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tinverse: function () {\n\
+\n\
+\t\tthis.conjugate().normalize();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tconjugate: function () {\n\
+\n\
+\t\tthis._x *= -1;\n\
+\t\tthis._y *= -1;\n\
+\t\tthis._z *= -1;\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tlengthSq: function () {\n\
+\n\
+\t\treturn this._x * this._x + this._y * this._y + this._z * this._z + this._w * this._w;\n\
+\n\
+\t},\n\
+\n\
+\tlength: function () {\n\
+\n\
+\t\treturn Math.sqrt( this._x * this._x + this._y * this._y + this._z * this._z + this._w * this._w );\n\
+\n\
+\t},\n\
+\n\
+\tnormalize: function () {\n\
+\n\
+\t\tvar l = this.length();\n\
+\n\
+\t\tif ( l === 0 ) {\n\
+\n\
+\t\t\tthis._x = 0;\n\
+\t\t\tthis._y = 0;\n\
+\t\t\tthis._z = 0;\n\
+\t\t\tthis._w = 1;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\tl = 1 / l;\n\
+\n\
+\t\t\tthis._x = this._x * l;\n\
+\t\t\tthis._y = this._y * l;\n\
+\t\t\tthis._z = this._z * l;\n\
+\t\t\tthis._w = this._w * l;\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tmultiply: function ( q, p ) {\n\
+\n\
+\t\tif ( p !== undefined ) {\n\
+\n\
+\t\t\tconsole.warn( 'DEPRECATED: Quaternion\\'s .multiply() now only accepts one argument. Use .multiplyQuaternions( a, b ) instead.' );\n\
+\t\t\treturn this.multiplyQuaternions( q, p );\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this.multiplyQuaternions( this, q );\n\
+\n\
+\t},\n\
+\n\
+\tmultiplyQuaternions: function ( a, b ) {\n\
+\n\
+\t\t// from http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/code/index.htm\n\
+\n\
+\t\tvar qax = a._x, qay = a._y, qaz = a._z, qaw = a._w;\n\
+\t\tvar qbx = b._x, qby = b._y, qbz = b._z, qbw = b._w;\n\
+\n\
+\t\tthis._x = qax * qbw + qaw * qbx + qay * qbz - qaz * qby;\n\
+\t\tthis._y = qay * qbw + qaw * qby + qaz * qbx - qax * qbz;\n\
+\t\tthis._z = qaz * qbw + qaw * qbz + qax * qby - qay * qbx;\n\
+\t\tthis._w = qaw * qbw - qax * qbx - qay * qby - qaz * qbz;\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tmultiplyVector3: function ( vector ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: Quaternion\\'s .multiplyVector3() has been removed. Use is now vector.applyQuaternion( quaternion ) instead.' );\n\
+\t\treturn vector.applyQuaternion( this );\n\
+\n\
+\t},\n\
+\n\
+\tslerp: function ( qb, t ) {\n\
+\n\
+\t\tvar x = this._x, y = this._y, z = this._z, w = this._w;\n\
+\n\
+\t\t// http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/slerp/\n\
+\n\
+\t\tvar cosHalfTheta = w * qb._w + x * qb._x + y * qb._y + z * qb._z;\n\
+\n\
+\t\tif ( cosHalfTheta < 0 ) {\n\
+\n\
+\t\t\tthis._w = -qb._w;\n\
+\t\t\tthis._x = -qb._x;\n\
+\t\t\tthis._y = -qb._y;\n\
+\t\t\tthis._z = -qb._z;\n\
+\n\
+\t\t\tcosHalfTheta = -cosHalfTheta;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\tthis.copy( qb );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( cosHalfTheta >= 1.0 ) {\n\
+\n\
+\t\t\tthis._w = w;\n\
+\t\t\tthis._x = x;\n\
+\t\t\tthis._y = y;\n\
+\t\t\tthis._z = z;\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tvar halfTheta = Math.acos( cosHalfTheta );\n\
+\t\tvar sinHalfTheta = Math.sqrt( 1.0 - cosHalfTheta * cosHalfTheta );\n\
+\n\
+\t\tif ( Math.abs( sinHalfTheta ) < 0.001 ) {\n\
+\n\
+\t\t\tthis._w = 0.5 * ( w + this._w );\n\
+\t\t\tthis._x = 0.5 * ( x + this._x );\n\
+\t\t\tthis._y = 0.5 * ( y + this._y );\n\
+\t\t\tthis._z = 0.5 * ( z + this._z );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tvar ratioA = Math.sin( ( 1 - t ) * halfTheta ) / sinHalfTheta,\n\
+\t\tratioB = Math.sin( t * halfTheta ) / sinHalfTheta;\n\
+\n\
+\t\tthis._w = ( w * ratioA + this._w * ratioB );\n\
+\t\tthis._x = ( x * ratioA + this._x * ratioB );\n\
+\t\tthis._y = ( y * ratioA + this._y * ratioB );\n\
+\t\tthis._z = ( z * ratioA + this._z * ratioB );\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tequals: function ( quaternion ) {\n\
+\n\
+\t\treturn ( quaternion._x === this._x ) && ( quaternion._y === this._y ) && ( quaternion._z === this._z ) && ( quaternion._w === this._w );\n\
+\n\
+\t},\n\
+\n\
+\tfromArray: function ( array ) {\n\
+\n\
+\t\tthis._x = array[ 0 ];\n\
+\t\tthis._y = array[ 1 ];\n\
+\t\tthis._z = array[ 2 ];\n\
+\t\tthis._w = array[ 3 ];\n\
+\n\
+\t\tthis._updateEuler();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttoArray: function () {\n\
+\n\
+\t\treturn [ this._x, this._y, this._z, this._w ];\n\
+\n\
+\t},\n\
+\n\
+\tclone: function () {\n\
+\n\
+\t\treturn new THREE.Quaternion( this._x, this._y, this._z, this._w );\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+THREE.Quaternion.slerp = function ( qa, qb, qm, t ) {\n\
+\n\
+\treturn qm.copy( qa ).slerp( qb, t );\n\
+\n\
+}\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author philogb / http://blog.thejit.org/\n\
@@ -4349,33 +4863,59 @@ THREE.Vector2.prototype = {\n\
 \t},\n\
 \n\
 \n\
-    setComponent: function ( index, value ) {\n\
+\tsetComponent: function ( index, value ) {\n\
 \n\
-        switch( index ) {\n\
+\t\tswitch ( index ) {\n\
 \n\
-            case 0: this.x = value; break;\n\
-            case 1: this.y = value; break;\n\
-            default: throw new Error( \"index is out of range: \" + index );\n\
+\t\t\tcase 0: this.x = value; break;\n\
+\t\t\tcase 1: this.y = value; break;\n\
+\t\t\tdefault: throw new Error( \"index is out of range: \" + index );\n\
 \n\
-        }\n\
+\t\t}\n\
 \n\
-    },\n\
+\t},\n\
 \n\
-    getComponent: function ( index ) {\n\
+\tgetComponent: function ( index ) {\n\
 \n\
-        switch( index ) {\n\
+\t\tswitch ( index ) {\n\
 \n\
-            case 0: return this.x;\n\
-            case 1: return this.y;\n\
-            default: throw new Error( \"index is out of range: \" + index );\n\
+\t\t\tcase 0: return this.x;\n\
+\t\t\tcase 1: return this.y;\n\
+\t\t\tdefault: throw new Error( \"index is out of range: \" + index );\n\
 \n\
-    \t}\n\
-    },\n\
+\t\t}\n\
+\n\
+\t},\n\
 \n\
 \tcopy: function ( v ) {\n\
 \n\
 \t\tthis.x = v.x;\n\
 \t\tthis.y = v.y;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tadd: function ( v, w ) {\n\
+\n\
+\t\tif ( w !== undefined ) {\n\
+\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector2\\'s .add() now only accepts one argument. Use .addVectors( a, b ) instead.' );\n\
+\t\t\treturn this.addVectors( v, w );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis.x += v.x;\n\
+\t\tthis.y += v.y;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\taddVectors: function ( a, b ) {\n\
+\n\
+\t\tthis.x = a.x + b.x;\n\
+\t\tthis.y = a.y + b.y;\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -4390,37 +4930,26 @@ THREE.Vector2.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tadd: function ( a, b ) {\n\
+\tsub: function ( v, w ) {\n\
 \n\
-\t\tthis.x = a.x + b.x;\n\
-\t\tthis.y = a.y + b.y;\n\
+\t\tif ( w !== undefined ) {\n\
 \n\
-\t\treturn this;\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector2\\'s .sub() now only accepts one argument. Use .subVectors( a, b ) instead.' );\n\
+\t\t\treturn this.subVectors( v, w );\n\
 \n\
-\t},\n\
-\n\
-\taddSelf: function ( v ) {\n\
-\n\
-\t\tthis.x += v.x;\n\
-\t\tthis.y += v.y;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsub: function ( a, b ) {\n\
-\n\
-\t\tthis.x = a.x - b.x;\n\
-\t\tthis.y = a.y - b.y;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsubSelf: function ( v ) {\n\
+\t\t}\n\
 \n\
 \t\tthis.x -= v.x;\n\
 \t\tthis.y -= v.y;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsubVectors: function ( a, b ) {\n\
+\n\
+\t\tthis.x = a.x - b.x;\n\
+\t\tthis.y = a.y - b.y;\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -4435,16 +4964,19 @@ THREE.Vector2.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tdivideScalar: function ( s ) {\n\
+\tdivideScalar: function ( scalar ) {\n\
 \n\
-\t\tif ( s !== 0 ) {\n\
+\t\tif ( scalar !== 0 ) {\n\
 \n\
-\t\t\tthis.x /= s;\n\
-\t\t\tthis.y /= s;\n\
+\t\t\tvar invScalar = 1 / scalar;\n\
+\n\
+\t\t\tthis.x *= invScalar;\n\
+\t\t\tthis.y *= invScalar;\n\
 \n\
 \t\t} else {\n\
 \n\
-\t\t\tthis.set( 0, 0 );\n\
+\t\t\tthis.x = 0;\n\
+\t\t\tthis.y = 0;\n\
 \n\
 \t\t}\n\
 \n\
@@ -4452,7 +4984,7 @@ THREE.Vector2.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tminSelf: function ( v ) {\n\
+\tmin: function ( v ) {\n\
 \n\
 \t\tif ( this.x > v.x ) {\n\
 \n\
@@ -4470,7 +5002,7 @@ THREE.Vector2.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmaxSelf: function ( v ) {\n\
+\tmax: function ( v ) {\n\
 \n\
 \t\tif ( this.x < v.x ) {\n\
 \n\
@@ -4488,7 +5020,7 @@ THREE.Vector2.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tclampSelf: function ( min, max ) {\n\
+\tclamp: function ( min, max ) {\n\
 \n\
 \t\t// This function assumes min < max, if this assumption isn't true it will not operate correctly\n\
 \n\
@@ -4562,8 +5094,8 @@ THREE.Vector2.prototype = {\n\
 \tsetLength: function ( l ) {\n\
 \n\
 \t\tvar oldLength = this.length();\n\
-\t\t\n\
-\t\tif ( oldLength !== 0 && l !== oldLength  ) {\n\
+\n\
+\t\tif ( oldLength !== 0 && l !== oldLength ) {\n\
 \n\
 \t\t\tthis.multiplyScalar( l / oldLength );\n\
 \t\t}\n\
@@ -4572,7 +5104,7 @@ THREE.Vector2.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tlerpSelf: function ( v, alpha ) {\n\
+\tlerp: function ( v, alpha ) {\n\
 \n\
 \t\tthis.x += ( v.x - this.x ) * alpha;\n\
 \t\tthis.y += ( v.y - this.y ) * alpha;\n\
@@ -4587,13 +5119,30 @@ THREE.Vector2.prototype = {\n\
 \n\
 \t},\n\
 \n\
+\tfromArray: function ( array ) {\n\
+\n\
+\t\tthis.x = array[ 0 ];\n\
+\t\tthis.y = array[ 1 ];\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttoArray: function () {\n\
+\n\
+\t\treturn [ this.x, this.y ];\n\
+\n\
+\t},\n\
+\n\
 \tclone: function () {\n\
 \n\
 \t\treturn new THREE.Vector2( this.x, this.y );\n\
 \n\
 \t}\n\
 \n\
-};/**\n\
+};\n\
+\n\
+/**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author *kile / http://kile.stravaganza.org/\n\
  * @author philogb / http://blog.thejit.org/\n\
@@ -4609,7 +5158,6 @@ THREE.Vector3 = function ( x, y, z ) {\n\
 \tthis.z = z || 0;\n\
 \n\
 };\n\
-\n\
 \n\
 THREE.Vector3.prototype = {\n\
 \n\
@@ -4649,31 +5197,31 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-    setComponent: function ( index, value ) {\n\
+\tsetComponent: function ( index, value ) {\n\
 \n\
-        switch( index ) {\n\
+\t\tswitch ( index ) {\n\
 \n\
-            case 0: this.x = value; break;\n\
-            case 1: this.y = value; break;\n\
-            case 2: this.z = value; break;\n\
-            default: throw new Error( \"index is out of range: \" + index );\n\
+\t\t\tcase 0: this.x = value; break;\n\
+\t\t\tcase 1: this.y = value; break;\n\
+\t\t\tcase 2: this.z = value; break;\n\
+\t\t\tdefault: throw new Error( \"index is out of range: \" + index );\n\
 \n\
-        }\n\
+\t\t}\n\
 \n\
-    },\n\
+\t},\n\
 \n\
-    getComponent: function ( index ) {\n\
+\tgetComponent: function ( index ) {\n\
 \n\
-        switch( index ) {\n\
+\t\tswitch ( index ) {\n\
 \n\
-            case 0: return this.x;\n\
-            case 1: return this.y;\n\
-            case 2: return this.z;\n\
-            default: throw new Error( \"index is out of range: \" + index );\n\
+\t\t\tcase 0: return this.x;\n\
+\t\t\tcase 1: return this.y;\n\
+\t\t\tcase 2: return this.z;\n\
+\t\t\tdefault: throw new Error( \"index is out of range: \" + index );\n\
 \n\
-        }\n\
+\t\t}\n\
 \n\
-    },\n\
+\t},\n\
 \n\
 \tcopy: function ( v ) {\n\
 \n\
@@ -4685,17 +5233,14 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tadd: function ( a, b ) {\n\
+\tadd: function ( v, w ) {\n\
 \n\
-\t\tthis.x = a.x + b.x;\n\
-\t\tthis.y = a.y + b.y;\n\
-\t\tthis.z = a.z + b.z;\n\
+\t\tif ( w !== undefined ) {\n\
 \n\
-\t\treturn this;\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector3\\'s .add() now only accepts one argument. Use .addVectors( a, b ) instead.' );\n\
+\t\t\treturn this.addVectors( v, w );\n\
 \n\
-\t},\n\
-\n\
-\taddSelf: function ( v ) {\n\
+\t\t}\n\
 \n\
 \t\tthis.x += v.x;\n\
 \t\tthis.y += v.y;\n\
@@ -4715,17 +5260,24 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tsub: function ( a, b ) {\n\
+\taddVectors: function ( a, b ) {\n\
 \n\
-\t\tthis.x = a.x - b.x;\n\
-\t\tthis.y = a.y - b.y;\n\
-\t\tthis.z = a.z - b.z;\n\
+\t\tthis.x = a.x + b.x;\n\
+\t\tthis.y = a.y + b.y;\n\
+\t\tthis.z = a.z + b.z;\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tsubSelf: function ( v ) {\n\
+\tsub: function ( v, w ) {\n\
+\n\
+\t\tif ( w !== undefined ) {\n\
+\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector3\\'s .sub() now only accepts one argument. Use .subVectors( a, b ) instead.' );\n\
+\t\t\treturn this.subVectors( v, w );\n\
+\n\
+\t\t}\n\
 \n\
 \t\tthis.x -= v.x;\n\
 \t\tthis.y -= v.y;\n\
@@ -4735,17 +5287,24 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmultiply: function ( a, b ) {\n\
+\tsubVectors: function ( a, b ) {\n\
 \n\
-\t\tthis.x = a.x * b.x;\n\
-\t\tthis.y = a.y * b.y;\n\
-\t\tthis.z = a.z * b.z;\n\
+\t\tthis.x = a.x - b.x;\n\
+\t\tthis.y = a.y - b.y;\n\
+\t\tthis.z = a.z - b.z;\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tmultiplySelf: function ( v ) {\n\
+\tmultiply: function ( v, w ) {\n\
+\n\
+\t\tif ( w !== undefined ) {\n\
+\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector3\\'s .multiply() now only accepts one argument. Use .multiplyVectors( a, b ) instead.' );\n\
+\t\t\treturn this.multiplyVectors( v, w );\n\
+\n\
+\t\t}\n\
 \n\
 \t\tthis.x *= v.x;\n\
 \t\tthis.y *= v.y;\n\
@@ -4755,17 +5314,123 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmultiplyScalar: function ( s ) {\n\
+\tmultiplyScalar: function ( scalar ) {\n\
 \n\
-\t\tthis.x *= s;\n\
-\t\tthis.y *= s;\n\
-\t\tthis.z *= s;\n\
+\t\tthis.x *= scalar;\n\
+\t\tthis.y *= scalar;\n\
+\t\tthis.z *= scalar;\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tdivideSelf: function ( v ) {\n\
+\tmultiplyVectors: function ( a, b ) {\n\
+\n\
+\t\tthis.x = a.x * b.x;\n\
+\t\tthis.y = a.y * b.y;\n\
+\t\tthis.z = a.z * b.z;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tapplyMatrix3: function ( m ) {\n\
+\n\
+\t\tvar x = this.x;\n\
+\t\tvar y = this.y;\n\
+\t\tvar z = this.z;\n\
+\n\
+\t\tvar e = m.elements;\n\
+\n\
+\t\tthis.x = e[0] * x + e[3] * y + e[6] * z;\n\
+\t\tthis.y = e[1] * x + e[4] * y + e[7] * z;\n\
+\t\tthis.z = e[2] * x + e[5] * y + e[8] * z;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tapplyMatrix4: function ( m ) {\n\
+\n\
+\t\t// input: THREE.Matrix4 affine matrix\n\
+\n\
+\t\tvar x = this.x, y = this.y, z = this.z;\n\
+\n\
+\t\tvar e = m.elements;\n\
+\n\
+\t\tthis.x = e[0] * x + e[4] * y + e[8]  * z + e[12];\n\
+\t\tthis.y = e[1] * x + e[5] * y + e[9]  * z + e[13];\n\
+\t\tthis.z = e[2] * x + e[6] * y + e[10] * z + e[14];\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tapplyProjection: function ( m ) {\n\
+\n\
+\t\t// input: THREE.Matrix4 projection matrix\n\
+\n\
+\t\tvar x = this.x, y = this.y, z = this.z;\n\
+\n\
+\t\tvar e = m.elements;\n\
+\t\tvar d = 1 / ( e[3] * x + e[7] * y + e[11] * z + e[15] ); // perspective divide\n\
+\n\
+\t\tthis.x = ( e[0] * x + e[4] * y + e[8]  * z + e[12] ) * d;\n\
+\t\tthis.y = ( e[1] * x + e[5] * y + e[9]  * z + e[13] ) * d;\n\
+\t\tthis.z = ( e[2] * x + e[6] * y + e[10] * z + e[14] ) * d;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tapplyQuaternion: function ( q ) {\n\
+\n\
+\t\tvar x = this.x;\n\
+\t\tvar y = this.y;\n\
+\t\tvar z = this.z;\n\
+\n\
+\t\tvar qx = q.x;\n\
+\t\tvar qy = q.y;\n\
+\t\tvar qz = q.z;\n\
+\t\tvar qw = q.w;\n\
+\n\
+\t\t// calculate quat * vector\n\
+\n\
+\t\tvar ix =  qw * x + qy * z - qz * y;\n\
+\t\tvar iy =  qw * y + qz * x - qx * z;\n\
+\t\tvar iz =  qw * z + qx * y - qy * x;\n\
+\t\tvar iw = -qx * x - qy * y - qz * z;\n\
+\n\
+\t\t// calculate result * inverse quat\n\
+\n\
+\t\tthis.x = ix * qw + iw * -qx + iy * -qz - iz * -qy;\n\
+\t\tthis.y = iy * qw + iw * -qy + iz * -qx - ix * -qz;\n\
+\t\tthis.z = iz * qw + iw * -qz + ix * -qy - iy * -qx;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttransformDirection: function ( m ) {\n\
+\n\
+\t\t// input: THREE.Matrix4 affine matrix\n\
+\t\t// vector interpreted as a direction\n\
+\n\
+\t\tvar x = this.x, y = this.y, z = this.z;\n\
+\n\
+\t\tvar e = m.elements;\n\
+\n\
+\t\tthis.x = e[0] * x + e[4] * y + e[8]  * z;\n\
+\t\tthis.y = e[1] * x + e[5] * y + e[9]  * z;\n\
+\t\tthis.z = e[2] * x + e[6] * y + e[10] * z;\n\
+\n\
+\t\tthis.normalize();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tdivide: function ( v ) {\n\
 \n\
 \t\tthis.x /= v.x;\n\
 \t\tthis.y /= v.y;\n\
@@ -4775,13 +5440,15 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tdivideScalar: function ( s ) {\n\
+\tdivideScalar: function ( scalar ) {\n\
 \n\
-\t\tif ( s !== 0 ) {\n\
+\t\tif ( scalar !== 0 ) {\n\
 \n\
-\t\t\tthis.x /= s;\n\
-\t\t\tthis.y /= s;\n\
-\t\t\tthis.z /= s;\n\
+\t\t\tvar invScalar = 1 / scalar;\n\
+\n\
+\t\t\tthis.x *= invScalar;\n\
+\t\t\tthis.y *= invScalar;\n\
+\t\t\tthis.z *= invScalar;\n\
 \n\
 \t\t} else {\n\
 \n\
@@ -4795,7 +5462,7 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tminSelf: function ( v ) {\n\
+\tmin: function ( v ) {\n\
 \n\
 \t\tif ( this.x > v.x ) {\n\
 \n\
@@ -4819,7 +5486,7 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmaxSelf: function ( v ) {\n\
+\tmax: function ( v ) {\n\
 \n\
 \t\tif ( this.x < v.x ) {\n\
 \n\
@@ -4843,7 +5510,7 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tclampSelf: function ( min, max ) {\n\
+\tclamp: function ( min, max ) {\n\
 \n\
 \t\t// This function assumes min < max, if this assumption isn't true it will not operate correctly\n\
 \n\
@@ -4881,7 +5548,7 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tnegate: function() {\n\
+\tnegate: function () {\n\
 \n\
 \t\treturn this.multiplyScalar( - 1 );\n\
 \n\
@@ -4920,7 +5587,7 @@ THREE.Vector3.prototype = {\n\
 \tsetLength: function ( l ) {\n\
 \n\
 \t\tvar oldLength = this.length();\n\
-\t\t\n\
+\n\
 \t\tif ( oldLength !== 0 && l !== oldLength  ) {\n\
 \n\
 \t\t\tthis.multiplyScalar( l / oldLength );\n\
@@ -4930,7 +5597,7 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tlerpSelf: function ( v, alpha ) {\n\
+\tlerp: function ( v, alpha ) {\n\
 \n\
 \t\tthis.x += ( v.x - this.x ) * alpha;\n\
 \t\tthis.y += ( v.y - this.y ) * alpha;\n\
@@ -4940,17 +5607,14 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tcross: function ( a, b ) {\n\
+\tcross: function ( v, w ) {\n\
 \n\
-\t\tthis.x = a.y * b.z - a.z * b.y;\n\
-\t\tthis.y = a.z * b.x - a.x * b.z;\n\
-\t\tthis.z = a.x * b.y - a.y * b.x;\n\
+\t\tif ( w !== undefined ) {\n\
 \n\
-\t\treturn this;\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector3\\'s .cross() now only accepts one argument. Use .crossVectors( a, b ) instead.' );\n\
+\t\t\treturn this.crossVectors( v, w );\n\
 \n\
-\t},\n\
-\n\
-\tcrossSelf: function ( v ) {\n\
+\t\t}\n\
 \n\
 \t\tvar x = this.x, y = this.y, z = this.z;\n\
 \n\
@@ -4962,9 +5626,26 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
+\tcrossVectors: function ( a, b ) {\n\
+\n\
+\t\tvar ax = a.x, ay = a.y, az = a.z;\n\
+\t\tvar bx = b.x, by = b.y, bz = b.z;\n\
+\n\
+\t\tthis.x = ay * bz - az * by;\n\
+\t\tthis.y = az * bx - ax * bz;\n\
+\t\tthis.z = ax * by - ay * bx;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
 \tangleTo: function ( v ) {\n\
 \n\
-\t\treturn Math.acos( this.dot( v ) / this.length() / v.length() );\n\
+\t\tvar theta = this.dot( v ) / ( this.length() * v.length() );\n\
+\n\
+\t\t// clamp, to handle numerical problems\n\
+\n\
+\t\treturn Math.acos( THREE.Math.clamp( theta, -1, 1 ) );\n\
 \n\
 \t},\n\
 \n\
@@ -4984,191 +5665,23 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tgetPositionFromMatrix: function ( m ) {\n\
-\n\
-\t\tthis.x = m.elements[12];\n\
-\t\tthis.y = m.elements[13];\n\
-\t\tthis.z = m.elements[14];\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
 \tsetEulerFromRotationMatrix: function ( m, order ) {\n\
 \n\
-\t\t// assumes the upper 3x3 of m is a pure rotation matrix (i.e, unscaled)\n\
-\n\
-\t\t// clamp, to handle numerical problems\n\
-\n\
-\t\tfunction clamp( x ) {\n\
-\n\
-\t\t\treturn Math.min( Math.max( x, -1 ), 1 );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tvar te = m.elements;\n\
-\t\tvar m11 = te[0], m12 = te[4], m13 = te[8];\n\
-\t\tvar m21 = te[1], m22 = te[5], m23 = te[9];\n\
-\t\tvar m31 = te[2], m32 = te[6], m33 = te[10];\n\
-\n\
-\t\tif ( order === undefined || order === 'XYZ' ) {\n\
-\n\
-\t\t\tthis.y = Math.asin( clamp( m13 ) );\n\
-\n\
-\t\t\tif ( Math.abs( m13 ) < 0.99999 ) {\n\
-\n\
-\t\t\t\tthis.x = Math.atan2( - m23, m33 );\n\
-\t\t\t\tthis.z = Math.atan2( - m12, m11 );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tthis.x = Math.atan2( m32, m22 );\n\
-\t\t\t\tthis.z = 0;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else if ( order === 'YXZ' ) {\n\
-\n\
-\t\t\tthis.x = Math.asin( - clamp( m23 ) );\n\
-\n\
-\t\t\tif ( Math.abs( m23 ) < 0.99999 ) {\n\
-\n\
-\t\t\t\tthis.y = Math.atan2( m13, m33 );\n\
-\t\t\t\tthis.z = Math.atan2( m21, m22 );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tthis.y = Math.atan2( - m31, m11 );\n\
-\t\t\t\tthis.z = 0;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else if ( order === 'ZXY' ) {\n\
-\n\
-\t\t\tthis.x = Math.asin( clamp( m32 ) );\n\
-\n\
-\t\t\tif ( Math.abs( m32 ) < 0.99999 ) {\n\
-\n\
-\t\t\t\tthis.y = Math.atan2( - m31, m33 );\n\
-\t\t\t\tthis.z = Math.atan2( - m12, m22 );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tthis.y = 0;\n\
-\t\t\t\tthis.z = Math.atan2( m21, m11 );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else if ( order === 'ZYX' ) {\n\
-\n\
-\t\t\tthis.y = Math.asin( - clamp( m31 ) );\n\
-\n\
-\t\t\tif ( Math.abs( m31 ) < 0.99999 ) {\n\
-\n\
-\t\t\t\tthis.x = Math.atan2( m32, m33 );\n\
-\t\t\t\tthis.z = Math.atan2( m21, m11 );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tthis.x = 0;\n\
-\t\t\t\tthis.z = Math.atan2( - m12, m22 );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else if ( order === 'YZX' ) {\n\
-\n\
-\t\t\tthis.z = Math.asin( clamp( m21 ) );\n\
-\n\
-\t\t\tif ( Math.abs( m21 ) < 0.99999 ) {\n\
-\n\
-\t\t\t\tthis.x = Math.atan2( - m23, m22 );\n\
-\t\t\t\tthis.y = Math.atan2( - m31, m11 );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tthis.x = 0;\n\
-\t\t\t\tthis.y = Math.atan2( m13, m33 );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else if ( order === 'XZY' ) {\n\
-\n\
-\t\t\tthis.z = Math.asin( - clamp( m12 ) );\n\
-\n\
-\t\t\tif ( Math.abs( m12 ) < 0.99999 ) {\n\
-\n\
-\t\t\t\tthis.x = Math.atan2( m32, m22 );\n\
-\t\t\t\tthis.y = Math.atan2( m13, m11 );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tthis.x = Math.atan2( - m23, m33 );\n\
-\t\t\t\tthis.y = 0;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t\treturn this;\n\
+\t\tconsole.error( \"REMOVED: Vector3\\'s setEulerFromRotationMatrix has been removed in favor of Euler.setFromRotationMatrix(), please update your code.\");\n\
 \n\
 \t},\n\
 \n\
 \tsetEulerFromQuaternion: function ( q, order ) {\n\
 \n\
-\t\t// q is assumed to be normalized\n\
+\t\tconsole.error( \"REMOVED: Vector3\\'s setEulerFromQuaternion: has been removed in favor of Euler.setFromQuaternion(), please update your code.\");\n\
 \n\
-\t\t// clamp, to handle numerical problems\n\
+\t},\n\
 \n\
-\t\tfunction clamp( x ) {\n\
+\tgetPositionFromMatrix: function ( m ) {\n\
 \n\
-\t\t\treturn Math.min( Math.max( x, -1 ), 1 );\n\
-\n\
-\t\t}\n\
-\n\
-\t\t// http://www.mathworks.com/matlabcentral/fileexchange/20696-function-to-convert-between-dcm-euler-angles-quaternions-and-euler-vectors/content/SpinCalc.m\n\
-\n\
-\t\tvar sqx = q.x * q.x;\n\
-\t\tvar sqy = q.y * q.y;\n\
-\t\tvar sqz = q.z * q.z;\n\
-\t\tvar sqw = q.w * q.w;\n\
-\n\
-\t\tif ( order === undefined || order === 'XYZ' ) {\n\
-\n\
-\t\t\tthis.x = Math.atan2( 2 * ( q.x * q.w - q.y * q.z ), ( sqw - sqx - sqy + sqz ) );\n\
-\t\t\tthis.y = Math.asin(  clamp( 2 * ( q.x * q.z + q.y * q.w ) ) );\n\
-\t\t\tthis.z = Math.atan2( 2 * ( q.z * q.w - q.x * q.y ), ( sqw + sqx - sqy - sqz ) );\n\
-\n\
-\t\t} else if ( order ===  'YXZ' ) {\n\
-\n\
-\t\t\tthis.x = Math.asin(  clamp( 2 * ( q.x * q.w - q.y * q.z ) ) );\n\
-\t\t\tthis.y = Math.atan2( 2 * ( q.x * q.z + q.y * q.w ), ( sqw - sqx - sqy + sqz ) );\n\
-\t\t\tthis.z = Math.atan2( 2 * ( q.x * q.y + q.z * q.w ), ( sqw - sqx + sqy - sqz ) );\n\
-\n\
-\t\t} else if ( order === 'ZXY' ) {\n\
-\n\
-\t\t\tthis.x = Math.asin(  clamp( 2 * ( q.x * q.w + q.y * q.z ) ) );\n\
-\t\t\tthis.y = Math.atan2( 2 * ( q.y * q.w - q.z * q.x ), ( sqw - sqx - sqy + sqz ) );\n\
-\t\t\tthis.z = Math.atan2( 2 * ( q.z * q.w - q.x * q.y ), ( sqw - sqx + sqy - sqz ) );\n\
-\n\
-\t\t} else if ( order === 'ZYX' ) {\n\
-\n\
-\t\t\tthis.x = Math.atan2( 2 * ( q.x * q.w + q.z * q.y ), ( sqw - sqx - sqy + sqz ) );\n\
-\t\t\tthis.y = Math.asin(  clamp( 2 * ( q.y * q.w - q.x * q.z ) ) );\n\
-\t\t\tthis.z = Math.atan2( 2 * ( q.x * q.y + q.z * q.w ), ( sqw + sqx - sqy - sqz ) );\n\
-\n\
-\t\t} else if ( order === 'YZX' ) {\n\
-\n\
-\t\t\tthis.x = Math.atan2( 2 * ( q.x * q.w - q.z * q.y ), ( sqw - sqx + sqy - sqz ) );\n\
-\t\t\tthis.y = Math.atan2( 2 * ( q.y * q.w - q.x * q.z ), ( sqw + sqx - sqy - sqz ) );\n\
-\t\t\tthis.z = Math.asin(  clamp( 2 * ( q.x * q.y + q.z * q.w ) ) );\n\
-\n\
-\t\t} else if ( order === 'XZY' ) {\n\
-\n\
-\t\t\tthis.x = Math.atan2( 2 * ( q.x * q.w + q.y * q.z ), ( sqw - sqx + sqy - sqz ) );\n\
-\t\t\tthis.y = Math.atan2( 2 * ( q.x * q.z + q.y * q.w ), ( sqw + sqx - sqy - sqz ) );\n\
-\t\t\tthis.z = Math.asin(  clamp( 2 * ( q.z * q.w - q.x * q.y ) ) );\n\
-\n\
-\t\t}\n\
+\t\tthis.x = m.elements[12];\n\
+\t\tthis.y = m.elements[13];\n\
+\t\tthis.z = m.elements[14];\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -5187,9 +5700,39 @@ THREE.Vector3.prototype = {\n\
 \t\treturn this;\n\
 \t},\n\
 \n\
+\tgetColumnFromMatrix: function ( index, matrix ) {\n\
+\n\
+\t\tvar offset = index * 4;\n\
+\n\
+\t\tvar me = matrix.elements;\n\
+\n\
+\t\tthis.x = me[ offset ];\n\
+\t\tthis.y = me[ offset + 1 ];\n\
+\t\tthis.z = me[ offset + 2 ];\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
 \tequals: function ( v ) {\n\
 \n\
 \t\treturn ( ( v.x === this.x ) && ( v.y === this.y ) && ( v.z === this.z ) );\n\
+\n\
+\t},\n\
+\n\
+\tfromArray: function ( array ) {\n\
+\n\
+\t\tthis.x = array[ 0 ];\n\
+\t\tthis.y = array[ 1 ];\n\
+\t\tthis.z = array[ 2 ];\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttoArray: function () {\n\
+\n\
+\t\treturn [ this.x, this.y, this.z ];\n\
 \n\
 \t},\n\
 \n\
@@ -5199,7 +5742,89 @@ THREE.Vector3.prototype = {\n\
 \n\
 \t}\n\
 \n\
-};/**\n\
+};\n\
+\n\
+THREE.extend( THREE.Vector3.prototype, {\n\
+\n\
+\tapplyEuler: function () {\n\
+\n\
+\t\tvar quaternion = new THREE.Quaternion();\n\
+\n\
+\t\treturn function ( euler ) {\n\
+\n\
+\t\t\tif ( euler instanceof THREE.Euler === false ) {\n\
+\n\
+\t\t\t\tconsole.error( 'ERROR: Vector3\\'s .applyEuler() now expects a Euler rotation rather than a Vector3 and order.  Please update your code.' );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tthis.applyQuaternion( quaternion.setFromEuler( euler ) );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tapplyAxisAngle: function () {\n\
+\n\
+\t\tvar quaternion = new THREE.Quaternion();\n\
+\n\
+\t\treturn function ( axis, angle ) {\n\
+\n\
+\t\t\tthis.applyQuaternion( quaternion.setFromAxisAngle( axis, angle ) );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tprojectOnVector: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( vector ) {\n\
+\n\
+\t\t\tv1.copy( vector ).normalize();\n\
+\t\t\tvar d = this.dot( v1 );\n\
+\t\t\treturn this.copy( v1 ).multiplyScalar( d );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tprojectOnPlane: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( planeNormal ) {\n\
+\n\
+\t\t\tv1.copy( this ).projectOnVector( planeNormal );\n\
+\n\
+\t\t\treturn this.sub( v1 );\n\
+\n\
+\t\t}\n\
+\n\
+\t}(),\n\
+\n\
+\treflect: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( vector ) {\n\
+\n\
+\t\t    v1.copy( this ).projectOnVector( vector ).multiplyScalar( 2 );\n\
+\n\
+\t\t    return this.subVectors( v1, this );\n\
+\n\
+\t\t}\n\
+\n\
+\t}()\n\
+\n\
+} );\n\
+\n\
+/**\n\
  * @author supereggbert / http://www.paulbrunt.co.uk/\n\
  * @author philogb / http://blog.thejit.org/\n\
  * @author mikael emtinger / http://gomo.se/\n\
@@ -5263,33 +5888,33 @@ THREE.Vector4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-    setComponent: function ( index, value ) {\n\
+\tsetComponent: function ( index, value ) {\n\
 \n\
-        switch( index ) {\n\
+\t\tswitch ( index ) {\n\
 \n\
-            case 0: this.x = value; break;\n\
-            case 1: this.y = value; break;\n\
-            case 2: this.z = value; break;\n\
-            case 3: this.w = value; break;\n\
-            default: throw new Error( \"index is out of range: \" + index );\n\
+\t\t\tcase 0: this.x = value; break;\n\
+\t\t\tcase 1: this.y = value; break;\n\
+\t\t\tcase 2: this.z = value; break;\n\
+\t\t\tcase 3: this.w = value; break;\n\
+\t\t\tdefault: throw new Error( \"index is out of range: \" + index );\n\
 \n\
-        }\n\
+\t\t}\n\
 \n\
-    },\n\
+\t},\n\
 \n\
-    getComponent: function ( index ) {\n\
+\tgetComponent: function ( index ) {\n\
 \n\
-        switch( index ) {\n\
+\t\tswitch ( index ) {\n\
 \n\
-            case 0: return this.x;\n\
-            case 1: return this.y;\n\
-            case 2: return this.z;\n\
-            case 3: return this.w;\n\
-            default: throw new Error( \"index is out of range: \" + index );\n\
+\t\t\tcase 0: return this.x;\n\
+\t\t\tcase 1: return this.y;\n\
+\t\t\tcase 2: return this.z;\n\
+\t\t\tcase 3: return this.w;\n\
+\t\t\tdefault: throw new Error( \"index is out of range: \" + index );\n\
 \n\
-        }\n\
+\t\t}\n\
 \n\
-    },\n\
+\t},\n\
 \n\
 \tcopy: function ( v ) {\n\
 \n\
@@ -5297,6 +5922,24 @@ THREE.Vector4.prototype = {\n\
 \t\tthis.y = v.y;\n\
 \t\tthis.z = v.z;\n\
 \t\tthis.w = ( v.w !== undefined ) ? v.w : 1;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tadd: function ( v, w ) {\n\
+\n\
+\t\tif ( w !== undefined ) {\n\
+\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector4\\'s .add() now only accepts one argument. Use .addVectors( a, b ) instead.' );\n\
+\t\t\treturn this.addVectors( v, w );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis.x += v.x;\n\
+\t\tthis.y += v.y;\n\
+\t\tthis.z += v.z;\n\
+\t\tthis.w += v.w;\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -5313,7 +5956,7 @@ THREE.Vector4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tadd: function ( a, b ) {\n\
+\taddVectors: function ( a, b ) {\n\
 \n\
 \t\tthis.x = a.x + b.x;\n\
 \t\tthis.y = a.y + b.y;\n\
@@ -5324,29 +5967,14 @@ THREE.Vector4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\taddSelf: function ( v ) {\n\
+\tsub: function ( v, w ) {\n\
 \n\
-\t\tthis.x += v.x;\n\
-\t\tthis.y += v.y;\n\
-\t\tthis.z += v.z;\n\
-\t\tthis.w += v.w;\n\
+\t\tif ( w !== undefined ) {\n\
 \n\
-\t\treturn this;\n\
+\t\t\tconsole.warn( 'DEPRECATED: Vector4\\'s .sub() now only accepts one argument. Use .subVectors( a, b ) instead.' );\n\
+\t\t\treturn this.subVectors( v, w );\n\
 \n\
-\t},\n\
-\n\
-\tsub: function ( a, b ) {\n\
-\n\
-\t\tthis.x = a.x - b.x;\n\
-\t\tthis.y = a.y - b.y;\n\
-\t\tthis.z = a.z - b.z;\n\
-\t\tthis.w = a.w - b.w;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsubSelf: function ( v ) {\n\
+\t\t}\n\
 \n\
 \t\tthis.x -= v.x;\n\
 \t\tthis.y -= v.y;\n\
@@ -5357,25 +5985,56 @@ THREE.Vector4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmultiplyScalar: function ( s ) {\n\
+\tsubVectors: function ( a, b ) {\n\
 \n\
-\t\tthis.x *= s;\n\
-\t\tthis.y *= s;\n\
-\t\tthis.z *= s;\n\
-\t\tthis.w *= s;\n\
+\t\tthis.x = a.x - b.x;\n\
+\t\tthis.y = a.y - b.y;\n\
+\t\tthis.z = a.z - b.z;\n\
+\t\tthis.w = a.w - b.w;\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tdivideScalar: function ( s ) {\n\
+\tmultiplyScalar: function ( scalar ) {\n\
 \n\
-\t\tif ( s !== 0 ) {\n\
+\t\tthis.x *= scalar;\n\
+\t\tthis.y *= scalar;\n\
+\t\tthis.z *= scalar;\n\
+\t\tthis.w *= scalar;\n\
 \n\
-\t\t\tthis.x /= s;\n\
-\t\t\tthis.y /= s;\n\
-\t\t\tthis.z /= s;\n\
-\t\t\tthis.w /= s;\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tapplyMatrix4: function ( m ) {\n\
+\n\
+\t\tvar x = this.x;\n\
+\t\tvar y = this.y;\n\
+\t\tvar z = this.z;\n\
+\t\tvar w = this.w;\n\
+\n\
+\t\tvar e = m.elements;\n\
+\n\
+\t\tthis.x = e[0] * x + e[4] * y + e[8] * z + e[12] * w;\n\
+\t\tthis.y = e[1] * x + e[5] * y + e[9] * z + e[13] * w;\n\
+\t\tthis.z = e[2] * x + e[6] * y + e[10] * z + e[14] * w;\n\
+\t\tthis.w = e[3] * x + e[7] * y + e[11] * z + e[15] * w;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tdivideScalar: function ( scalar ) {\n\
+\n\
+\t\tif ( scalar !== 0 ) {\n\
+\n\
+\t\t\tvar invScalar = 1 / scalar;\n\
+\n\
+\t\t\tthis.x *= invScalar;\n\
+\t\t\tthis.y *= invScalar;\n\
+\t\t\tthis.z *= invScalar;\n\
+\t\t\tthis.w *= invScalar;\n\
 \n\
 \t\t} else {\n\
 \n\
@@ -5387,186 +6046,6 @@ THREE.Vector4.prototype = {\n\
 \t\t}\n\
 \n\
 \t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tminSelf: function ( v ) {\n\
-\n\
-\t\tif ( this.x > v.x ) {\n\
-\n\
-\t\t\tthis.x = v.x;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.y > v.y ) {\n\
-\n\
-\t\t\tthis.y = v.y;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.z > v.z ) {\n\
-\n\
-\t\t\tthis.z = v.z;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.w > v.w ) {\n\
-\n\
-\t\t\tthis.w = v.w;\n\
-\n\
-\t\t}\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tmaxSelf: function ( v ) {\n\
-\n\
-\t\tif ( this.x < v.x ) {\n\
-\n\
-\t\t\tthis.x = v.x;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.y < v.y ) {\n\
-\n\
-\t\t\tthis.y = v.y;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.z < v.z ) {\n\
-\n\
-\t\t\tthis.z = v.z;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.w < v.w ) {\n\
-\n\
-\t\t\tthis.w = v.w;\n\
-\n\
-\t\t}\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tclampSelf: function ( min, max ) {\n\
-\n\
-\t\t// This function assumes min < max, if this assumption isn't true it will not operate correctly\n\
-\n\
-\t\tif ( this.x < min.x ) {\n\
-\n\
-\t\t\tthis.x = min.x;\n\
-\n\
-\t\t} else if ( this.x > max.x ) {\n\
-\n\
-\t\t\tthis.x = max.x;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.y < min.y ) {\n\
-\n\
-\t\t\tthis.y = min.y;\n\
-\n\
-\t\t} else if ( this.y > max.y ) {\n\
-\n\
-\t\t\tthis.y = max.y;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.z < min.z ) {\n\
-\n\
-\t\t\tthis.z = min.z;\n\
-\n\
-\t\t} else if ( this.z > max.z ) {\n\
-\n\
-\t\t\tthis.z = max.z;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.w < min.w ) {\n\
-\n\
-\t\t\tthis.w = min.w;\n\
-\n\
-\t\t} else if ( this.w > max.w ) {\n\
-\n\
-\t\t\tthis.w = max.w;\n\
-\n\
-\t\t}\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tnegate: function() {\n\
-\n\
-\t\treturn this.multiplyScalar( -1 );\n\
-\n\
-\t},\n\
-\n\
-\tdot: function ( v ) {\n\
-\n\
-\t\treturn this.x * v.x + this.y * v.y + this.z * v.z + this.w * v.w;\n\
-\n\
-\t},\n\
-\n\
-\tlengthSq: function () {\n\
-\n\
-\t\treturn this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;\n\
-\n\
-\t},\n\
-\n\
-\tlength: function () {\n\
-\n\
-\t\treturn Math.sqrt( this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w );\n\
-\n\
-\t},\n\
-\n\
-\tlengthManhattan: function () {\n\
-\n\
-\t\treturn Math.abs( this.x ) + Math.abs( this.y ) + Math.abs( this.z ) + Math.abs( this.w );\n\
-\n\
-\t},\n\
-\n\
-\tnormalize: function () {\n\
-\n\
-\t\treturn this.divideScalar( this.length() );\n\
-\n\
-\t},\n\
-\n\
-\tsetLength: function ( l ) {\n\
-\n\
-\t\tvar oldLength = this.length();\n\
-\t\t\n\
-\t\tif ( oldLength !== 0 && l !== oldLength  ) {\n\
-\n\
-\t\t\tthis.multiplyScalar( l / oldLength );\n\
-\t\t}\n\
-\n\
-\t\treturn this;\n\
-\t\t\n\
-\t},\n\
-\n\
-\tlerpSelf: function ( v, alpha ) {\n\
-\n\
-\t\tthis.x += ( v.x - this.x ) * alpha;\n\
-\t\tthis.y += ( v.y - this.y ) * alpha;\n\
-\t\tthis.z += ( v.z - this.z ) * alpha;\n\
-\t\tthis.w += ( v.w - this.w ) * alpha;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tequals: function ( v ) {\n\
-\n\
-\t\treturn ( ( v.x === this.x ) && ( v.y === this.y ) && ( v.z === this.z ) && ( v.w === this.w ) );\n\
-\n\
-\t},\n\
-\n\
-\tclone: function () {\n\
-\n\
-\t\treturn new THREE.Vector4( this.x, this.y, this.z, this.w );\n\
 \n\
 \t},\n\
 \n\
@@ -5720,16 +6199,707 @@ THREE.Vector4.prototype = {\n\
 \n\
 \t\treturn this;\n\
 \n\
+\t},\n\
+\n\
+\tmin: function ( v ) {\n\
+\n\
+\t\tif ( this.x > v.x ) {\n\
+\n\
+\t\t\tthis.x = v.x;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.y > v.y ) {\n\
+\n\
+\t\t\tthis.y = v.y;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.z > v.z ) {\n\
+\n\
+\t\t\tthis.z = v.z;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.w > v.w ) {\n\
+\n\
+\t\t\tthis.w = v.w;\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tmax: function ( v ) {\n\
+\n\
+\t\tif ( this.x < v.x ) {\n\
+\n\
+\t\t\tthis.x = v.x;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.y < v.y ) {\n\
+\n\
+\t\t\tthis.y = v.y;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.z < v.z ) {\n\
+\n\
+\t\t\tthis.z = v.z;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.w < v.w ) {\n\
+\n\
+\t\t\tthis.w = v.w;\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tclamp: function ( min, max ) {\n\
+\n\
+\t\t// This function assumes min < max, if this assumption isn't true it will not operate correctly\n\
+\n\
+\t\tif ( this.x < min.x ) {\n\
+\n\
+\t\t\tthis.x = min.x;\n\
+\n\
+\t\t} else if ( this.x > max.x ) {\n\
+\n\
+\t\t\tthis.x = max.x;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.y < min.y ) {\n\
+\n\
+\t\t\tthis.y = min.y;\n\
+\n\
+\t\t} else if ( this.y > max.y ) {\n\
+\n\
+\t\t\tthis.y = max.y;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.z < min.z ) {\n\
+\n\
+\t\t\tthis.z = min.z;\n\
+\n\
+\t\t} else if ( this.z > max.z ) {\n\
+\n\
+\t\t\tthis.z = max.z;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.w < min.w ) {\n\
+\n\
+\t\t\tthis.w = min.w;\n\
+\n\
+\t\t} else if ( this.w > max.w ) {\n\
+\n\
+\t\t\tthis.w = max.w;\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tnegate: function() {\n\
+\n\
+\t\treturn this.multiplyScalar( -1 );\n\
+\n\
+\t},\n\
+\n\
+\tdot: function ( v ) {\n\
+\n\
+\t\treturn this.x * v.x + this.y * v.y + this.z * v.z + this.w * v.w;\n\
+\n\
+\t},\n\
+\n\
+\tlengthSq: function () {\n\
+\n\
+\t\treturn this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;\n\
+\n\
+\t},\n\
+\n\
+\tlength: function () {\n\
+\n\
+\t\treturn Math.sqrt( this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w );\n\
+\n\
+\t},\n\
+\n\
+\tlengthManhattan: function () {\n\
+\n\
+\t\treturn Math.abs( this.x ) + Math.abs( this.y ) + Math.abs( this.z ) + Math.abs( this.w );\n\
+\n\
+\t},\n\
+\n\
+\tnormalize: function () {\n\
+\n\
+\t\treturn this.divideScalar( this.length() );\n\
+\n\
+\t},\n\
+\n\
+\tsetLength: function ( l ) {\n\
+\n\
+\t\tvar oldLength = this.length();\n\
+\n\
+\t\tif ( oldLength !== 0 && l !== oldLength ) {\n\
+\n\
+\t\t\tthis.multiplyScalar( l / oldLength );\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tlerp: function ( v, alpha ) {\n\
+\n\
+\t\tthis.x += ( v.x - this.x ) * alpha;\n\
+\t\tthis.y += ( v.y - this.y ) * alpha;\n\
+\t\tthis.z += ( v.z - this.z ) * alpha;\n\
+\t\tthis.w += ( v.w - this.w ) * alpha;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tequals: function ( v ) {\n\
+\n\
+\t\treturn ( ( v.x === this.x ) && ( v.y === this.y ) && ( v.z === this.z ) && ( v.w === this.w ) );\n\
+\n\
+\t},\n\
+\n\
+\tfromArray: function ( array ) {\n\
+\n\
+\t\tthis.x = array[ 0 ];\n\
+\t\tthis.y = array[ 1 ];\n\
+\t\tthis.z = array[ 2 ];\n\
+\t\tthis.w = array[ 3 ];\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttoArray: function () {\n\
+\n\
+\t\treturn [ this.x, this.y, this.z, this.w ];\n\
+\n\
+\t},\n\
+\n\
+\tclone: function () {\n\
+\n\
+\t\treturn new THREE.Vector4( this.x, this.y, this.z, this.w );\n\
+\n\
 \t}\n\
 \n\
-};/**\n\
+};\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+ * @author bhouston / http://exocortex.com\n\
+ */\n\
+\n\
+THREE.Euler = function ( x, y, z, order ) {\n\
+\n\
+\tthis._x = x || 0;\n\
+\tthis._y = y || 0;\n\
+\tthis._z = z || 0;\n\
+\tthis._order = order || THREE.Euler.DefaultOrder;\n\
+\n\
+};\n\
+\n\
+THREE.Euler.RotationOrders = [ 'XYZ', 'YZX', 'ZXY', 'XZY', 'YXZ', 'ZYX' ];\n\
+\n\
+THREE.Euler.DefaultOrder = 'XYZ';\n\
+\n\
+THREE.Euler.prototype = {\n\
+\n\
+\tconstructor: THREE.Euler,\n\
+\n\
+\t_x: 0, _y: 0, _z: 0, _order: THREE.Euler.DefaultOrder,\n\
+\n\
+\t_quaternion: undefined,\n\
+\n\
+\t_updateQuaternion: function () {\n\
+\n\
+\t\tif ( this._quaternion !== undefined ) {\n\
+\n\
+\t\t\tthis._quaternion.setFromEuler( this, false );\n\
+\n\
+\t\t}\n\
+\n\
+\t},\n\
+\n\
+\tget x () {\n\
+\n\
+\t\treturn this._x;\n\
+\n\
+\t},\n\
+\n\
+\tset x ( value ) {\n\
+\n\
+\t\tthis._x = value;\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t},\n\
+\n\
+\tget y () {\n\
+\n\
+\t\treturn this._y;\n\
+\n\
+\t},\n\
+\n\
+\tset y ( value ) {\n\
+\n\
+\t\tthis._y = value;\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t},\n\
+\n\
+\tget z () {\n\
+\n\
+\t\treturn this._z;\n\
+\n\
+\t},\n\
+\n\
+\tset z ( value ) {\n\
+\n\
+\t\tthis._z = value;\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t},\n\
+\n\
+\tget order () {\n\
+\n\
+\t\treturn this._order;\n\
+\n\
+\t},\n\
+\n\
+\tset order ( value ) {\n\
+\n\
+\t\tthis._order = value;\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t},\n\
+\n\
+\tset: function ( x, y, z, order ) {\n\
+\n\
+\t\tthis._x = x;\n\
+\t\tthis._y = y;\n\
+\t\tthis._z = z;\n\
+\t\tthis._order = order || this._order;\n\
+\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tcopy: function ( euler ) {\n\
+\n\
+\t\tthis._x = euler._x;\n\
+\t\tthis._y = euler._y;\n\
+\t\tthis._z = euler._z;\n\
+\t\tthis._order = euler._order;\n\
+\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromRotationMatrix: function ( m, order ) {\n\
+\n\
+\t\t// assumes the upper 3x3 of m is a pure rotation matrix (i.e, unscaled)\n\
+\n\
+\t\t// clamp, to handle numerical problems\n\
+\n\
+\t\tfunction clamp( x ) {\n\
+\n\
+\t\t\treturn Math.min( Math.max( x, -1 ), 1 );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tvar te = m.elements;\n\
+\t\tvar m11 = te[0], m12 = te[4], m13 = te[8];\n\
+\t\tvar m21 = te[1], m22 = te[5], m23 = te[9];\n\
+\t\tvar m31 = te[2], m32 = te[6], m33 = te[10];\n\
+\n\
+\t\torder = order || this._order;\n\
+\n\
+\t\tif ( order === 'XYZ' ) {\n\
+\n\
+\t\t\tthis._y = Math.asin( clamp( m13 ) );\n\
+\n\
+\t\t\tif ( Math.abs( m13 ) < 0.99999 ) {\n\
+\n\
+\t\t\t\tthis._x = Math.atan2( - m23, m33 );\n\
+\t\t\t\tthis._z = Math.atan2( - m12, m11 );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tthis._x = Math.atan2( m32, m22 );\n\
+\t\t\t\tthis._z = 0;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( order === 'YXZ' ) {\n\
+\n\
+\t\t\tthis._x = Math.asin( - clamp( m23 ) );\n\
+\n\
+\t\t\tif ( Math.abs( m23 ) < 0.99999 ) {\n\
+\n\
+\t\t\t\tthis._y = Math.atan2( m13, m33 );\n\
+\t\t\t\tthis._z = Math.atan2( m21, m22 );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tthis._y = Math.atan2( - m31, m11 );\n\
+\t\t\t\tthis._z = 0;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( order === 'ZXY' ) {\n\
+\n\
+\t\t\tthis._x = Math.asin( clamp( m32 ) );\n\
+\n\
+\t\t\tif ( Math.abs( m32 ) < 0.99999 ) {\n\
+\n\
+\t\t\t\tthis._y = Math.atan2( - m31, m33 );\n\
+\t\t\t\tthis._z = Math.atan2( - m12, m22 );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tthis._y = 0;\n\
+\t\t\t\tthis._z = Math.atan2( m21, m11 );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( order === 'ZYX' ) {\n\
+\n\
+\t\t\tthis._y = Math.asin( - clamp( m31 ) );\n\
+\n\
+\t\t\tif ( Math.abs( m31 ) < 0.99999 ) {\n\
+\n\
+\t\t\t\tthis._x = Math.atan2( m32, m33 );\n\
+\t\t\t\tthis._z = Math.atan2( m21, m11 );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tthis._x = 0;\n\
+\t\t\t\tthis._z = Math.atan2( - m12, m22 );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( order === 'YZX' ) {\n\
+\n\
+\t\t\tthis._z = Math.asin( clamp( m21 ) );\n\
+\n\
+\t\t\tif ( Math.abs( m21 ) < 0.99999 ) {\n\
+\n\
+\t\t\t\tthis._x = Math.atan2( - m23, m22 );\n\
+\t\t\t\tthis._y = Math.atan2( - m31, m11 );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tthis._x = 0;\n\
+\t\t\t\tthis._y = Math.atan2( m13, m33 );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( order === 'XZY' ) {\n\
+\n\
+\t\t\tthis._z = Math.asin( - clamp( m12 ) );\n\
+\n\
+\t\t\tif ( Math.abs( m12 ) < 0.99999 ) {\n\
+\n\
+\t\t\t\tthis._x = Math.atan2( m32, m22 );\n\
+\t\t\t\tthis._y = Math.atan2( m13, m11 );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tthis._x = Math.atan2( - m23, m33 );\n\
+\t\t\t\tthis._y = 0;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\tconsole.warn( 'WARNING: Euler.setFromRotationMatrix() given unsupported order: ' + order )\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis._order = order;\n\
+\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromQuaternion: function ( q, order, update ) {\n\
+\n\
+\t\t// q is assumed to be normalized\n\
+\n\
+\t\t// clamp, to handle numerical problems\n\
+\n\
+\t\tfunction clamp( x ) {\n\
+\n\
+\t\t\treturn Math.min( Math.max( x, -1 ), 1 );\n\
+\n\
+\t\t}\n\
+\n\
+\t\t// http://www.mathworks.com/matlabcentral/fileexchange/20696-function-to-convert-between-dcm-euler-angles-quaternions-and-euler-vectors/content/SpinCalc.m\n\
+\n\
+\t\tvar sqx = q.x * q.x;\n\
+\t\tvar sqy = q.y * q.y;\n\
+\t\tvar sqz = q.z * q.z;\n\
+\t\tvar sqw = q.w * q.w;\n\
+\n\
+\t\torder = order || this._order;\n\
+\n\
+\t\tif ( order === 'XYZ' ) {\n\
+\n\
+\t\t\tthis._x = Math.atan2( 2 * ( q.x * q.w - q.y * q.z ), ( sqw - sqx - sqy + sqz ) );\n\
+\t\t\tthis._y = Math.asin(  clamp( 2 * ( q.x * q.z + q.y * q.w ) ) );\n\
+\t\t\tthis._z = Math.atan2( 2 * ( q.z * q.w - q.x * q.y ), ( sqw + sqx - sqy - sqz ) );\n\
+\n\
+\t\t} else if ( order ===  'YXZ' ) {\n\
+\n\
+\t\t\tthis._x = Math.asin(  clamp( 2 * ( q.x * q.w - q.y * q.z ) ) );\n\
+\t\t\tthis._y = Math.atan2( 2 * ( q.x * q.z + q.y * q.w ), ( sqw - sqx - sqy + sqz ) );\n\
+\t\t\tthis._z = Math.atan2( 2 * ( q.x * q.y + q.z * q.w ), ( sqw - sqx + sqy - sqz ) );\n\
+\n\
+\t\t} else if ( order === 'ZXY' ) {\n\
+\n\
+\t\t\tthis._x = Math.asin(  clamp( 2 * ( q.x * q.w + q.y * q.z ) ) );\n\
+\t\t\tthis._y = Math.atan2( 2 * ( q.y * q.w - q.z * q.x ), ( sqw - sqx - sqy + sqz ) );\n\
+\t\t\tthis._z = Math.atan2( 2 * ( q.z * q.w - q.x * q.y ), ( sqw - sqx + sqy - sqz ) );\n\
+\n\
+\t\t} else if ( order === 'ZYX' ) {\n\
+\n\
+\t\t\tthis._x = Math.atan2( 2 * ( q.x * q.w + q.z * q.y ), ( sqw - sqx - sqy + sqz ) );\n\
+\t\t\tthis._y = Math.asin(  clamp( 2 * ( q.y * q.w - q.x * q.z ) ) );\n\
+\t\t\tthis._z = Math.atan2( 2 * ( q.x * q.y + q.z * q.w ), ( sqw + sqx - sqy - sqz ) );\n\
+\n\
+\t\t} else if ( order === 'YZX' ) {\n\
+\n\
+\t\t\tthis._x = Math.atan2( 2 * ( q.x * q.w - q.z * q.y ), ( sqw - sqx + sqy - sqz ) );\n\
+\t\t\tthis._y = Math.atan2( 2 * ( q.y * q.w - q.x * q.z ), ( sqw + sqx - sqy - sqz ) );\n\
+\t\t\tthis._z = Math.asin(  clamp( 2 * ( q.x * q.y + q.z * q.w ) ) );\n\
+\n\
+\t\t} else if ( order === 'XZY' ) {\n\
+\n\
+\t\t\tthis._x = Math.atan2( 2 * ( q.x * q.w + q.y * q.z ), ( sqw - sqx + sqy - sqz ) );\n\
+\t\t\tthis._y = Math.atan2( 2 * ( q.x * q.z + q.y * q.w ), ( sqw + sqx - sqy - sqz ) );\n\
+\t\t\tthis._z = Math.asin(  clamp( 2 * ( q.z * q.w - q.x * q.y ) ) );\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\tconsole.warn( 'WARNING: Euler.setFromQuaternion() given unsupported order: ' + order )\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis._order = order;\n\
+\n\
+\t\tif ( update !== false ) this._updateQuaternion();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\treorder: function () {\n\
+\n\
+\t\t// WARNING: this discards revolution information -bhouston\n\
+\n\
+\t\tvar q = new THREE.Quaternion();\n\
+\n\
+\t\treturn function ( newOrder ) {\n\
+\n\
+\t\t\tq.setFromEuler( this );\n\
+\t\t\tthis.setFromQuaternion( q, newOrder );\n\
+\n\
+\t\t};\n\
+\n\
+\n\
+\t}(),\n\
+\n\
+\tfromArray: function ( array ) {\n\
+\n\
+\t\tthis._x = array[ 0 ];\n\
+\t\tthis._y = array[ 1 ];\n\
+\t\tthis._z = array[ 2 ];\n\
+\t\tif ( array[ 3 ] !== undefined ) this._order = array[ 3 ];\n\
+\n\
+\t\tthis._updateQuaternion();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttoArray: function () {\n\
+\n\
+\t\treturn [ this._x, this._y, this._z, this._order ];\n\
+\n\
+\t},\n\
+\n\
+\tequals: function ( euler ) {\n\
+\n\
+\t\treturn ( euler._x === this._x ) && ( euler._y === this._y ) && ( euler._z === this._z ) && ( euler._order === this._order );\n\
+\n\
+\t},\n\
+\n\
+\tclone: function () {\n\
+\n\
+\t\treturn new THREE.Euler( this._x, this._y, this._z, this._order );\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+/**\n\
+ * @author bhouston / http://exocortex.com\n\
+ */\n\
+\n\
+THREE.Line3 = function ( start, end ) {\n\
+\n\
+\tthis.start = ( start !== undefined ) ? start : new THREE.Vector3();\n\
+\tthis.end = ( end !== undefined ) ? end : new THREE.Vector3();\n\
+\n\
+};\n\
+\n\
+THREE.Line3.prototype = {\n\
+\n\
+\tconstructor: THREE.Line3,\n\
+\n\
+\tset: function ( start, end ) {\n\
+\n\
+\t\tthis.start.copy( start );\n\
+\t\tthis.end.copy( end );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tcopy: function ( line ) {\n\
+\n\
+\t\tthis.start.copy( line.start );\n\
+\t\tthis.end.copy( line.end );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tcenter: function ( optionalTarget ) {\n\
+\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
+\t\treturn result.addVectors( this.start, this.end ).multiplyScalar( 0.5 );\n\
+\n\
+\t},\n\
+\n\
+\tdelta: function ( optionalTarget ) {\n\
+\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
+\t\treturn result.subVectors( this.end, this.start );\n\
+\n\
+\t},\n\
+\n\
+\tdistanceSq: function () {\n\
+\n\
+\t\treturn this.start.distanceToSquared( this.end );\n\
+\n\
+\t},\n\
+\n\
+\tdistance: function () {\n\
+\n\
+\t\treturn this.start.distanceTo( this.end );\n\
+\n\
+\t},\n\
+\n\
+\tat: function ( t, optionalTarget ) {\n\
+\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
+\n\
+\t\treturn this.delta( result ).multiplyScalar( t ).add( this.start );\n\
+\n\
+\t},\n\
+\n\
+\tclosestPointToPointParameter: function() {\n\
+\n\
+\t\tvar startP = new THREE.Vector3();\n\
+\t\tvar startEnd = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( point, clampToLine ) {\n\
+\n\
+\t\t\tstartP.subVectors( point, this.start );\n\
+\t\t\tstartEnd.subVectors( this.end, this.start );\n\
+\n\
+\t\t\tvar startEnd2 = startEnd.dot( startEnd );\n\
+\t\t\tvar startEnd_startP = startEnd.dot( startP );\n\
+\n\
+\t\t\tvar t = startEnd_startP / startEnd2;\n\
+\n\
+\t\t\tif ( clampToLine ) {\n\
+\n\
+\t\t\t\tt = THREE.Math.clamp( t, 0, 1 );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\treturn t;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tclosestPointToPoint: function ( point, clampToLine, optionalTarget ) {\n\
+\n\
+\t\tvar t = this.closestPointToPointParameter( point, clampToLine );\n\
+\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
+\n\
+\t\treturn this.delta( result ).multiplyScalar( t ).add( this.start );\n\
+\n\
+\t},\n\
+\n\
+\tapplyMatrix4: function ( matrix ) {\n\
+\n\
+\t\tthis.start.applyMatrix4( matrix );\n\
+\t\tthis.end.applyMatrix4( matrix );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tequals: function ( line ) {\n\
+\n\
+\t\treturn line.start.equals( this.start ) && line.end.equals( this.end );\n\
+\n\
+\t},\n\
+\n\
+\tclone: function () {\n\
+\n\
+\t\treturn new THREE.Line3().copy( this );\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+/**\n\
  * @author bhouston / http://exocortex.com\n\
  */\n\
 \n\
 THREE.Box2 = function ( min, max ) {\n\
 \n\
-\tthis.min = min !== undefined ? min.clone() : new THREE.Vector2( Infinity, Infinity );\n\
-\tthis.max = max !== undefined ? max.clone() : new THREE.Vector2( -Infinity, -Infinity );\n\
+\tthis.min = ( min !== undefined ) ? min : new THREE.Vector2( Infinity, Infinity );\n\
+\tthis.max = ( max !== undefined ) ? max : new THREE.Vector2( -Infinity, -Infinity );\n\
 \n\
 };\n\
 \n\
@@ -5791,15 +6961,21 @@ THREE.Box2.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tsetFromCenterAndSize: function ( center, size ) {\n\
+\tsetFromCenterAndSize: function () {\n\
 \n\
-\t\tvar halfSize = THREE.Box2.__v1.copy( size ).multiplyScalar( 0.5 );\n\
-\t\tthis.min.copy( center ).subSelf( halfSize );\n\
-\t\tthis.max.copy( center ).addSelf( halfSize );\n\
+\t\tvar v1 = new THREE.Vector2();\n\
 \n\
-\t\treturn this;\n\
+\t\treturn function ( center, size ) {\n\
 \n\
-\t},\n\
+\t\t\tvar halfSize = v1.copy( size ).multiplyScalar( 0.5 );\n\
+\t\t\tthis.min.copy( center ).sub( halfSize );\n\
+\t\t\tthis.max.copy( center ).add( halfSize );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tcopy: function ( box ) {\n\
 \n\
@@ -5830,29 +7006,29 @@ THREE.Box2.prototype = {\n\
 \tcenter: function ( optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector2();\n\
-\t\treturn result.add( this.min, this.max ).multiplyScalar( 0.5 );\n\
+\t\treturn result.addVectors( this.min, this.max ).multiplyScalar( 0.5 );\n\
 \n\
 \t},\n\
 \n\
 \tsize: function ( optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector2();\n\
-\t\treturn result.sub( this.max, this.min );\n\
+\t\treturn result.subVectors( this.max, this.min );\n\
 \n\
 \t},\n\
 \n\
 \texpandByPoint: function ( point ) {\n\
 \n\
-\t\tthis.min.minSelf( point );\n\
-\t\tthis.max.maxSelf( point );\n\
+\t\tthis.min.min( point );\n\
+\t\tthis.max.max( point );\n\
 \n\
 \t\treturn this;\n\
 \t},\n\
 \n\
 \texpandByVector: function ( vector ) {\n\
 \n\
-\t\tthis.min.subSelf( vector );\n\
-\t\tthis.max.addSelf( vector );\n\
+\t\tthis.min.sub( vector );\n\
+\t\tthis.max.add( vector );\n\
 \n\
 \t\treturn this;\n\
 \t},\n\
@@ -5867,14 +7043,14 @@ THREE.Box2.prototype = {\n\
 \n\
 \tcontainsPoint: function ( point ) {\n\
 \n\
-\t\tif ( ( this.min.x <= point.x ) && ( point.x <= this.max.x ) &&\n\
-\t\t     ( this.min.y <= point.y ) && ( point.y <= this.max.y ) ) {\n\
+\t\tif ( point.x < this.min.x || point.x > this.max.x ||\n\
+\t\t     point.y < this.min.y || point.y > this.max.y ) {\n\
 \n\
-\t\t\treturn true;\n\
+\t\t\treturn false;\n\
 \n\
 \t\t}\n\
 \n\
-\t\treturn false;\n\
+\t\treturn true;\n\
 \n\
 \t},\n\
 \n\
@@ -5907,10 +7083,8 @@ THREE.Box2.prototype = {\n\
 \n\
 \t\t// using 6 splitting planes to rule out intersections.\n\
 \n\
-\t\tif ( ( box.max.x < this.min.x ) ||\n\
-\t\t     ( box.min.x > this.max.x ) ||\n\
-\t\t     ( box.max.y < this.min.y ) ||\n\
-\t\t     ( box.min.y > this.max.y ) ) {\n\
+\t\tif ( box.max.x < this.min.x || box.min.x > this.max.x ||\n\
+\t\t     box.max.y < this.min.y || box.min.y > this.max.y ) {\n\
 \n\
 \t\t\treturn false;\n\
 \n\
@@ -5923,21 +7097,27 @@ THREE.Box2.prototype = {\n\
 \tclampPoint: function ( point, optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector2();\n\
-\t\treturn result.copy( point ).clampSelf( this.min, this.max );\n\
+\t\treturn result.copy( point ).clamp( this.min, this.max );\n\
 \n\
 \t},\n\
 \n\
-\tdistanceToPoint: function ( point ) {\n\
+\tdistanceToPoint: function () {\n\
 \n\
-\t\tvar clampedPoint = THREE.Box2.__v1.copy( point ).clampSelf( this.min, this.max );\n\
-\t\treturn clampedPoint.subSelf( point ).length();\n\
+\t\tvar v1 = new THREE.Vector2();\n\
 \n\
-\t},\n\
+\t\treturn function ( point ) {\n\
+\n\
+\t\t\tvar clampedPoint = v1.copy( point ).clamp( this.min, this.max );\n\
+\t\t\treturn clampedPoint.sub( point ).length();\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tintersect: function ( box ) {\n\
 \n\
-\t\tthis.min.maxSelf( box.min );\n\
-\t\tthis.max.minSelf( box.max );\n\
+\t\tthis.min.max( box.min );\n\
+\t\tthis.max.min( box.max );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -5945,8 +7125,8 @@ THREE.Box2.prototype = {\n\
 \n\
 \tunion: function ( box ) {\n\
 \n\
-\t\tthis.min.minSelf( box.min );\n\
-\t\tthis.max.maxSelf( box.max );\n\
+\t\tthis.min.min( box.min );\n\
+\t\tthis.max.max( box.max );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -5954,8 +7134,8 @@ THREE.Box2.prototype = {\n\
 \n\
 \ttranslate: function ( offset ) {\n\
 \n\
-\t\tthis.min.addSelf( offset );\n\
-\t\tthis.max.addSelf( offset );\n\
+\t\tthis.min.add( offset );\n\
+\t\tthis.max.add( offset );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -5975,15 +7155,15 @@ THREE.Box2.prototype = {\n\
 \n\
 };\n\
 \n\
-THREE.Box2.__v1 = new THREE.Vector2();\n\
 /**\n\
  * @author bhouston / http://exocortex.com\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
  */\n\
 \n\
 THREE.Box3 = function ( min, max ) {\n\
 \n\
-\tthis.min = min !== undefined ? min.clone() : new THREE.Vector3( Infinity, Infinity, Infinity );\n\
-\tthis.max = max !== undefined ? max.clone() : new THREE.Vector3( -Infinity, -Infinity, -Infinity );\n\
+\tthis.min = ( min !== undefined ) ? min : new THREE.Vector3( Infinity, Infinity, Infinity );\n\
+\tthis.max = ( max !== undefined ) ? max : new THREE.Vector3( -Infinity, -Infinity, -Infinity );\n\
 \n\
 };\n\
 \n\
@@ -6000,48 +7180,52 @@ THREE.Box3.prototype = {\n\
 \n\
 \t},\n\
 \n\
+\taddPoint: function ( point ) {\n\
+\n\
+\t\tif ( point.x < this.min.x ) {\n\
+\n\
+\t\t\tthis.min.x = point.x;\n\
+\n\
+\t\t} else if ( point.x > this.max.x ) {\n\
+\n\
+\t\t\tthis.max.x = point.x;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( point.y < this.min.y ) {\n\
+\n\
+\t\t\tthis.min.y = point.y;\n\
+\n\
+\t\t} else if ( point.y > this.max.y ) {\n\
+\n\
+\t\t\tthis.max.y = point.y;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( point.z < this.min.z ) {\n\
+\n\
+\t\t\tthis.min.z = point.z;\n\
+\n\
+\t\t} else if ( point.z > this.max.z ) {\n\
+\n\
+\t\t\tthis.max.z = point.z;\n\
+\n\
+\t\t}\n\
+\n\
+\t},\n\
+\n\
 \tsetFromPoints: function ( points ) {\n\
 \n\
 \t\tif ( points.length > 0 ) {\n\
 \n\
-\t\t\tvar p = points[ 0 ];\n\
+\t\t\tvar point = points[ 0 ];\n\
 \n\
-\t\t\tthis.min.copy( p );\n\
-\t\t\tthis.max.copy( p );\n\
+\t\t\tthis.min.copy( point );\n\
+\t\t\tthis.max.copy( point );\n\
 \n\
 \t\t\tfor ( var i = 1, il = points.length; i < il; i ++ ) {\n\
 \n\
-\t\t\t\tp = points[ i ];\n\
-\n\
-\t\t\t\tif ( p.x < this.min.x ) {\n\
-\n\
-\t\t\t\t\tthis.min.x = p.x;\n\
-\n\
-\t\t\t\t} else if ( p.x > this.max.x ) {\n\
-\n\
-\t\t\t\t\tthis.max.x = p.x;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tif ( p.y < this.min.y ) {\n\
-\n\
-\t\t\t\t\tthis.min.y = p.y;\n\
-\n\
-\t\t\t\t} else if ( p.y > this.max.y ) {\n\
-\n\
-\t\t\t\t\tthis.max.y = p.y;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tif ( p.z < this.min.z ) {\n\
-\n\
-\t\t\t\t\tthis.min.z = p.z;\n\
-\n\
-\t\t\t\t} else if ( p.z > this.max.z ) {\n\
-\n\
-\t\t\t\t\tthis.max.z = p.z;\n\
-\n\
-\t\t\t\t}\n\
+\t\t\t\tthis.addPoint( points[ i ] )\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -6055,16 +7239,63 @@ THREE.Box3.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tsetFromCenterAndSize: function ( center, size ) {\n\
+\tsetFromCenterAndSize: function() {\n\
 \n\
-\t\tvar halfSize = THREE.Box3.__v1.copy( size ).multiplyScalar( 0.5 );\n\
+\t\tvar v1 = new THREE.Vector3();\n\
 \n\
-\t\tthis.min.copy( center ).subSelf( halfSize );\n\
-\t\tthis.max.copy( center ).addSelf( halfSize );\n\
+\t\treturn function ( center, size ) {\n\
 \n\
-\t\treturn this;\n\
+\t\t\tvar halfSize = v1.copy( size ).multiplyScalar( 0.5 );\n\
 \n\
-\t},\n\
+\t\t\tthis.min.copy( center ).sub( halfSize );\n\
+\t\t\tthis.max.copy( center ).add( halfSize );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tsetFromObject: function() {\n\
+\n\
+\t\t// Computes the world-axis-aligned bounding box of an object (including its children),\n\
+\t\t// accounting for both the object's, and childrens', world transforms\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function( object ) {\n\
+\n\
+\t\t\tvar scope = this;\n\
+\n\
+\t\t\tobject.updateMatrixWorld( true );\n\
+\n\
+\t\t\tthis.makeEmpty();\n\
+\n\
+\t\t\tobject.traverse( function ( node ) {\n\
+\n\
+\t\t\t\tif ( node.geometry !== undefined && node.geometry.vertices !== undefined ) {\n\
+\n\
+\t\t\t\t\tvar vertices = node.geometry.vertices;\n\
+\n\
+\t\t\t\t\tfor ( var i = 0, il = vertices.length; i < il; i++ ) {\n\
+\n\
+\t\t\t\t\t\tv1.copy( vertices[ i ] );\n\
+\n\
+\t\t\t\t\t\tv1.applyMatrix4( node.matrixWorld );\n\
+\n\
+\t\t\t\t\t\tscope.expandByPoint( v1 );\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t} );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tcopy: function ( box ) {\n\
 \n\
@@ -6095,21 +7326,21 @@ THREE.Box3.prototype = {\n\
 \tcenter: function ( optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector3();\n\
-\t\treturn result.add( this.min, this.max ).multiplyScalar( 0.5 );\n\
+\t\treturn result.addVectors( this.min, this.max ).multiplyScalar( 0.5 );\n\
 \n\
 \t},\n\
 \n\
 \tsize: function ( optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector3();\n\
-\t\treturn result.sub( this.max, this.min );\n\
+\t\treturn result.subVectors( this.max, this.min );\n\
 \n\
 \t},\n\
 \n\
 \texpandByPoint: function ( point ) {\n\
 \n\
-\t\tthis.min.minSelf( point );\n\
-\t\tthis.max.maxSelf( point );\n\
+\t\tthis.min.min( point );\n\
+\t\tthis.max.max( point );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -6117,8 +7348,8 @@ THREE.Box3.prototype = {\n\
 \n\
 \texpandByVector: function ( vector ) {\n\
 \n\
-\t\tthis.min.subSelf( vector );\n\
-\t\tthis.max.addSelf( vector );\n\
+\t\tthis.min.sub( vector );\n\
+\t\tthis.max.add( vector );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -6135,15 +7366,15 @@ THREE.Box3.prototype = {\n\
 \n\
 \tcontainsPoint: function ( point ) {\n\
 \n\
-\t\tif ( ( this.min.x <= point.x ) && ( point.x <= this.max.x ) &&\n\
-\t\t\t ( this.min.y <= point.y ) && ( point.y <= this.max.y ) &&\n\
-\t\t\t ( this.min.z <= point.z ) && ( point.z <= this.max.z ) ) {\n\
+\t\tif ( point.x < this.min.x || point.x > this.max.x ||\n\
+\t\t     point.y < this.min.y || point.y > this.max.y ||\n\
+\t\t     point.z < this.min.z || point.z > this.max.z ) {\n\
 \n\
-\t\t\treturn true;\n\
+\t\t\treturn false;\n\
 \n\
 \t\t}\n\
 \n\
-\t\treturn false;\n\
+\t\treturn true;\n\
 \n\
 \t},\n\
 \n\
@@ -6178,9 +7409,9 @@ THREE.Box3.prototype = {\n\
 \n\
 \t\t// using 6 splitting planes to rule out intersections.\n\
 \n\
-\t\tif ( ( box.max.x < this.min.x ) || ( box.min.x > this.max.x ) ||\n\
-\t\t\t ( box.max.y < this.min.y ) || ( box.min.y > this.max.y ) ||\n\
-\t\t\t ( box.max.z < this.min.z ) || ( box.min.z > this.max.z ) ) {\n\
+\t\tif ( box.max.x < this.min.x || box.min.x > this.max.x ||\n\
+\t\t     box.max.y < this.min.y || box.min.y > this.max.y ||\n\
+\t\t     box.max.z < this.min.z || box.min.z > this.max.z ) {\n\
 \n\
 \t\t\treturn false;\n\
 \n\
@@ -6193,32 +7424,44 @@ THREE.Box3.prototype = {\n\
 \tclampPoint: function ( point, optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector3();\n\
-\t\treturn new THREE.Vector3().copy( point ).clampSelf( this.min, this.max );\n\
+\t\treturn result.copy( point ).clamp( this.min, this.max );\n\
 \n\
 \t},\n\
 \n\
-\tdistanceToPoint: function ( point ) {\n\
+\tdistanceToPoint: function() {\n\
 \n\
-\t\tvar clampedPoint = THREE.Box3.__v1.copy( point ).clampSelf( this.min, this.max );\n\
-\t\treturn clampedPoint.subSelf( point ).length();\n\
+\t\tvar v1 = new THREE.Vector3();\n\
 \n\
-\t},\n\
+\t\treturn function ( point ) {\n\
 \n\
-\tgetBoundingSphere: function ( optionalTarget ) {\n\
+\t\t\tvar clampedPoint = v1.copy( point ).clamp( this.min, this.max );\n\
+\t\t\treturn clampedPoint.sub( point ).length();\n\
 \n\
-\t\tvar result = optionalTarget || new THREE.Sphere();\n\
-\t\t\n\
-\t\tresult.center = this.center();\n\
-\t\tresult.radius = this.size( THREE.Box3.__v0 ).length() * 0.5;;\n\
+\t\t};\n\
 \n\
-\t\treturn result;\n\
+\t}(),\n\
 \n\
-\t},\n\
+\tgetBoundingSphere: function() {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( optionalTarget ) {\n\
+\n\
+\t\t\tvar result = optionalTarget || new THREE.Sphere();\n\
+\n\
+\t\t\tresult.center = this.center();\n\
+\t\t\tresult.radius = this.size( v1 ).length() * 0.5;\n\
+\n\
+\t\t\treturn result;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tintersect: function ( box ) {\n\
 \n\
-\t\tthis.min.maxSelf( box.min );\n\
-\t\tthis.max.minSelf( box.max );\n\
+\t\tthis.min.max( box.min );\n\
+\t\tthis.max.min( box.max );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -6226,38 +7469,51 @@ THREE.Box3.prototype = {\n\
 \n\
 \tunion: function ( box ) {\n\
 \n\
-\t\tthis.min.minSelf( box.min );\n\
-\t\tthis.max.maxSelf( box.max );\n\
+\t\tthis.min.min( box.min );\n\
+\t\tthis.max.max( box.max );\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\ttransform: function ( matrix ) {\n\
-\t\t\n\
-\t\t// NOTE: I am using a binary pattern to specify all 2^3 combinations below\n\
-\t\tvar newPoints = [\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v0.set( this.min.x, this.min.y, this.min.z ) ), // 000\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v1.set( this.min.x, this.min.y, this.max.z ) ), // 001\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v2.set( this.min.x, this.max.y, this.min.z ) ), // 010\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v3.set( this.min.x, this.max.y, this.max.z ) ), // 011\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v4.set( this.max.x, this.min.y, this.min.z ) ), // 100\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v5.set( this.max.x, this.min.y, this.max.z ) ), // 101\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v6.set( this.max.x, this.max.y, this.min.z ) ), // 110\n\
-\t\t\tmatrix.multiplyVector3( THREE.Box3.__v7.set( this.max.x, this.max.y, this.max.z ) )  // 111\n\
+\tapplyMatrix4: function() {\n\
+\n\
+\t\tvar points = [\n\
+\t\t\tnew THREE.Vector3(),\n\
+\t\t\tnew THREE.Vector3(),\n\
+\t\t\tnew THREE.Vector3(),\n\
+\t\t\tnew THREE.Vector3(),\n\
+\t\t\tnew THREE.Vector3(),\n\
+\t\t\tnew THREE.Vector3(),\n\
+\t\t\tnew THREE.Vector3(),\n\
+\t\t\tnew THREE.Vector3()\n\
 \t\t];\n\
 \n\
-\t\tthis.makeEmpty();\n\
-\t\tthis.setFromPoints( newPoints );\n\
+\t\treturn function ( matrix ) {\n\
 \n\
-\t\treturn this;\n\
+\t\t\t// NOTE: I am using a binary pattern to specify all 2^3 combinations below\n\
+\t\t\tpoints[0].set( this.min.x, this.min.y, this.min.z ).applyMatrix4( matrix ); // 000\n\
+\t\t\tpoints[1].set( this.min.x, this.min.y, this.max.z ).applyMatrix4( matrix ); // 001\n\
+\t\t\tpoints[2].set( this.min.x, this.max.y, this.min.z ).applyMatrix4( matrix ); // 010\n\
+\t\t\tpoints[3].set( this.min.x, this.max.y, this.max.z ).applyMatrix4( matrix ); // 011\n\
+\t\t\tpoints[4].set( this.max.x, this.min.y, this.min.z ).applyMatrix4( matrix ); // 100\n\
+\t\t\tpoints[5].set( this.max.x, this.min.y, this.max.z ).applyMatrix4( matrix ); // 101\n\
+\t\t\tpoints[6].set( this.max.x, this.max.y, this.min.z ).applyMatrix4( matrix ); // 110\n\
+\t\t\tpoints[7].set( this.max.x, this.max.y, this.max.z ).applyMatrix4( matrix );  // 111\n\
 \n\
-\t},\n\
+\t\t\tthis.makeEmpty();\n\
+\t\t\tthis.setFromPoints( points );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \ttranslate: function ( offset ) {\n\
 \n\
-\t\tthis.min.addSelf( offset );\n\
-\t\tthis.max.addSelf( offset );\n\
+\t\tthis.min.add( offset );\n\
+\t\tthis.max.add( offset );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -6277,104 +7533,175 @@ THREE.Box3.prototype = {\n\
 \n\
 };\n\
 \n\
-THREE.Box3.__v0 = new THREE.Vector3();\n\
-THREE.Box3.__v1 = new THREE.Vector3();\n\
-THREE.Box3.__v2 = new THREE.Vector3();\n\
-THREE.Box3.__v3 = new THREE.Vector3();\n\
-THREE.Box3.__v4 = new THREE.Vector3();\n\
-THREE.Box3.__v5 = new THREE.Vector3();\n\
-THREE.Box3.__v6 = new THREE.Vector3();\n\
-THREE.Box3.__v7 = new THREE.Vector3();\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  * @author WestLangley / http://github.com/WestLangley\n\
+ * @author bhouston / http://exocortex.com\n\
  */\n\
 \n\
-THREE.Matrix3 = function () {\n\
+THREE.Matrix3 = function ( n11, n12, n13, n21, n22, n23, n31, n32, n33 ) {\n\
 \n\
 \tthis.elements = new Float32Array(9);\n\
 \n\
+\tthis.set(\n\
+\n\
+\t\t( n11 !== undefined ) ? n11 : 1, n12 || 0, n13 || 0,\n\
+\t\tn21 || 0, ( n22 !== undefined ) ? n22 : 1, n23 || 0,\n\
+\t\tn31 || 0, n32 || 0, ( n33 !== undefined ) ? n33 : 1\n\
+\n\
+\t);\n\
 };\n\
 \n\
 THREE.Matrix3.prototype = {\n\
 \n\
 \tconstructor: THREE.Matrix3,\n\
 \n\
-\tmultiplyVector3: function ( v ) {\n\
+\tset: function ( n11, n12, n13, n21, n22, n23, n31, n32, n33 ) {\n\
 \n\
 \t\tvar te = this.elements;\n\
 \n\
-\t\tvar vx = v.x, vy = v.y, vz = v.z;\n\
-\n\
-\t\tv.x = te[0] * vx + te[3] * vy + te[6] * vz;\n\
-\t\tv.y = te[1] * vx + te[4] * vy + te[7] * vz;\n\
-\t\tv.z = te[2] * vx + te[5] * vy + te[8] * vz;\n\
-\n\
-\t\treturn v;\n\
-\n\
-\t},\n\
-\n\
-\tmultiplyVector3Array: function ( a ) {\n\
-\n\
-\t\tvar tmp = THREE.Matrix3.__v1;\n\
-\n\
-\t\tfor ( var i = 0, il = a.length; i < il; i += 3 ) {\n\
-\n\
-\t\t\ttmp.x = a[ i ];\n\
-\t\t\ttmp.y = a[ i + 1 ];\n\
-\t\t\ttmp.z = a[ i + 2 ];\n\
-\n\
-\t\t\tthis.multiplyVector3( tmp );\n\
-\n\
-\t\t\ta[ i ]     = tmp.x;\n\
-\t\t\ta[ i + 1 ] = tmp.y;\n\
-\t\t\ta[ i + 2 ] = tmp.z;\n\
-\n\
-\t\t}\n\
-\n\
-\t\treturn a;\n\
-\n\
-\t},\n\
-\n\
-\tgetInverse: function ( matrix ) {\n\
-\n\
-\t\t// input: THREE.Matrix4\n\
-\t\t// ( based on http://code.google.com/p/webgl-mjs/ )\n\
-\n\
-\t\tvar me = matrix.elements;\n\
-\n\
-\t\tvar a11 =   me[10] * me[5] - me[6] * me[9];\n\
-\t\tvar a21 = - me[10] * me[1] + me[2] * me[9];\n\
-\t\tvar a31 =   me[6] * me[1] - me[2] * me[5];\n\
-\t\tvar a12 = - me[10] * me[4] + me[6] * me[8];\n\
-\t\tvar a22 =   me[10] * me[0] - me[2] * me[8];\n\
-\t\tvar a32 = - me[6] * me[0] + me[2] * me[4];\n\
-\t\tvar a13 =   me[9] * me[4] - me[5] * me[8];\n\
-\t\tvar a23 = - me[9] * me[0] + me[1] * me[8];\n\
-\t\tvar a33 =   me[5] * me[0] - me[1] * me[4];\n\
-\n\
-\t\tvar det = me[0] * a11 + me[1] * a12 + me[2] * a13;\n\
-\n\
-\t\t// no inverse\n\
-\n\
-\t\tif ( det === 0 ) {\n\
-\n\
-\t\t\tconsole.warn( \"Matrix3.getInverse(): determinant == 0\" );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tvar idet = 1.0 / det;\n\
-\n\
-\t\tvar m = this.elements;\n\
-\n\
-\t\tm[ 0 ] = idet * a11; m[ 1 ] = idet * a21; m[ 2 ] = idet * a31;\n\
-\t\tm[ 3 ] = idet * a12; m[ 4 ] = idet * a22; m[ 5 ] = idet * a32;\n\
-\t\tm[ 6 ] = idet * a13; m[ 7 ] = idet * a23; m[ 8 ] = idet * a33;\n\
+\t\tte[0] = n11; te[3] = n12; te[6] = n13;\n\
+\t\tte[1] = n21; te[4] = n22; te[7] = n23;\n\
+\t\tte[2] = n31; te[5] = n32; te[8] = n33;\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
+\tidentity: function () {\n\
+\n\
+\t\tthis.set(\n\
+\n\
+\t\t\t1, 0, 0,\n\
+\t\t\t0, 1, 0,\n\
+\t\t\t0, 0, 1\n\
+\n\
+\t\t);\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tcopy: function ( m ) {\n\
+\n\
+\t\tvar me = m.elements;\n\
+\n\
+\t\tthis.set(\n\
+\n\
+\t\t\tme[0], me[3], me[6],\n\
+\t\t\tme[1], me[4], me[7],\n\
+\t\t\tme[2], me[5], me[8]\n\
+\n\
+\t\t);\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tmultiplyVector3: function ( vector ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix3\\'s .multiplyVector3() has been removed. Use vector.applyMatrix3( matrix ) instead.' );\n\
+\t\treturn vector.applyMatrix3( this );\n\
+\n\
+\t},\n\
+\n\
+\tmultiplyVector3Array: function() {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( a ) {\n\
+\n\
+\t\t\tfor ( var i = 0, il = a.length; i < il; i += 3 ) {\n\
+\n\
+\t\t\t\tv1.x = a[ i ];\n\
+\t\t\t\tv1.y = a[ i + 1 ];\n\
+\t\t\t\tv1.z = a[ i + 2 ];\n\
+\n\
+\t\t\t\tv1.applyMatrix3(this);\n\
+\n\
+\t\t\t\ta[ i ]     = v1.x;\n\
+\t\t\t\ta[ i + 1 ] = v1.y;\n\
+\t\t\t\ta[ i + 2 ] = v1.z;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\treturn a;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tmultiplyScalar: function ( s ) {\n\
+\n\
+\t\tvar te = this.elements;\n\
+\n\
+\t\tte[0] *= s; te[3] *= s; te[6] *= s;\n\
+\t\tte[1] *= s; te[4] *= s; te[7] *= s;\n\
+\t\tte[2] *= s; te[5] *= s; te[8] *= s;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tdeterminant: function () {\n\
+\n\
+\t\tvar te = this.elements;\n\
+\n\
+\t\tvar a = te[0], b = te[1], c = te[2],\n\
+\t\t\td = te[3], e = te[4], f = te[5],\n\
+\t\t\tg = te[6], h = te[7], i = te[8];\n\
+\n\
+\t\treturn a*e*i - a*f*h - b*d*i + b*f*g + c*d*h - c*e*g;\n\
+\n\
+\t},\n\
+\n\
+\tgetInverse: function ( matrix, throwOnInvertible ) {\n\
+\n\
+\t\t// input: THREE.Matrix4\n\
+\t\t// ( based on http://code.google.com/p/webgl-mjs/ )\n\
+\n\
+\t\tvar me = matrix.elements;\n\
+\t\tvar te = this.elements;\n\
+\n\
+\t\tte[ 0 ] =   me[10] * me[5] - me[6] * me[9];\n\
+\t\tte[ 1 ] = - me[10] * me[1] + me[2] * me[9];\n\
+\t\tte[ 2 ] =   me[6] * me[1] - me[2] * me[5];\n\
+\t\tte[ 3 ] = - me[10] * me[4] + me[6] * me[8];\n\
+\t\tte[ 4 ] =   me[10] * me[0] - me[2] * me[8];\n\
+\t\tte[ 5 ] = - me[6] * me[0] + me[2] * me[4];\n\
+\t\tte[ 6 ] =   me[9] * me[4] - me[5] * me[8];\n\
+\t\tte[ 7 ] = - me[9] * me[0] + me[1] * me[8];\n\
+\t\tte[ 8 ] =   me[5] * me[0] - me[1] * me[4];\n\
+\n\
+\t\tvar det = me[ 0 ] * te[ 0 ] + me[ 1 ] * te[ 3 ] + me[ 2 ] * te[ 6 ];\n\
+\n\
+\t\t// no inverse\n\
+\n\
+\t\tif ( det === 0 ) {\n\
+\n\
+\t\t\tvar msg = \"Matrix3.getInverse(): can't invert matrix, determinant is 0\";\n\
+\n\
+\t\t\tif ( throwOnInvertible || false ) {\n\
+\n\
+\t\t\t\tthrow new Error( msg ); \n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tconsole.warn( msg );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tthis.identity();\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis.multiplyScalar( 1.0 / det );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
 \n\
 \ttranspose: function () {\n\
 \n\
@@ -6388,6 +7715,15 @@ THREE.Matrix3.prototype = {\n\
 \n\
 \t},\n\
 \n\
+\tgetNormalMatrix: function ( m ) {\n\
+\n\
+\t\t// input: THREE.Matrix4\n\
+\n\
+\t\tthis.getInverse( m ).transpose();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
 \n\
 \ttransposeIntoArray: function ( r ) {\n\
 \n\
@@ -6405,11 +7741,25 @@ THREE.Matrix3.prototype = {\n\
 \n\
 \t\treturn this;\n\
 \n\
+\t},\n\
+\n\
+\tclone: function () {\n\
+\n\
+\t\tvar te = this.elements;\n\
+\n\
+\t\treturn new THREE.Matrix3(\n\
+\n\
+\t\t\tte[0], te[3], te[6],\n\
+\t\t\tte[1], te[4], te[7],\n\
+\t\t\tte[2], te[5], te[8]\n\
+\n\
+\t\t);\n\
+\n\
 \t}\n\
 \n\
 };\n\
 \n\
-THREE.Matrix3.__v1 = new THREE.Vector3();/**\n\
+/**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author supereggbert / http://www.paulbrunt.co.uk/\n\
  * @author philogb / http://blog.thejit.org/\n\
@@ -6418,6 +7768,8 @@ THREE.Matrix3.__v1 = new THREE.Vector3();/**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author timknip / http://www.floorplanner.com/\n\
+ * @author bhouston / http://exocortex.com\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
  */\n\
 \n\
 \n\
@@ -6425,14 +7777,15 @@ THREE.Matrix4 = function ( n11, n12, n13, n14, n21, n22, n23, n24, n31, n32, n33
 \n\
 \tthis.elements = new Float32Array( 16 );\n\
 \n\
-\tthis.set(\n\
+\t// TODO: if n11 is undefined, then just set to identity, otherwise copy all other values into matrix\n\
+\t//   we should not support semi specification of Matrix4, it is just weird.\n\
 \n\
-\t\t( n11 !== undefined ) ? n11 : 1, n12 || 0, n13 || 0, n14 || 0,\n\
-\t\tn21 || 0, ( n22 !== undefined ) ? n22 : 1, n23 || 0, n24 || 0,\n\
-\t\tn31 || 0, n32 || 0, ( n33 !== undefined ) ? n33 : 1, n34 || 0,\n\
-\t\tn41 || 0, n42 || 0, n43 || 0, ( n44 !== undefined ) ? n44 : 1\n\
+\tvar te = this.elements;\n\
 \n\
-\t);\n\
+\tte[0] = ( n11 !== undefined ) ? n11 : 1; te[4] = n12 || 0; te[8] = n13 || 0; te[12] = n14 || 0;\n\
+\tte[1] = n21 || 0; te[5] = ( n22 !== undefined ) ? n22 : 1; te[9] = n23 || 0; te[13] = n24 || 0;\n\
+\tte[2] = n31 || 0; te[6] = n32 || 0; te[10] = ( n33 !== undefined ) ? n33 : 1; te[14] = n34 || 0;\n\
+\tte[3] = n41 || 0; te[7] = n42 || 0; te[11] = n43 || 0; te[15] = ( n44 !== undefined ) ? n44 : 1;\n\
 \n\
 };\n\
 \n\
@@ -6470,31 +7823,79 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \tcopy: function ( m ) {\n\
 \n\
-\t\tvar me = m.elements;\n\
-\n\
-\t\tthis.set(\n\
-\n\
-\t\t\tme[0], me[4], me[8], me[12],\n\
-\t\t\tme[1], me[5], me[9], me[13],\n\
-\t\t\tme[2], me[6], me[10], me[14],\n\
-\t\t\tme[3], me[7], me[11], me[15]\n\
-\n\
-\t\t);\n\
+\t\tthis.elements.set( m.elements );\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tsetRotationFromEuler: function ( v, order ) {\n\
+\textractPosition: function ( m ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .extractPosition() has been renamed to .copyPosition().' );\n\
+\t\treturn this.copyPosition( m );\n\
+\n\
+\t},\n\
+\n\
+\tcopyPosition: function ( m ) {\n\
+\n\
+\t\tvar te = this.elements;\n\
+\t\tvar me = m.elements;\n\
+\n\
+\t\tte[12] = me[12];\n\
+\t\tte[13] = me[13];\n\
+\t\tte[14] = me[14];\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\textractRotation: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( m ) {\n\
+\n\
+\t\t\tvar te = this.elements;\n\
+\t\t\tvar me = m.elements;\n\
+\n\
+\t\t\tvar scaleX = 1 / v1.set( me[0], me[1], me[2] ).length();\n\
+\t\t\tvar scaleY = 1 / v1.set( me[4], me[5], me[6] ).length();\n\
+\t\t\tvar scaleZ = 1 / v1.set( me[8], me[9], me[10] ).length();\n\
+\n\
+\t\t\tte[0] = me[0] * scaleX;\n\
+\t\t\tte[1] = me[1] * scaleX;\n\
+\t\t\tte[2] = me[2] * scaleX;\n\
+\n\
+\t\t\tte[4] = me[4] * scaleY;\n\
+\t\t\tte[5] = me[5] * scaleY;\n\
+\t\t\tte[6] = me[6] * scaleY;\n\
+\n\
+\t\t\tte[8] = me[8] * scaleZ;\n\
+\t\t\tte[9] = me[9] * scaleZ;\n\
+\t\t\tte[10] = me[10] * scaleZ;\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tmakeRotationFromEuler: function ( euler ) {\n\
+\n\
+\t\tif ( euler instanceof THREE.Euler === false ) {\n\
+\n\
+\t\t\tconsole.error( 'ERROR: Matrix\\'s .makeRotationFromEuler() now expects a Euler rotation rather than a Vector3 and order.  Please update your code.' );\n\
+\n\
+\t\t}\n\
 \n\
 \t\tvar te = this.elements;\n\
 \n\
-\t\tvar x = v.x, y = v.y, z = v.z;\n\
+\t\tvar x = euler.x, y = euler.y, z = euler.z;\n\
 \t\tvar a = Math.cos( x ), b = Math.sin( x );\n\
 \t\tvar c = Math.cos( y ), d = Math.sin( y );\n\
 \t\tvar e = Math.cos( z ), f = Math.sin( z );\n\
 \n\
-\t\tif ( order === undefined || order === 'XYZ' ) {\n\
+\t\tif ( euler.order === 'XYZ' ) {\n\
 \n\
 \t\t\tvar ae = a * e, af = a * f, be = b * e, bf = b * f;\n\
 \n\
@@ -6510,7 +7911,7 @@ THREE.Matrix4.prototype = {\n\
 \t\t\tte[6] = be + af * d;\n\
 \t\t\tte[10] = a * c;\n\
 \n\
-\t\t} else if ( order === 'YXZ' ) {\n\
+\t\t} else if ( euler.order === 'YXZ' ) {\n\
 \n\
 \t\t\tvar ce = c * e, cf = c * f, de = d * e, df = d * f;\n\
 \n\
@@ -6526,7 +7927,7 @@ THREE.Matrix4.prototype = {\n\
 \t\t\tte[6] = df + ce * b;\n\
 \t\t\tte[10] = a * c;\n\
 \n\
-\t\t} else if ( order === 'ZXY' ) {\n\
+\t\t} else if ( euler.order === 'ZXY' ) {\n\
 \n\
 \t\t\tvar ce = c * e, cf = c * f, de = d * e, df = d * f;\n\
 \n\
@@ -6542,7 +7943,7 @@ THREE.Matrix4.prototype = {\n\
 \t\t\tte[6] = b;\n\
 \t\t\tte[10] = a * c;\n\
 \n\
-\t\t} else if ( order === 'ZYX' ) {\n\
+\t\t} else if ( euler.order === 'ZYX' ) {\n\
 \n\
 \t\t\tvar ae = a * e, af = a * f, be = b * e, bf = b * f;\n\
 \n\
@@ -6558,7 +7959,7 @@ THREE.Matrix4.prototype = {\n\
 \t\t\tte[6] = b * c;\n\
 \t\t\tte[10] = a * c;\n\
 \n\
-\t\t} else if ( order === 'YZX' ) {\n\
+\t\t} else if ( euler.order === 'YZX' ) {\n\
 \n\
 \t\t\tvar ac = a * c, ad = a * d, bc = b * c, bd = b * d;\n\
 \n\
@@ -6574,7 +7975,7 @@ THREE.Matrix4.prototype = {\n\
 \t\t\tte[6] = ad * f + bc;\n\
 \t\t\tte[10] = ac - bd * f;\n\
 \n\
-\t\t} else if ( order === 'XZY' ) {\n\
+\t\t} else if ( euler.order === 'XZY' ) {\n\
 \n\
 \t\t\tvar ac = a * c, ad = a * d, bc = b * c, bd = b * d;\n\
 \n\
@@ -6592,11 +7993,30 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \t\t}\n\
 \n\
+\t\t// last column\n\
+\t\tte[3] = 0;\n\
+\t\tte[7] = 0;\n\
+\t\tte[11] = 0;\n\
+\n\
+\t\t// bottom row\n\
+\t\tte[12] = 0;\n\
+\t\tte[13] = 0;\n\
+\t\tte[14] = 0;\n\
+\t\tte[15] = 1;\n\
+\n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
 \tsetRotationFromQuaternion: function ( q ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .setRotationFromQuaternion() has been deprecated in favor of makeRotationFromQuaternion.  Please update your code.' );\n\
+\n\
+\t\treturn this.makeRotationFromQuaternion( q );\n\
+\n\
+\t},\n\
+\n\
+\tmakeRotationFromQuaternion: function ( q ) {\n\
 \n\
 \t\tvar te = this.elements;\n\
 \n\
@@ -6618,47 +8038,75 @@ THREE.Matrix4.prototype = {\n\
 \t\tte[6] = yz + wx;\n\
 \t\tte[10] = 1 - ( xx + yy );\n\
 \n\
-\t\treturn this;\n\
+\t\t// last column\n\
+\t\tte[3] = 0;\n\
+\t\tte[7] = 0;\n\
+\t\tte[11] = 0;\n\
 \n\
-\t},\n\
-\n\
-\tlookAt: function ( eye, target, up ) {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\n\
-\t\tvar x = THREE.Matrix4.__v1;\n\
-\t\tvar y = THREE.Matrix4.__v2;\n\
-\t\tvar z = THREE.Matrix4.__v3;\n\
-\n\
-\t\tz.sub( eye, target ).normalize();\n\
-\n\
-\t\tif ( z.length() === 0 ) {\n\
-\n\
-\t\t\tz.z = 1;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tx.cross( up, z ).normalize();\n\
-\n\
-\t\tif ( x.length() === 0 ) {\n\
-\n\
-\t\t\tz.x += 0.0001;\n\
-\t\t\tx.cross( up, z ).normalize();\n\
-\n\
-\t\t}\n\
-\n\
-\t\ty.cross( z, x );\n\
-\n\
-\n\
-\t\tte[0] = x.x; te[4] = y.x; te[8] = z.x;\n\
-\t\tte[1] = x.y; te[5] = y.y; te[9] = z.y;\n\
-\t\tte[2] = x.z; te[6] = y.z; te[10] = z.z;\n\
+\t\t// bottom row\n\
+\t\tte[12] = 0;\n\
+\t\tte[13] = 0;\n\
+\t\tte[14] = 0;\n\
+\t\tte[15] = 1;\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
-\tmultiply: function ( a, b ) {\n\
+\tlookAt: function() {\n\
+\n\
+\t\tvar x = new THREE.Vector3();\n\
+\t\tvar y = new THREE.Vector3();\n\
+\t\tvar z = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( eye, target, up ) {\n\
+\n\
+\t\t\tvar te = this.elements;\n\
+\n\
+\t\t\tz.subVectors( eye, target ).normalize();\n\
+\n\
+\t\t\tif ( z.length() === 0 ) {\n\
+\n\
+\t\t\t\tz.z = 1;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tx.crossVectors( up, z ).normalize();\n\
+\n\
+\t\t\tif ( x.length() === 0 ) {\n\
+\n\
+\t\t\t\tz.x += 0.0001;\n\
+\t\t\t\tx.crossVectors( up, z ).normalize();\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\ty.crossVectors( z, x );\n\
+\n\
+\n\
+\t\t\tte[0] = x.x; te[4] = y.x; te[8] = z.x;\n\
+\t\t\tte[1] = x.y; te[5] = y.y; te[9] = z.y;\n\
+\t\t\tte[2] = x.z; te[6] = y.z; te[10] = z.z;\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tmultiply: function ( m, n ) {\n\
+\n\
+\t\tif ( n !== undefined ) {\n\
+\n\
+\t\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .multiply() now only accepts one argument. Use .multiplyMatrices( a, b ) instead.' );\n\
+\t\t\treturn this.multiplyMatrices( m, n );\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this.multiplyMatrices( this, m );\n\
+\n\
+\t},\n\
+\n\
+\tmultiplyMatrices: function ( a, b ) {\n\
 \n\
 \t\tvar ae = a.elements;\n\
 \t\tvar be = b.elements;\n\
@@ -6698,17 +8146,11 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmultiplySelf: function ( m ) {\n\
-\n\
-\t\treturn this.multiply( this, m );\n\
-\n\
-\t},\n\
-\n\
 \tmultiplyToArray: function ( a, b, r ) {\n\
 \n\
 \t\tvar te = this.elements;\n\
 \n\
-\t\tthis.multiply( a, b );\n\
+\t\tthis.multiplyMatrices( a, b );\n\
 \n\
 \t\tr[ 0 ] = te[0]; r[ 1 ] = te[1]; r[ 2 ] = te[2]; r[ 3 ] = te[3];\n\
 \t\tr[ 4 ] = te[4]; r[ 5 ] = te[5]; r[ 6 ] = te[6]; r[ 7 ] = te[7];\n\
@@ -6732,84 +8174,58 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmultiplyVector3: function ( v ) {\n\
+\tmultiplyVector3: function ( vector ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\n\
-\t\tvar vx = v.x, vy = v.y, vz = v.z;\n\
-\t\tvar d = 1 / ( te[3] * vx + te[7] * vy + te[11] * vz + te[15] );\n\
-\n\
-\t\tv.x = ( te[0] * vx + te[4] * vy + te[8] * vz + te[12] ) * d;\n\
-\t\tv.y = ( te[1] * vx + te[5] * vy + te[9] * vz + te[13] ) * d;\n\
-\t\tv.z = ( te[2] * vx + te[6] * vy + te[10] * vz + te[14] ) * d;\n\
-\n\
-\t\treturn v;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .multiplyVector3() has been removed. Use vector.applyMatrix4( matrix ) or vector.applyProjection( matrix ) instead.' );\n\
+\t\treturn vector.applyProjection( this );\n\
 \n\
 \t},\n\
 \n\
-\tmultiplyVector4: function ( v ) {\n\
+\tmultiplyVector4: function ( vector ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\tvar vx = v.x, vy = v.y, vz = v.z, vw = v.w;\n\
-\n\
-\t\tv.x = te[0] * vx + te[4] * vy + te[8] * vz + te[12] * vw;\n\
-\t\tv.y = te[1] * vx + te[5] * vy + te[9] * vz + te[13] * vw;\n\
-\t\tv.z = te[2] * vx + te[6] * vy + te[10] * vz + te[14] * vw;\n\
-\t\tv.w = te[3] * vx + te[7] * vy + te[11] * vz + te[15] * vw;\n\
-\n\
-\t\treturn v;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .multiplyVector4() has been removed. Use vector.applyMatrix4( matrix ) instead.' );\n\
+\t\treturn vector.applyMatrix4( this );\n\
 \n\
 \t},\n\
 \n\
-\tmultiplyVector3Array: function ( a ) {\n\
+\tmultiplyVector3Array: function() {\n\
 \n\
-\t\tvar tmp = THREE.Matrix4.__v1;\n\
+\t\tvar v1 = new THREE.Vector3();\n\
 \n\
-\t\tfor ( var i = 0, il = a.length; i < il; i += 3 ) {\n\
+\t\treturn function ( a ) {\n\
 \n\
-\t\t\ttmp.x = a[ i ];\n\
-\t\t\ttmp.y = a[ i + 1 ];\n\
-\t\t\ttmp.z = a[ i + 2 ];\n\
+\t\t\tfor ( var i = 0, il = a.length; i < il; i += 3 ) {\n\
 \n\
-\t\t\tthis.multiplyVector3( tmp );\n\
+\t\t\t\tv1.x = a[ i ];\n\
+\t\t\t\tv1.y = a[ i + 1 ];\n\
+\t\t\t\tv1.z = a[ i + 2 ];\n\
 \n\
-\t\t\ta[ i ]     = tmp.x;\n\
-\t\t\ta[ i + 1 ] = tmp.y;\n\
-\t\t\ta[ i + 2 ] = tmp.z;\n\
+\t\t\t\tv1.applyProjection( this );\n\
 \n\
-\t\t}\n\
+\t\t\t\ta[ i ]     = v1.x;\n\
+\t\t\t\ta[ i + 1 ] = v1.y;\n\
+\t\t\t\ta[ i + 2 ] = v1.z;\n\
 \n\
-\t\treturn a;\n\
+\t\t\t}\n\
 \n\
-\t},\n\
+\t\t\treturn a;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \trotateAxis: function ( v ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\tvar vx = v.x, vy = v.y, vz = v.z;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .rotateAxis() has been removed. Use Vector3.transformDirection( matrix ) instead.' );\n\
 \n\
-\t\tv.x = vx * te[0] + vy * te[4] + vz * te[8];\n\
-\t\tv.y = vx * te[1] + vy * te[5] + vz * te[9];\n\
-\t\tv.z = vx * te[2] + vy * te[6] + vz * te[10];\n\
-\n\
-\t\tv.normalize();\n\
-\n\
-\t\treturn v;\n\
+\t\tv.transformDirection( this );\n\
 \n\
 \t},\n\
 \n\
-\tcrossVector: function ( a ) {\n\
+\tcrossVector: function ( vector ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\tvar v = new THREE.Vector4();\n\
-\n\
-\t\tv.x = te[0] * a.x + te[4] * a.y + te[8] * a.z + te[12] * a.w;\n\
-\t\tv.y = te[1] * a.x + te[5] * a.y + te[9] * a.z + te[13] * a.w;\n\
-\t\tv.z = te[2] * a.x + te[6] * a.y + te[10] * a.z + te[14] * a.w;\n\
-\n\
-\t\tv.w = ( a.w ) ? te[3] * a.x + te[7] * a.y + te[11] * a.z + te[15] * a.w : 1;\n\
-\n\
-\t\treturn v;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .crossVector() has been removed. Use vector.applyMatrix4( matrix ) instead.' );\n\
+\t\treturn vector.applyMatrix4( this );\n\
 \n\
 \t},\n\
 \n\
@@ -6826,35 +8242,39 @@ THREE.Matrix4.prototype = {\n\
 \t\t//( based on http://www.euclideanspace.com/maths/algebra/matrix/functions/inverse/fourD/index.htm )\n\
 \n\
 \t\treturn (\n\
-\t\t\tn14 * n23 * n32 * n41-\n\
-\t\t\tn13 * n24 * n32 * n41-\n\
-\t\t\tn14 * n22 * n33 * n41+\n\
-\t\t\tn12 * n24 * n33 * n41+\n\
+\t\t\tn41 * (\n\
+\t\t\t\t+n14 * n23 * n32\n\
+\t\t\t\t-n13 * n24 * n32\n\
+\t\t\t\t-n14 * n22 * n33\n\
+\t\t\t\t+n12 * n24 * n33\n\
+\t\t\t\t+n13 * n22 * n34\n\
+\t\t\t\t-n12 * n23 * n34\n\
+\t\t\t) +\n\
+\t\t\tn42 * (\n\
+\t\t\t\t+n11 * n23 * n34\n\
+\t\t\t\t-n11 * n24 * n33\n\
+\t\t\t\t+n14 * n21 * n33\n\
+\t\t\t\t-n13 * n21 * n34\n\
+\t\t\t\t+n13 * n24 * n31\n\
+\t\t\t\t-n14 * n23 * n31\n\
+\t\t\t) +\n\
+\t\t\tn43 * (\n\
+\t\t\t\t+n11 * n24 * n32\n\
+\t\t\t\t-n11 * n22 * n34\n\
+\t\t\t\t-n14 * n21 * n32\n\
+\t\t\t\t+n12 * n21 * n34\n\
+\t\t\t\t+n14 * n22 * n31\n\
+\t\t\t\t-n12 * n24 * n31\n\
+\t\t\t) +\n\
+\t\t\tn44 * (\n\
+\t\t\t\t-n13 * n22 * n31\n\
+\t\t\t\t-n11 * n23 * n32\n\
+\t\t\t\t+n11 * n22 * n33\n\
+\t\t\t\t+n13 * n21 * n32\n\
+\t\t\t\t-n12 * n21 * n33\n\
+\t\t\t\t+n12 * n23 * n31\n\
+\t\t\t)\n\
 \n\
-\t\t\tn13 * n22 * n34 * n41-\n\
-\t\t\tn12 * n23 * n34 * n41-\n\
-\t\t\tn14 * n23 * n31 * n42+\n\
-\t\t\tn13 * n24 * n31 * n42+\n\
-\n\
-\t\t\tn14 * n21 * n33 * n42-\n\
-\t\t\tn11 * n24 * n33 * n42-\n\
-\t\t\tn13 * n21 * n34 * n42+\n\
-\t\t\tn11 * n23 * n34 * n42+\n\
-\n\
-\t\t\tn14 * n22 * n31 * n43-\n\
-\t\t\tn12 * n24 * n31 * n43-\n\
-\t\t\tn14 * n21 * n32 * n43+\n\
-\t\t\tn11 * n24 * n32 * n43+\n\
-\n\
-\t\t\tn12 * n21 * n34 * n43-\n\
-\t\t\tn11 * n22 * n34 * n43-\n\
-\t\t\tn13 * n22 * n31 * n44+\n\
-\t\t\tn12 * n23 * n31 * n44+\n\
-\n\
-\t\t\tn13 * n21 * n32 * n44-\n\
-\t\t\tn11 * n23 * n32 * n44-\n\
-\t\t\tn12 * n21 * n33 * n44+\n\
-\t\t\tn11 * n22 * n33 * n44\n\
 \t\t);\n\
 \n\
 \t},\n\
@@ -6881,7 +8301,7 @@ THREE.Matrix4.prototype = {\n\
 \t\tvar te = this.elements;\n\
 \t\tflat[ 0 ] = te[0]; flat[ 1 ] = te[1]; flat[ 2 ] = te[2]; flat[ 3 ] = te[3];\n\
 \t\tflat[ 4 ] = te[4]; flat[ 5 ] = te[5]; flat[ 6 ] = te[6]; flat[ 7 ] = te[7];\n\
-\t\tflat[ 8 ]  = te[8]; flat[ 9 ]  = te[9]; flat[ 10 ] = te[10]; flat[ 11 ] = te[11];\n\
+\t\tflat[ 8 ] = te[8]; flat[ 9 ] = te[9]; flat[ 10 ] = te[10]; flat[ 11 ] = te[11];\n\
 \t\tflat[ 12 ] = te[12]; flat[ 13 ] = te[13]; flat[ 14 ] = te[14]; flat[ 15 ] = te[15];\n\
 \n\
 \t\treturn flat;\n\
@@ -6915,12 +8335,20 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tgetPosition: function () {\n\
+\tgetPosition: function() {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\treturn THREE.Matrix4.__v1.set( te[12], te[13], te[14] );\n\
+\t\tvar v1 = new THREE.Vector3();\n\
 \n\
-\t},\n\
+\t\treturn function () {\n\
+\n\
+\t\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .getPosition() has been removed. Use Vector3.getPositionFromMatrix( matrix ) instead.' );\n\
+\n\
+\t\t\tvar te = this.elements;\n\
+\t\t\treturn v1.set( te[12], te[13], te[14] );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tsetPosition: function ( v ) {\n\
 \n\
@@ -6934,28 +8362,7 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tgetColumnX: function () {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\t\treturn THREE.Matrix4.__v1.set( te[0], te[1], te[2] );\n\
-\n\
-\t},\n\
-\n\
-\tgetColumnY: function () {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\t\treturn THREE.Matrix4.__v1.set( te[4], te[5], te[6] );\n\
-\n\
-\t},\n\
-\n\
-\tgetColumnZ: function() {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\t\treturn THREE.Matrix4.__v1.set( te[8], te[9], te[10] );\n\
-\n\
-\t},\n\
-\n\
-\tgetInverse: function ( m ) {\n\
+\tgetInverse: function ( m, throwOnInvertible ) {\n\
 \n\
 \t\t// based on http://www.euclideanspace.com/maths/algebra/matrix/functions/inverse/fourD/index.htm\n\
 \t\tvar te = this.elements;\n\
@@ -6982,291 +8389,61 @@ THREE.Matrix4.prototype = {\n\
 \t\tte[7] = n12*n33*n41 - n13*n32*n41 + n13*n31*n42 - n11*n33*n42 - n12*n31*n43 + n11*n32*n43;\n\
 \t\tte[11] = n13*n22*n41 - n12*n23*n41 - n13*n21*n42 + n11*n23*n42 + n12*n21*n43 - n11*n22*n43;\n\
 \t\tte[15] = n12*n23*n31 - n13*n22*n31 + n13*n21*n32 - n11*n23*n32 - n12*n21*n33 + n11*n22*n33;\n\
-\t\tthis.multiplyScalar( 1 / m.determinant() );\n\
+\n\
+\t\tvar det = n11 * te[ 0 ] + n21 * te[ 4 ] + n31 * te[ 8 ] + n41 * te[ 12 ];\n\
+\n\
+\t\tif ( det == 0 ) {\n\
+\n\
+\t\t\tvar msg = \"Matrix4.getInverse(): can't invert matrix, determinant is 0\";\n\
+\n\
+\t\t\tif ( throwOnInvertible || false ) {\n\
+\n\
+\t\t\t\tthrow new Error( msg ); \n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tconsole.warn( msg );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tthis.identity();\n\
+\n\
+\t\t\treturn this;\n\
+\t\t}\n\
+\n\
+\t\tthis.multiplyScalar( 1 / det );\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
-\n\
-\tcompose: function ( translation, rotation, scale ) {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\t\tvar mRotation = THREE.Matrix4.__m1;\n\
-\t\tvar mScale = THREE.Matrix4.__m2;\n\
-\n\
-\t\tmRotation.identity();\n\
-\t\tmRotation.setRotationFromQuaternion( rotation );\n\
-\n\
-\t\tmScale.makeScale( scale );\n\
-\n\
-\t\tthis.multiply( mRotation, mScale );\n\
-\n\
-\t\tte[12] = translation.x;\n\
-\t\tte[13] = translation.y;\n\
-\t\tte[14] = translation.z;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tdecompose: function ( translation, rotation, scale ) {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\n\
-\t\t// grab the axis vectors\n\
-\t\tvar x = THREE.Matrix4.__v1;\n\
-\t\tvar y = THREE.Matrix4.__v2;\n\
-\t\tvar z = THREE.Matrix4.__v3;\n\
-\n\
-\t\tx.set( te[0], te[1], te[2] );\n\
-\t\ty.set( te[4], te[5], te[6] );\n\
-\t\tz.set( te[8], te[9], te[10] );\n\
-\n\
-\t\ttranslation = ( translation instanceof THREE.Vector3 ) ? translation : new THREE.Vector3();\n\
-\t\trotation = ( rotation instanceof THREE.Quaternion ) ? rotation : new THREE.Quaternion();\n\
-\t\tscale = ( scale instanceof THREE.Vector3 ) ? scale : new THREE.Vector3();\n\
-\n\
-\t\tscale.x = x.length();\n\
-\t\tscale.y = y.length();\n\
-\t\tscale.z = z.length();\n\
-\n\
-\t\ttranslation.x = te[12];\n\
-\t\ttranslation.y = te[13];\n\
-\t\ttranslation.z = te[14];\n\
-\n\
-\t\t// scale the rotation part\n\
-\n\
-\t\tvar matrix = THREE.Matrix4.__m1;\n\
-\n\
-\t\tmatrix.copy( this );\n\
-\n\
-\t\tmatrix.elements[0] /= scale.x;\n\
-\t\tmatrix.elements[1] /= scale.x;\n\
-\t\tmatrix.elements[2] /= scale.x;\n\
-\n\
-\t\tmatrix.elements[4] /= scale.y;\n\
-\t\tmatrix.elements[5] /= scale.y;\n\
-\t\tmatrix.elements[6] /= scale.y;\n\
-\n\
-\t\tmatrix.elements[8] /= scale.z;\n\
-\t\tmatrix.elements[9] /= scale.z;\n\
-\t\tmatrix.elements[10] /= scale.z;\n\
-\n\
-\t\trotation.setFromRotationMatrix( matrix );\n\
-\n\
-\t\treturn [ translation, rotation, scale ];\n\
-\n\
-\t},\n\
-\n\
-\textractPosition: function ( m ) {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\t\tvar me = m.elements;\n\
-\n\
-\t\tte[12] = me[12];\n\
-\t\tte[13] = me[13];\n\
-\t\tte[14] = me[14];\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\textractRotation: function ( m ) {\n\
-\n\
-\t\tvar te = this.elements;\n\
-\t\tvar me = m.elements;\n\
-\n\
-\t\tvar vector = THREE.Matrix4.__v1;\n\
-\n\
-\t\tvar scaleX = 1 / vector.set( me[0], me[1], me[2] ).length();\n\
-\t\tvar scaleY = 1 / vector.set( me[4], me[5], me[6] ).length();\n\
-\t\tvar scaleZ = 1 / vector.set( me[8], me[9], me[10] ).length();\n\
-\n\
-\t\tte[0] = me[0] * scaleX;\n\
-\t\tte[1] = me[1] * scaleX;\n\
-\t\tte[2] = me[2] * scaleX;\n\
-\n\
-\t\tte[4] = me[4] * scaleY;\n\
-\t\tte[5] = me[5] * scaleY;\n\
-\t\tte[6] = me[6] * scaleY;\n\
-\n\
-\t\tte[8] = me[8] * scaleZ;\n\
-\t\tte[9] = me[9] * scaleZ;\n\
-\t\tte[10] = me[10] * scaleZ;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\t//\n\
 \n\
 \ttranslate: function ( v ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\tvar x = v.x, y = v.y, z = v.z;\n\
-\n\
-\t\tte[12] = te[0] * x + te[4] * y + te[8] * z + te[12];\n\
-\t\tte[13] = te[1] * x + te[5] * y + te[9] * z + te[13];\n\
-\t\tte[14] = te[2] * x + te[6] * y + te[10] * z + te[14];\n\
-\t\tte[15] = te[3] * x + te[7] * y + te[11] * z + te[15];\n\
-\n\
-\t\treturn this;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .translate() has been removed.');\n\
 \n\
 \t},\n\
 \n\
 \trotateX: function ( angle ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\tvar m12 = te[4];\n\
-\t\tvar m22 = te[5];\n\
-\t\tvar m32 = te[6];\n\
-\t\tvar m42 = te[7];\n\
-\t\tvar m13 = te[8];\n\
-\t\tvar m23 = te[9];\n\
-\t\tvar m33 = te[10];\n\
-\t\tvar m43 = te[11];\n\
-\t\tvar c = Math.cos( angle );\n\
-\t\tvar s = Math.sin( angle );\n\
-\n\
-\t\tte[4] = c * m12 + s * m13;\n\
-\t\tte[5] = c * m22 + s * m23;\n\
-\t\tte[6] = c * m32 + s * m33;\n\
-\t\tte[7] = c * m42 + s * m43;\n\
-\n\
-\t\tte[8] = c * m13 - s * m12;\n\
-\t\tte[9] = c * m23 - s * m22;\n\
-\t\tte[10] = c * m33 - s * m32;\n\
-\t\tte[11] = c * m43 - s * m42;\n\
-\n\
-\t\treturn this;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .rotateX() has been removed.');\n\
 \n\
 \t},\n\
 \n\
 \trotateY: function ( angle ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\tvar m11 = te[0];\n\
-\t\tvar m21 = te[1];\n\
-\t\tvar m31 = te[2];\n\
-\t\tvar m41 = te[3];\n\
-\t\tvar m13 = te[8];\n\
-\t\tvar m23 = te[9];\n\
-\t\tvar m33 = te[10];\n\
-\t\tvar m43 = te[11];\n\
-\t\tvar c = Math.cos( angle );\n\
-\t\tvar s = Math.sin( angle );\n\
-\n\
-\t\tte[0] = c * m11 - s * m13;\n\
-\t\tte[1] = c * m21 - s * m23;\n\
-\t\tte[2] = c * m31 - s * m33;\n\
-\t\tte[3] = c * m41 - s * m43;\n\
-\n\
-\t\tte[8] = c * m13 + s * m11;\n\
-\t\tte[9] = c * m23 + s * m21;\n\
-\t\tte[10] = c * m33 + s * m31;\n\
-\t\tte[11] = c * m43 + s * m41;\n\
-\n\
-\t\treturn this;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .rotateY() has been removed.');\n\
 \n\
 \t},\n\
 \n\
 \trotateZ: function ( angle ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\t\tvar m11 = te[0];\n\
-\t\tvar m21 = te[1];\n\
-\t\tvar m31 = te[2];\n\
-\t\tvar m41 = te[3];\n\
-\t\tvar m12 = te[4];\n\
-\t\tvar m22 = te[5];\n\
-\t\tvar m32 = te[6];\n\
-\t\tvar m42 = te[7];\n\
-\t\tvar c = Math.cos( angle );\n\
-\t\tvar s = Math.sin( angle );\n\
-\n\
-\t\tte[0] = c * m11 + s * m12;\n\
-\t\tte[1] = c * m21 + s * m22;\n\
-\t\tte[2] = c * m31 + s * m32;\n\
-\t\tte[3] = c * m41 + s * m42;\n\
-\n\
-\t\tte[4] = c * m12 - s * m11;\n\
-\t\tte[5] = c * m22 - s * m21;\n\
-\t\tte[6] = c * m32 - s * m31;\n\
-\t\tte[7] = c * m42 - s * m41;\n\
-\n\
-\t\treturn this;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .rotateZ() has been removed.');\n\
 \n\
 \t},\n\
 \n\
 \trotateByAxis: function ( axis, angle ) {\n\
 \n\
-\t\tvar te = this.elements;\n\
-\n\
-\t\t// optimize by checking axis\n\
-\n\
-\t\tif ( axis.x === 1 && axis.y === 0 && axis.z === 0 ) {\n\
-\n\
-\t\t\treturn this.rotateX( angle );\n\
-\n\
-\t\t} else if ( axis.x === 0 && axis.y === 1 && axis.z === 0 ) {\n\
-\n\
-\t\t\treturn this.rotateY( angle );\n\
-\n\
-\t\t} else if ( axis.x === 0 && axis.y === 0 && axis.z === 1 ) {\n\
-\n\
-\t\t\treturn this.rotateZ( angle );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tvar x = axis.x, y = axis.y, z = axis.z;\n\
-\t\tvar n = Math.sqrt(x * x + y * y + z * z);\n\
-\n\
-\t\tx /= n;\n\
-\t\ty /= n;\n\
-\t\tz /= n;\n\
-\n\
-\t\tvar xx = x * x, yy = y * y, zz = z * z;\n\
-\t\tvar c = Math.cos( angle );\n\
-\t\tvar s = Math.sin( angle );\n\
-\t\tvar oneMinusCosine = 1 - c;\n\
-\t\tvar xy = x * y * oneMinusCosine;\n\
-\t\tvar xz = x * z * oneMinusCosine;\n\
-\t\tvar yz = y * z * oneMinusCosine;\n\
-\t\tvar xs = x * s;\n\
-\t\tvar ys = y * s;\n\
-\t\tvar zs = z * s;\n\
-\n\
-\t\tvar r11 = xx + (1 - xx) * c;\n\
-\t\tvar r21 = xy + zs;\n\
-\t\tvar r31 = xz - ys;\n\
-\t\tvar r12 = xy - zs;\n\
-\t\tvar r22 = yy + (1 - yy) * c;\n\
-\t\tvar r32 = yz + xs;\n\
-\t\tvar r13 = xz + ys;\n\
-\t\tvar r23 = yz - xs;\n\
-\t\tvar r33 = zz + (1 - zz) * c;\n\
-\n\
-\t\tvar m11 = te[0], m21 = te[1], m31 = te[2], m41 = te[3];\n\
-\t\tvar m12 = te[4], m22 = te[5], m32 = te[6], m42 = te[7];\n\
-\t\tvar m13 = te[8], m23 = te[9], m33 = te[10], m43 = te[11];\n\
-\t\tvar m14 = te[12], m24 = te[13], m34 = te[14], m44 = te[15];\n\
-\n\
-\t\tte[0] = r11 * m11 + r21 * m12 + r31 * m13;\n\
-\t\tte[1] = r11 * m21 + r21 * m22 + r31 * m23;\n\
-\t\tte[2] = r11 * m31 + r21 * m32 + r31 * m33;\n\
-\t\tte[3] = r11 * m41 + r21 * m42 + r31 * m43;\n\
-\n\
-\t\tte[4] = r12 * m11 + r22 * m12 + r32 * m13;\n\
-\t\tte[5] = r12 * m21 + r22 * m22 + r32 * m23;\n\
-\t\tte[6] = r12 * m31 + r22 * m32 + r32 * m33;\n\
-\t\tte[7] = r12 * m41 + r22 * m42 + r32 * m43;\n\
-\n\
-\t\tte[8] = r13 * m11 + r23 * m12 + r33 * m13;\n\
-\t\tte[9] = r13 * m21 + r23 * m22 + r33 * m23;\n\
-\t\tte[10] = r13 * m31 + r23 * m32 + r33 * m33;\n\
-\t\tte[11] = r13 * m41 + r23 * m42 + r33 * m43;\n\
-\n\
-\t\treturn this;\n\
+\t\tconsole.warn( 'DEPRECATED: Matrix4\\'s .rotateByAxis() has been removed.');\n\
 \n\
 \t},\n\
 \n\
@@ -7288,23 +8465,21 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \t\tvar te = this.elements;\n\
 \n\
-\t\tvar scaleXSq =  te[0] * te[0] + te[1] * te[1] + te[2] * te[2];\n\
-\t\tvar scaleYSq =  te[4] * te[4] + te[5] * te[5] + te[6] * te[6];\n\
-\t\tvar scaleZSq =  te[8] * te[8] + te[9] * te[9] + te[10] * te[10];\n\
+\t\tvar scaleXSq = te[0] * te[0] + te[1] * te[1] + te[2] * te[2];\n\
+\t\tvar scaleYSq = te[4] * te[4] + te[5] * te[5] + te[6] * te[6];\n\
+\t\tvar scaleZSq = te[8] * te[8] + te[9] * te[9] + te[10] * te[10];\n\
 \n\
 \t\treturn Math.sqrt( Math.max( scaleXSq, Math.max( scaleYSq, scaleZSq ) ) );\n\
 \n\
 \t},\n\
 \n\
-\t//\n\
-\n\
-\tmakeTranslation: function ( offset ) {\n\
+\tmakeTranslation: function ( x, y, z ) {\n\
 \n\
 \t\tthis.set(\n\
 \n\
-\t\t\t1, 0, 0, offset.x,\n\
-\t\t\t0, 1, 0, offset.y,\n\
-\t\t\t0, 0, 1, offset.z,\n\
+\t\t\t1, 0, 0, x,\n\
+\t\t\t0, 1, 0, y,\n\
+\t\t\t0, 0, 1, z,\n\
 \t\t\t0, 0, 0, 1\n\
 \n\
 \t\t);\n\
@@ -7387,13 +8562,13 @@ THREE.Matrix4.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tmakeScale: function ( factor ) {\n\
+\tmakeScale: function ( x, y, z ) {\n\
 \n\
 \t\tthis.set(\n\
 \n\
-\t\t\tfactor.x, 0, 0, 0,\n\
-\t\t\t0, factor.y, 0, 0,\n\
-\t\t\t0, 0, factor.z, 0,\n\
+\t\t\tx, 0, 0, 0,\n\
+\t\t\t0, y, 0, 0,\n\
+\t\t\t0, 0, z, 0,\n\
 \t\t\t0, 0, 0, 1\n\
 \n\
 \t\t);\n\
@@ -7401,6 +8576,65 @@ THREE.Matrix4.prototype = {\n\
 \t\treturn this;\n\
 \n\
 \t},\n\
+\n\
+\tcompose: function ( position, quaternion, scale ) {\n\
+\n\
+\t\tthis.makeRotationFromQuaternion( quaternion );\n\
+\t\tthis.scale( scale );\n\
+\t\tthis.setPosition( position );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tdecompose: function () {\n\
+\n\
+\t\tvar vector = new THREE.Vector3();\n\
+\t\tvar matrix = new THREE.Matrix4();\n\
+\n\
+\t\treturn function ( position, quaternion, scale ) {\n\
+\n\
+\t\t\tvar te = this.elements;\n\
+\n\
+\t\t\tvar sx = vector.set( te[0], te[1], te[2] ).length();\n\
+\t\t\tvar sy = vector.set( te[4], te[5], te[6] ).length();\n\
+\t\t\tvar sz = vector.set( te[8], te[9], te[10] ).length();\n\
+\n\
+\t\t\tposition.x = te[12];\n\
+\t\t\tposition.y = te[13];\n\
+\t\t\tposition.z = te[14];\n\
+\n\
+\t\t\t// scale the rotation part\n\
+\n\
+\t\t\tmatrix.elements.set( this.elements ); // at this point matrix is incomplete so we can't use .copy()\n\
+\n\
+\t\t\tvar invSX = 1 / sx;\n\
+\t\t\tvar invSY = 1 / sy;\n\
+\t\t\tvar invSZ = 1 / sz;\n\
+\n\
+\t\t\tmatrix.elements[0] *= invSX;\n\
+\t\t\tmatrix.elements[1] *= invSX;\n\
+\t\t\tmatrix.elements[2] *= invSX;\n\
+\n\
+\t\t\tmatrix.elements[4] *= invSY;\n\
+\t\t\tmatrix.elements[5] *= invSY;\n\
+\t\t\tmatrix.elements[6] *= invSY;\n\
+\n\
+\t\t\tmatrix.elements[8] *= invSZ;\n\
+\t\t\tmatrix.elements[9] *= invSZ;\n\
+\t\t\tmatrix.elements[10] *= invSZ;\n\
+\n\
+\t\t\tquaternion.setFromRotationMatrix( matrix );\n\
+\n\
+\t\t\tscale.x = sx;\n\
+\t\t\tscale.y = sy;\n\
+\t\t\tscale.z = sz;\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tmakeFrustum: function ( left, right, bottom, top, near, far ) {\n\
 \n\
@@ -7413,10 +8647,10 @@ THREE.Matrix4.prototype = {\n\
 \t\tvar c = - ( far + near ) / ( far - near );\n\
 \t\tvar d = - 2 * far * near / ( far - near );\n\
 \n\
-\t\tte[0] = x;  te[4] = 0;  te[8] = a;   te[12] = 0;\n\
-\t\tte[1] = 0;  te[5] = y;  te[9] = b;   te[13] = 0;\n\
-\t\tte[2] = 0;  te[6] = 0;  te[10] = c;   te[14] = d;\n\
-\t\tte[3] = 0;  te[7] = 0;  te[11] = - 1; te[15] = 0;\n\
+\t\tte[0] = x;\tte[4] = 0;\tte[8] = a;\tte[12] = 0;\n\
+\t\tte[1] = 0;\tte[5] = y;\tte[9] = b;\tte[13] = 0;\n\
+\t\tte[2] = 0;\tte[6] = 0;\tte[10] = c;\tte[14] = d;\n\
+\t\tte[3] = 0;\tte[7] = 0;\tte[11] = - 1;\tte[15] = 0;\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -7444,15 +8678,35 @@ THREE.Matrix4.prototype = {\n\
 \t\tvar y = ( top + bottom ) / h;\n\
 \t\tvar z = ( far + near ) / p;\n\
 \n\
-\t\tte[0] = 2 / w; te[4] = 0;     te[8] = 0;      te[12] = -x;\n\
-\t\tte[1] = 0;     te[5] = 2 / h; te[9] = 0;      te[13] = -y;\n\
-\t\tte[2] = 0;     te[6] = 0;     te[10] = -2 / p; te[14] = -z;\n\
-\t\tte[3] = 0;     te[7] = 0;     te[11] = 0;      te[15] = 1;\n\
+\t\tte[0] = 2 / w;\tte[4] = 0;\tte[8] = 0;\tte[12] = -x;\n\
+\t\tte[1] = 0;\tte[5] = 2 / h;\tte[9] = 0;\tte[13] = -y;\n\
+\t\tte[2] = 0;\tte[6] = 0;\tte[10] = -2/p;\tte[14] = -z;\n\
+\t\tte[3] = 0;\tte[7] = 0;\tte[11] = 0;\tte[15] = 1;\n\
 \n\
 \t\treturn this;\n\
 \n\
 \t},\n\
 \n\
+\tfromArray: function ( array ) {\n\
+\n\
+\t\tthis.elements.set( array );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\ttoArray: function () {\n\
+\n\
+\t\tvar te = this.elements;\n\
+\n\
+\t\treturn [\n\
+\t\t\tte[ 0 ], te[ 1 ], te[ 2 ], te[ 3 ],\n\
+\t\t\tte[ 4 ], te[ 5 ], te[ 6 ], te[ 7 ],\n\
+\t\t\tte[ 8 ], te[ 9 ], te[ 10 ], te[ 11 ],\n\
+\t\t\tte[ 12 ], te[ 13 ], te[ 14 ], te[ 15 ]\n\
+\t\t];\n\
+\n\
+\t},\n\
 \n\
 \tclone: function () {\n\
 \n\
@@ -7471,21 +8725,14 @@ THREE.Matrix4.prototype = {\n\
 \n\
 };\n\
 \n\
-THREE.Matrix4.__v1 = new THREE.Vector3();\n\
-THREE.Matrix4.__v2 = new THREE.Vector3();\n\
-THREE.Matrix4.__v3 = new THREE.Vector3();\n\
-\n\
-THREE.Matrix4.__m1 = new THREE.Matrix4();\n\
-THREE.Matrix4.__m2 = new THREE.Matrix4();\n\
 /**\n\
  * @author bhouston / http://exocortex.com\n\
  */\n\
 \n\
 THREE.Ray = function ( origin, direction ) {\n\
 \n\
-\n\
-\tthis.origin = origin !== undefined ? origin.clone() : new THREE.Vector3();\n\
-\tthis.direction = direction !== undefined ? direction.clone() : new THREE.Vector3();\n\
+\tthis.origin = ( origin !== undefined ) ? origin : new THREE.Vector3();\n\
+\tthis.direction = ( direction !== undefined ) ? direction : new THREE.Vector3();\n\
 \n\
 };\n\
 \n\
@@ -7511,64 +8758,213 @@ THREE.Ray.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tat: function( t, optionalTarget ) {\n\
+\tat: function ( t, optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector3();\n\
 \n\
-\t\treturn result.copy( this.direction ).multiplyScalar( t ).addSelf( this.origin );\n\
+\t\treturn result.copy( this.direction ).multiplyScalar( t ).add( this.origin );\n\
 \n\
 \t},\n\
 \n\
-\trecastSelf: function ( t ) {\n\
+\trecast: function () {\n\
 \n\
-\t\tthis.origin.copy( this.at( t, THREE.Ray.__v1 ) );\n\
+\t\tvar v1 = new THREE.Vector3();\n\
 \n\
-\t\treturn this;\n\
+\t\treturn function ( t ) {\n\
 \n\
-\t},\n\
+\t\t\tthis.origin.copy( this.at( t, v1 ) );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tclosestPointToPoint: function ( point, optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector3();\n\
-\t\tresult.sub( point, this.origin );\n\
+\t\tresult.subVectors( point, this.origin );\n\
 \t\tvar directionDistance = result.dot( this.direction );\n\
 \n\
-\t\treturn result.copy( this.direction ).multiplyScalar( directionDistance ).addSelf( this.origin );\n\
+\t\tif ( directionDistance < 0 ) {\n\
+\n\
+\t\t\treturn result.copy( this.origin );\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn result.copy( this.direction ).multiplyScalar( directionDistance ).add( this.origin );\n\
 \n\
 \t},\n\
 \n\
-\tdistanceToPoint: function ( point ) {\n\
+\tdistanceToPoint: function () {\n\
 \n\
-\t\tvar directionDistance = THREE.Ray.__v1.sub( point, this.origin ).dot( this.direction );\t\t\n\
-\t\tTHREE.Ray.__v1.copy( this.direction ).multiplyScalar( directionDistance ).addSelf( this.origin );\n\
+\t\tvar v1 = new THREE.Vector3();\n\
 \n\
-\t\treturn THREE.Ray.__v1.distanceTo( point );\n\
+\t\treturn function ( point ) {\n\
+\n\
+\t\t\tvar directionDistance = v1.subVectors( point, this.origin ).dot( this.direction );\n\
+\n\
+\t\t\t// point behind the ray\n\
+\n\
+\t\t\tif ( directionDistance < 0 ) {\n\
+\n\
+\t\t\t\treturn this.origin.distanceTo( point );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tv1.copy( this.direction ).multiplyScalar( directionDistance ).add( this.origin );\n\
+\n\
+\t\t\treturn v1.distanceTo( point );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tdistanceSqToSegment: function( v0, v1, optionalPointOnRay, optionalPointOnSegment ) {\n\
+\n\
+\t\t// from http://www.geometrictools.com/LibMathematics/Distance/Wm5DistRay3Segment3.cpp\n\
+\t\t// It returns the min distance between the ray and the segment\n\
+\t\t// defined by v0 and v1\n\
+\t\t// It can also set two optional targets :\n\
+\t\t// - The closest point on the ray\n\
+\t\t// - The closest point on the segment\n\
+\n\
+\t\tvar segCenter = v0.clone().add( v1 ).multiplyScalar( 0.5 );\n\
+\t\tvar segDir = v1.clone().sub( v0 ).normalize();\n\
+\t\tvar segExtent = v0.distanceTo( v1 ) * 0.5;\n\
+\t\tvar diff = this.origin.clone().sub( segCenter );\n\
+\t\tvar a01 = - this.direction.dot( segDir );\n\
+\t\tvar b0 = diff.dot( this.direction );\n\
+\t\tvar b1 = - diff.dot( segDir );\n\
+\t\tvar c = diff.lengthSq();\n\
+\t\tvar det = Math.abs( 1 - a01 * a01 );\n\
+\t\tvar s0, s1, sqrDist, extDet;\n\
+\n\
+\t\tif ( det >= 0 ) {\n\
+\n\
+\t\t\t// The ray and segment are not parallel.\n\
+\n\
+\t\t\ts0 = a01 * b1 - b0;\n\
+\t\t\ts1 = a01 * b0 - b1;\n\
+\t\t\textDet = segExtent * det;\n\
+\n\
+\t\t\tif ( s0 >= 0 ) {\n\
+\n\
+\t\t\t\tif ( s1 >= - extDet ) {\n\
+\n\
+\t\t\t\t\tif ( s1 <= extDet ) {\n\
+\n\
+\t\t\t\t\t\t// region 0\n\
+\t\t\t\t\t\t// Minimum at interior points of ray and segment.\n\
+\n\
+\t\t\t\t\t\tvar invDet = 1 / det;\n\
+\t\t\t\t\t\ts0 *= invDet;\n\
+\t\t\t\t\t\ts1 *= invDet;\n\
+\t\t\t\t\t\tsqrDist = s0 * ( s0 + a01 * s1 + 2 * b0 ) + s1 * ( a01 * s0 + s1 + 2 * b1 ) + c;\n\
+\n\
+\t\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t\t// region 1\n\
+\n\
+\t\t\t\t\t\ts1 = segExtent;\n\
+\t\t\t\t\t\ts0 = Math.max( 0, - ( a01 * s1 + b0) );\n\
+\t\t\t\t\t\tsqrDist = - s0 * s0 + s1 * ( s1 + 2 * b1 ) + c;\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t// region 5\n\
+\n\
+\t\t\t\t\ts1 = - segExtent;\n\
+\t\t\t\t\ts0 = Math.max( 0, - ( a01 * s1 + b0) );\n\
+\t\t\t\t\tsqrDist = - s0 * s0 + s1 * ( s1 + 2 * b1 ) + c;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tif ( s1 <= - extDet) {\n\
+\n\
+\t\t\t\t\t// region 4\n\
+\n\
+\t\t\t\t\ts0 = Math.max( 0, - ( - a01 * segExtent + b0 ) );\n\
+\t\t\t\t\ts1 = ( s0 > 0 ) ? - segExtent : Math.min( Math.max( - segExtent, - b1 ), segExtent );\n\
+\t\t\t\t\tsqrDist = - s0 * s0 + s1 * ( s1 + 2 * b1 ) + c;\n\
+\n\
+\t\t\t\t} else if ( s1 <= extDet ) {\n\
+\n\
+\t\t\t\t\t// region 3\n\
+\n\
+\t\t\t\t\ts0 = 0;\n\
+\t\t\t\t\ts1 = Math.min( Math.max( - segExtent, - b1 ), segExtent );\n\
+\t\t\t\t\tsqrDist = s1 * ( s1 + 2 * b1 ) + c;\n\
+\n\
+\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t// region 2\n\
+\n\
+\t\t\t\t\ts0 = Math.max( 0, - ( a01 * segExtent + b0 ) );\n\
+\t\t\t\t\ts1 = ( s0 > 0 ) ? segExtent : Math.min( Math.max( - segExtent, - b1 ), segExtent );\n\
+\t\t\t\t\tsqrDist = - s0 * s0 + s1 * ( s1 + 2 * b1 ) + c;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\t// Ray and segment are parallel.\n\
+\n\
+\t\t\ts1 = ( a01 > 0 ) ? - segExtent : segExtent;\n\
+\t\t\ts0 = Math.max( 0, - ( a01 * s1 + b0 ) );\n\
+\t\t\tsqrDist = - s0 * s0 + s1 * ( s1 + 2 * b1 ) + c;\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( optionalPointOnRay ) {\n\
+\n\
+\t\t\toptionalPointOnRay.copy( this.direction.clone().multiplyScalar( s0 ).add( this.origin ) );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( optionalPointOnSegment ) {\n\
+\n\
+\t\t\toptionalPointOnSegment.copy( segDir.clone().multiplyScalar( s1 ).add( segCenter ) );\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn sqrDist;\n\
 \n\
 \t},\n\
 \n\
-\tisIntersectionSphere: function( sphere ) {\n\
+\tisIntersectionSphere: function ( sphere ) {\n\
 \n\
-\t\treturn ( this.distanceToPoint( sphere.center ) <= sphere.radius );\n\
+\t\treturn this.distanceToPoint( sphere.center ) <= sphere.radius;\n\
 \n\
 \t},\n\
 \n\
 \tisIntersectionPlane: function ( plane ) {\n\
 \n\
-\t\t// check if the line and plane are non-perpendicular, if they\n\
-\t\t// eventually they will intersect.\n\
+\t\t// check if the ray lies on the plane first\n\
+\n\
+\t\tvar distToPoint = plane.distanceToPoint( this.origin );\n\
+\n\
+\t\tif ( distToPoint === 0 ) {\n\
+\n\
+\t\t\treturn true;\n\
+\n\
+\t\t}\n\
+\n\
 \t\tvar denominator = plane.normal.dot( this.direction );\n\
-\t\tif ( denominator != 0 ) {\n\
 \n\
-\t\t\treturn true;\n\
+\t\tif ( denominator * distToPoint < 0 ) {\n\
 \n\
-\t\t}\n\
-\n\
-\t\t// line is coplanar, return origin\n\
-\t\tif( plane.distanceToPoint( this.origin ) == 0 ) {\n\
-\n\
-\t\t\treturn true;\n\
+\t\t\treturn true\n\
 \n\
 \t\t}\n\
+\n\
+\t\t// ray origin is behind the plane (and is pointing behind it)\n\
 \n\
 \t\treturn false;\n\
 \n\
@@ -7586,14 +8982,17 @@ THREE.Ray.prototype = {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\t// Unsure if this is the correct method to handle this case.\n\
-\t\t\treturn undefined;\n\
+\t\t\t// Null is preferable to undefined since undefined means.... it is undefined\n\
+\n\
+\t\t\treturn null;\n\
 \n\
 \t\t}\n\
 \n\
 \t\tvar t = - ( this.origin.dot( plane.normal ) + plane.constant ) / denominator;\n\
 \n\
-\t\treturn t;\n\
+\t\t// Return if the ray never intersects the plane\n\
+\n\
+\t\treturn t >= 0 ? t :  null;\n\
 \n\
 \t},\n\
 \n\
@@ -7601,20 +9000,184 @@ THREE.Ray.prototype = {\n\
 \n\
 \t\tvar t = this.distanceToPlane( plane );\n\
 \n\
-\t\tif( t === undefined ) {\n\
+\t\tif ( t === null ) {\n\
 \n\
-\t\t\treturn undefined;\n\
+\t\t\treturn null;\n\
 \t\t}\n\
 \n\
 \t\treturn this.at( t, optionalTarget );\n\
 \n\
 \t},\n\
 \n\
-\ttransform: function ( matrix4 ) {\n\
+\tisIntersectionBox: function () {\n\
+\t\t\n\
+\t\tvar v = new THREE.Vector3();\n\
 \n\
-\t\tthis.direction = matrix4.multiplyVector3( this.direction.addSelf( this.origin ) );\n\
-\t\tthis.origin = matrix4.multiplyVector3( this.origin );\n\
-\t\tthis.direction.subSelf( this.origin );\n\
+\t\treturn function ( box ) {\n\
+\n\
+\t\t\treturn this.intersectBox( box, v ) !== null;\n\
+\n\
+\t\t}\n\
+\n\
+\t}(),\n\
+\n\
+\tintersectBox: function ( box , optionalTarget ) {\n\
+\n\
+\t\t// http://www.scratchapixel.com/lessons/3d-basic-lessons/lesson-7-intersecting-simple-shapes/ray-box-intersection/\n\
+\n\
+\t\tvar tmin,tmax,tymin,tymax,tzmin,tzmax;\n\
+\n\
+\t\tvar invdirx = 1/this.direction.x,\n\
+\t\t\tinvdiry = 1/this.direction.y,\n\
+\t\t\tinvdirz = 1/this.direction.z;\n\
+\n\
+\t\tvar origin = this.origin;\n\
+\n\
+\t\tif (invdirx >= 0) {\n\
+\t\t\t\t\n\
+\t\t\ttmin = (box.min.x - origin.x) * invdirx;\n\
+\t\t\ttmax = (box.max.x - origin.x) * invdirx;\n\
+\n\
+\t\t} else { \n\
+\n\
+\t\t\ttmin = (box.max.x - origin.x) * invdirx;\n\
+\t\t\ttmax = (box.min.x - origin.x) * invdirx;\n\
+\t\t}\t\t\t\n\
+\n\
+\t\tif (invdiry >= 0) {\n\
+\t\t\n\
+\t\t\ttymin = (box.min.y - origin.y) * invdiry;\n\
+\t\t\ttymax = (box.max.y - origin.y) * invdiry;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\ttymin = (box.max.y - origin.y) * invdiry;\n\
+\t\t\ttymax = (box.min.y - origin.y) * invdiry;\n\
+\t\t}\n\
+\n\
+\t\tif ((tmin > tymax) || (tymin > tmax)) return null;\n\
+\n\
+\t\t// These lines also handle the case where tmin or tmax is NaN\n\
+\t\t// (result of 0 * Infinity). x !== x returns true if x is NaN\n\
+\t\t\n\
+\t\tif (tymin > tmin || tmin !== tmin ) tmin = tymin;\n\
+\n\
+\t\tif (tymax < tmax || tmax !== tmax ) tmax = tymax;\n\
+\n\
+\t\tif (invdirz >= 0) {\n\
+\t\t\n\
+\t\t\ttzmin = (box.min.z - origin.z) * invdirz;\n\
+\t\t\ttzmax = (box.max.z - origin.z) * invdirz;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\ttzmin = (box.max.z - origin.z) * invdirz;\n\
+\t\t\ttzmax = (box.min.z - origin.z) * invdirz;\n\
+\t\t}\n\
+\n\
+\t\tif ((tmin > tzmax) || (tzmin > tmax)) return null;\n\
+\n\
+\t\tif (tzmin > tmin || tmin !== tmin ) tmin = tzmin;\n\
+\n\
+\t\tif (tzmax < tmax || tmax !== tmax ) tmax = tzmax;\n\
+\n\
+\t\t//return point closest to the ray (positive side)\n\
+\n\
+\t\tif ( tmax < 0 ) return null;\n\
+\n\
+\t\treturn this.at( tmin >= 0 ? tmin : tmax, optionalTarget );\n\
+\n\
+\t},\n\
+\n\
+\tintersectTriangle: function() {\n\
+\n\
+\t\t// Compute the offset origin, edges, and normal.\n\
+\t\tvar diff = new THREE.Vector3();\n\
+\t\tvar edge1 = new THREE.Vector3();\n\
+\t\tvar edge2 = new THREE.Vector3();\n\
+\t\tvar normal = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( a, b, c, backfaceCulling, optionalTarget ) {\n\
+\n\
+\t\t\t// from http://www.geometrictools.com/LibMathematics/Intersection/Wm5IntrRay3Triangle3.cpp\n\
+\n\
+\t\t\tedge1.subVectors( b, a );\n\
+\t\t\tedge2.subVectors( c, a );\n\
+\t\t\tnormal.crossVectors( edge1, edge2 );\n\
+\n\
+\t\t\t// Solve Q + t*D = b1*E1 + b2*E2 (Q = kDiff, D = ray direction,\n\
+\t\t\t// E1 = kEdge1, E2 = kEdge2, N = Cross(E1,E2)) by\n\
+\t\t\t//   |Dot(D,N)|*b1 = sign(Dot(D,N))*Dot(D,Cross(Q,E2))\n\
+\t\t\t//   |Dot(D,N)|*b2 = sign(Dot(D,N))*Dot(D,Cross(E1,Q))\n\
+\t\t\t//   |Dot(D,N)|*t = -sign(Dot(D,N))*Dot(Q,N)\n\
+\t\t\tvar DdN = this.direction.dot( normal );\n\
+\t\t\tvar sign;\n\
+\n\
+\t\t\tif ( DdN > 0 ) {\n\
+\n\
+\t\t\t\tif ( backfaceCulling ) return null;\n\
+\t\t\t\tsign = 1;\n\
+\n\
+\t\t\t} else if ( DdN < 0 ) {\n\
+\n\
+\t\t\t\tsign = - 1;\n\
+\t\t\t\tDdN = - DdN;\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\treturn null;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tdiff.subVectors( this.origin, a );\n\
+\t\t\tvar DdQxE2 = sign * this.direction.dot( edge2.crossVectors( diff, edge2 ) );\n\
+\n\
+\t\t\t// b1 < 0, no intersection\n\
+\t\t\tif ( DdQxE2 < 0 ) {\n\
+\n\
+\t\t\t\treturn null;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tvar DdE1xQ = sign * this.direction.dot( edge1.cross( diff ) );\n\
+\n\
+\t\t\t// b2 < 0, no intersection\n\
+\t\t\tif ( DdE1xQ < 0 ) {\n\
+\n\
+\t\t\t\treturn null;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\t// b1+b2 > 1, no intersection\n\
+\t\t\tif ( DdQxE2 + DdE1xQ > DdN ) {\n\
+\n\
+\t\t\t\treturn null;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\t// Line intersects triangle, check if ray does.\n\
+\t\t\tvar QdN = - sign * diff.dot( normal );\n\
+\n\
+\t\t\t// t < 0, no intersection\n\
+\t\t\tif ( QdN < 0 ) {\n\
+\n\
+\t\t\t\treturn null;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\t// Ray intersects triangle.\n\
+\t\t\treturn this.at( QdN / DdN, optionalTarget );\n\
+\t\n\
+\t\t}\n\
+\t\n\
+\t}(),\n\
+\n\
+\tapplyMatrix4: function ( matrix4 ) {\n\
+\n\
+\t\tthis.direction.add( this.origin ).applyMatrix4( matrix4 );\n\
+\t\tthis.origin.applyMatrix4( matrix4 );\n\
+\t\tthis.direction.sub( this.origin );\n\
+\t\tthis.direction.normalize();\n\
 \n\
 \t\treturn this;\n\
 \t},\n\
@@ -7633,239 +9196,6 @@ THREE.Ray.prototype = {\n\
 \n\
 };\n\
 \n\
-THREE.Ray.__v1 = new THREE.Vector3();\n\
-THREE.Ray.__v2 = new THREE.Vector3();/**\n\
- * @author mrdoob / http://mrdoob.com/\n\
- * @author alteredq / http://alteredqualia.com/\n\
- * @author bhouston / http://exocortex.com\n\
- */\n\
-\n\
-THREE.Frustum = function ( ) {\n\
-\n\
-\tthis.planes = [\n\
-\n\
-\t\tnew THREE.Plane(),\n\
-\t\tnew THREE.Plane(),\n\
-\t\tnew THREE.Plane(),\n\
-\t\tnew THREE.Plane(),\n\
-\t\tnew THREE.Plane(),\n\
-\t\tnew THREE.Plane()\n\
-\n\
-\t];\n\
-\n\
-};\n\
-\n\
-THREE.Frustum.prototype.setFromMatrix = function ( m ) {\n\
-\n\
-\tvar planes = this.planes;\n\
-\n\
-\tvar me = m.elements;\n\
-\tvar me0 = me[0], me1 = me[1], me2 = me[2], me3 = me[3];\n\
-\tvar me4 = me[4], me5 = me[5], me6 = me[6], me7 = me[7];\n\
-\tvar me8 = me[8], me9 = me[9], me10 = me[10], me11 = me[11];\n\
-\tvar me12 = me[12], me13 = me[13], me14 = me[14], me15 = me[15];\n\
-\n\
-\tplanes[ 0 ].setComponents( me3 - me0, me7 - me4, me11 - me8, me15 - me12 );\n\
-\tplanes[ 1 ].setComponents( me3 + me0, me7 + me4, me11 + me8, me15 + me12 );\n\
-\tplanes[ 2 ].setComponents( me3 + me1, me7 + me5, me11 + me9, me15 + me13 );\n\
-\tplanes[ 3 ].setComponents( me3 - me1, me7 - me5, me11 - me9, me15 - me13 );\n\
-\tplanes[ 4 ].setComponents( me3 - me2, me7 - me6, me11 - me10, me15 - me14 );\n\
-\tplanes[ 5 ].setComponents( me3 + me2, me7 + me6, me11 + me10, me15 + me14 );\n\
-\n\
-\tfor ( var i = 0; i < 6; i ++ ) {\n\
-\n\
-\t\tplanes[ i ].normalize();\n\
-\n\
-\t}\n\
-\n\
-};\n\
-\n\
-THREE.Frustum.prototype.contains = function ( object ) {\n\
-\n\
-\tvar planes = this.planes;\n\
-\n\
-\tvar matrix = object.matrixWorld;\n\
-\tvar matrixPosition = matrix.getPosition();\n\
-\tvar radius = - object.geometry.boundingSphere.radius * matrix.getMaxScaleOnAxis();\n\
-\n\
-\tvar distance = 0.0;\n\
-\n\
-\tfor ( var i = 0; i < 6; i ++ ) {\n\
-\n\
-\t\tdistance = planes[ i ].distanceToPoint( matrixPosition );\n\
-\t\tif ( distance <= radius ) return false;\n\
-\n\
-\t}\n\
-\n\
-\treturn true;\n\
-\n\
-};\n\
-\n\
-THREE.Frustum.__v1 = new THREE.Vector3();\n\
-/**\n\
- * @author bhouston / http://exocortex.com\n\
- */\n\
-\n\
-THREE.Plane = function ( normal, constant ) {\n\
-\n\
-\tthis.normal = normal !== undefined ? normal.clone() : new THREE.Vector3( 1, 0, 0 );\n\
-\tthis.constant = constant !== undefined ? constant : 0;\n\
-\n\
-};\n\
-\n\
-THREE.Plane.prototype = {\n\
-\n\
-\tconstructor: THREE.Plane,\n\
-\n\
-\tset: function ( normal, constant ) {\n\
-\n\
-\t\tthis.normal.copy( normal );\n\
-\t\tthis.constant = constant;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsetComponents: function ( x, y, z, w ) {\n\
-\n\
-\t\tthis.normal.set( x, y, z );\n\
-\t\tthis.constant = w;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsetFromNormalAndCoplanarPoint: function ( normal, point ) {\n\
-\n\
-\t\tthis.normal.copy( normal ).normalize();\n\
-\t\tthis.constant = - point.dot( this.normal );\t// must be this.normal, not normal, as this.normal is normalized\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsetFromCoplanarPoints: function ( a, b, c ) {\n\
-\n\
-\t\tvar normal = THREE.Plane.__v1.sub( c, b ).crossSelf(\n\
-\t\t\t\t\t THREE.Plane.__v2.sub( a, b ) ).normalize();\n\
-\n\
-\t\t// Q: should an error be thrown if normal is zero (e.g. degenerate plane)?\n\
-\n\
-\t\tthis.setFromNormalAndCoplanarPoint( normal, a );\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tcopy: function ( plane ) {\n\
-\n\
-\t\tthis.normal.copy( plane.normal );\n\
-\t\tthis.constant = plane.constant;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tnormalize: function () {\n\
-\n\
-\t\t// Note: will lead to a divide by zero if the plane is invalid.\n\
-\n\
-\t\tvar inverseNormalLength = 1.0 / this.normal.length();\n\
-\t\tthis.normal.multiplyScalar( inverseNormalLength );\n\
-\t\tthis.constant *= inverseNormalLength;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tdistanceToPoint: function ( point ) {\n\
-\n\
-\t\treturn this.normal.dot( point ) + this.constant;\n\
-\n\
-\t},\n\
-\n\
-\tdistanceToSphere: function ( sphere ) {\n\
-\n\
-\t\treturn this.distanceToPoint( sphere.center ) - sphere.radius;\n\
-\n\
-\t},\n\
-\n\
-\tprojectPoint: function ( point, optionalTarget ) {\n\
-\n\
-\t\treturn this.orthoPoint( point, optionalTarget ).subSelf( point ).negate();\n\
-\n\
-\t},\n\
-\n\
-\torthoPoint: function ( point, optionalTarget ) {\n\
-\n\
-\t\tvar perpendicularMagnitude = this.distanceToPoint( point );\n\
-\n\
-\t\tvar result = optionalTarget || new THREE.Vector3();\n\
-\t\treturn result.copy( this.normal ).multiplyScalar( perpendicularMagnitude );\n\
-\n\
-\t},\n\
-\n\
-\tisIntersectionLine: function ( startPoint, endPoint ) {\n\
-\n\
-\t\t// Note: this tests if a line intersects the plane, not whether it (or its end-points) are coplanar with it.\n\
-\n\
-\t\tvar startSign = this.distanceToPoint( startPoint );\n\
-\t\tvar endSign = this.distanceToPoint( endPoint );\n\
-\n\
-\t\treturn ( startSign < 0 && endSign > 0 ) || ( endSign < 0 && startSign > 0 );\n\
-\n\
-\t},\n\
-\n\
-\tcoplanarPoint: function ( optionalTarget ) {\n\
-\n\
-\t\tvar result = optionalTarget || new THREE.Vector3();\n\
-\t\treturn result.copy( this.normal ).multiplyScalar( - this.constant );\n\
-\n\
-\t},\n\
-\n\
-\ttransform: function( matrix, optionalNormalMatrix ) {\n\
-\n\
-\t\tvar newNormal = THREE.Plane.__v1, newCoplanarPoint = THREE.Plane.__v2;\n\
-\n\
-\t\t// compute new normal based on theory here:\n\
-\t\t// http://www.songho.ca/opengl/gl_normaltransform.html\n\
-\t\toptionalNormalMatrix = optionalNormalMatrix || new THREE.Matrix3().getInverse( matrix ).transpose();\n\
-\t\tnewNormal = optionalNormalMatrix.multiplyVector3( newNormal.copy( this.normal ) );\n\
-\n\
-\t\tnewCoplanarPoint = this.coplanarPoint( newCoplanarPoint );\n\
-\t\tnewCoplanarPoint = matrix.multiplyVector3( newCoplanarPoint );\n\
-\n\
-\t\tthis.setFromNormalAndCoplanarPoint( newNormal, newCoplanarPoint );\n\
-\n\
-\t\treturn this;\n\
-\t\t\n\
-\t},\n\
-\n\
-\ttranslate: function ( offset ) {\n\
-\n\
-\t\tthis.constant = this.constant - offset.dot( this.normal );\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tequals: function ( plane ) {\n\
-\n\
-\t\treturn plane.normal.equals( this.normal ) && ( plane.constant == this.constant );\n\
-\n\
-\t},\n\
-\n\
-\tclone: function () {\n\
-\n\
-\t\treturn new THREE.Plane().copy( this );\n\
-\n\
-\t}\n\
-\n\
-};\n\
-\n\
-THREE.Plane.__vZero = new THREE.Vector3( 0, 0, 0 );\n\
-THREE.Plane.__v1 = new THREE.Vector3();\n\
-THREE.Plane.__v2 = new THREE.Vector3();\n\
 /**\n\
  * @author bhouston / http://exocortex.com\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -7873,8 +9203,8 @@ THREE.Plane.__v2 = new THREE.Vector3();\n\
 \n\
 THREE.Sphere = function ( center, radius ) {\n\
 \n\
-\tthis.center = center === undefined ? new THREE.Vector3() : center.clone();\n\
-\tthis.radius = radius === undefined ? 0 : radius;\n\
+\tthis.center = ( center !== undefined ) ? center : new THREE.Vector3();\n\
+\tthis.radius = ( radius !== undefined ) ? radius : 0;\n\
 \n\
 };\n\
 \n\
@@ -7890,23 +9220,40 @@ THREE.Sphere.prototype = {\n\
 \t\treturn this;\n\
 \t},\n\
 \n\
-\tsetFromCenterAndPoints: function ( center, points ) {\n\
 \n\
-\t\tvar maxRadiusSq = 0;\n\
+\tsetFromPoints: function () {\n\
 \n\
-\t\tfor ( var i = 0, il = points.length; i < il; i ++ ) {\n\
+\t\tvar box = new THREE.Box3();\n\
 \n\
-\t\t\tvar radiusSq = center.distanceToSquared( points[ i ] );\n\
-\t\t\tmaxRadiusSq = Math.max( maxRadiusSq, radiusSq );\n\
+\t\treturn function ( points, optionalCenter )  {\n\
 \n\
-\t\t}\n\
+\t\t\tvar center = this.center;\n\
 \n\
-\t\tthis.center = center;\n\
-\t\tthis.radius = Math.sqrt( maxRadiusSq );\n\
+\t\t\tif ( optionalCenter !== undefined ) {\n\
 \n\
-\t\treturn this;\n\
+\t\t\t\tcenter.copy( optionalCenter );\n\
 \n\
-\t},\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tbox.setFromPoints( points ).center( center );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tvar maxRadiusSq = 0;\n\
+\n\
+\t\t\tfor ( var i = 0, il = points.length; i < il; i ++ ) {\n\
+\n\
+\t\t\t\tmaxRadiusSq = Math.max( maxRadiusSq, center.distanceToSquared( points[ i ] ) );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tthis.radius = Math.sqrt( maxRadiusSq );\n\
+\n\
+\t\t\treturn this;\t\t\t\n\
+ \t\t\n\
+ \t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tcopy: function ( sphere ) {\n\
 \n\
@@ -7935,6 +9282,14 @@ THREE.Sphere.prototype = {\n\
 \n\
 \t},\n\
 \n\
+\tintersectsSphere: function ( sphere ) {\n\
+\n\
+\t\tvar radiusSum = this.radius + sphere.radius;\n\
+\n\
+\t\treturn sphere.center.distanceToSquared( this.center ) <= ( radiusSum * radiusSum );\n\
+\n\
+\t},\n\
+\n\
 \tclampPoint: function ( point, optionalTarget ) {\n\
 \n\
 \t\tvar deltaLengthSq = this.center.distanceToSquared( point );\n\
@@ -7944,8 +9299,8 @@ THREE.Sphere.prototype = {\n\
 \n\
 \t\tif ( deltaLengthSq > ( this.radius * this.radius ) ) {\n\
 \n\
-\t\t\tresult.subSelf( this.center ).normalize();\n\
-\t\t\tresult.multiplyScalar( this.radius ).addSelf( this.center );\n\
+\t\t\tresult.sub( this.center ).normalize();\n\
+\t\t\tresult.multiplyScalar( this.radius ).add( this.center );\n\
 \n\
 \t\t}\n\
 \n\
@@ -7964,9 +9319,9 @@ THREE.Sphere.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\ttransform: function ( matrix ) {\n\
-\t\t\n\
-\t\tthis.center = matrix.multiplyVector3( this.center );\n\
+\tapplyMatrix4: function ( matrix ) {\n\
+\n\
+\t\tthis.center.applyMatrix4( matrix );\n\
 \t\tthis.radius = this.radius * matrix.getMaxScaleOnAxis();\n\
 \n\
 \t\treturn this;\n\
@@ -7975,7 +9330,7 @@ THREE.Sphere.prototype = {\n\
 \n\
 \ttranslate: function ( offset ) {\n\
 \n\
-\t\tthis.center.addSelf( offset );\n\
+\t\tthis.center.add( offset );\n\
 \n\
 \t\treturn this;\n\
 \n\
@@ -7994,11 +9349,453 @@ THREE.Sphere.prototype = {\n\
 \t}\n\
 \n\
 };\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ * @author alteredq / http://alteredqualia.com/\n\
+ * @author bhouston / http://exocortex.com\n\
+ */\n\
+\n\
+THREE.Frustum = function ( p0, p1, p2, p3, p4, p5 ) {\n\
+\n\
+\tthis.planes = [\n\
+\n\
+\t\t( p0 !== undefined ) ? p0 : new THREE.Plane(),\n\
+\t\t( p1 !== undefined ) ? p1 : new THREE.Plane(),\n\
+\t\t( p2 !== undefined ) ? p2 : new THREE.Plane(),\n\
+\t\t( p3 !== undefined ) ? p3 : new THREE.Plane(),\n\
+\t\t( p4 !== undefined ) ? p4 : new THREE.Plane(),\n\
+\t\t( p5 !== undefined ) ? p5 : new THREE.Plane()\n\
+\n\
+\t];\n\
+\n\
+};\n\
+\n\
+THREE.Frustum.prototype = {\n\
+\n\
+\tconstructor: THREE.Frustum,\n\
+\n\
+\tset: function ( p0, p1, p2, p3, p4, p5 ) {\n\
+\n\
+\t\tvar planes = this.planes;\n\
+\n\
+\t\tplanes[0].copy( p0 );\n\
+\t\tplanes[1].copy( p1 );\n\
+\t\tplanes[2].copy( p2 );\n\
+\t\tplanes[3].copy( p3 );\n\
+\t\tplanes[4].copy( p4 );\n\
+\t\tplanes[5].copy( p5 );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tcopy: function ( frustum ) {\n\
+\n\
+\t\tvar planes = this.planes;\n\
+\n\
+\t\tfor( var i = 0; i < 6; i ++ ) {\n\
+\n\
+\t\t\tplanes[i].copy( frustum.planes[i] );\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromMatrix: function ( m ) {\n\
+\n\
+\t\tvar planes = this.planes;\n\
+\t\tvar me = m.elements;\n\
+\t\tvar me0 = me[0], me1 = me[1], me2 = me[2], me3 = me[3];\n\
+\t\tvar me4 = me[4], me5 = me[5], me6 = me[6], me7 = me[7];\n\
+\t\tvar me8 = me[8], me9 = me[9], me10 = me[10], me11 = me[11];\n\
+\t\tvar me12 = me[12], me13 = me[13], me14 = me[14], me15 = me[15];\n\
+\n\
+\t\tplanes[ 0 ].setComponents( me3 - me0, me7 - me4, me11 - me8, me15 - me12 ).normalize();\n\
+\t\tplanes[ 1 ].setComponents( me3 + me0, me7 + me4, me11 + me8, me15 + me12 ).normalize();\n\
+\t\tplanes[ 2 ].setComponents( me3 + me1, me7 + me5, me11 + me9, me15 + me13 ).normalize();\n\
+\t\tplanes[ 3 ].setComponents( me3 - me1, me7 - me5, me11 - me9, me15 - me13 ).normalize();\n\
+\t\tplanes[ 4 ].setComponents( me3 - me2, me7 - me6, me11 - me10, me15 - me14 ).normalize();\n\
+\t\tplanes[ 5 ].setComponents( me3 + me2, me7 + me6, me11 + me10, me15 + me14 ).normalize();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tintersectsObject: function () {\n\
+\n\
+\t\tvar sphere = new THREE.Sphere();\n\
+\n\
+\t\treturn function ( object ) {\n\
+\n\
+\t\t\tvar geometry = object.geometry;\n\
+\n\
+\t\t\tif ( geometry.boundingSphere === null ) geometry.computeBoundingSphere();\n\
+\n\
+\t\t\tsphere.copy( geometry.boundingSphere );\n\
+\t\t\tsphere.applyMatrix4( object.matrixWorld );\n\
+\n\
+\t\t\treturn this.intersectsSphere( sphere );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tintersectsSphere: function ( sphere ) {\n\
+\n\
+\t\tvar planes = this.planes;\n\
+\t\tvar center = sphere.center;\n\
+\t\tvar negRadius = -sphere.radius;\n\
+\n\
+\t\tfor ( var i = 0; i < 6; i ++ ) {\n\
+\n\
+\t\t\tvar distance = planes[ i ].distanceToPoint( center );\n\
+\n\
+\t\t\tif ( distance < negRadius ) {\n\
+\n\
+\t\t\t\treturn false;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn true;\n\
+\n\
+\t},\n\
+\n\
+\tintersectsBox : function() {\n\
+\n\
+\t\tvar p1 = new THREE.Vector3(),\n\
+\t\t\tp2 = new THREE.Vector3();\n\
+\n\
+\t\treturn function( box ) {\n\
+\n\
+\t\t\tvar planes = this.planes;\n\
+\t\t\t\n\
+\t\t\tfor ( var i = 0; i < 6 ; i ++ ) {\n\
+\t\t\t\n\
+\t\t\t\tvar plane = planes[i];\n\
+\t\t\t\t\n\
+\t\t\t\tp1.x = plane.normal.x > 0 ? box.min.x : box.max.x;\n\
+\t\t\t\tp2.x = plane.normal.x > 0 ? box.max.x : box.min.x;\n\
+\t\t\t\tp1.y = plane.normal.y > 0 ? box.min.y : box.max.y;\n\
+\t\t\t\tp2.y = plane.normal.y > 0 ? box.max.y : box.min.y;\n\
+\t\t\t\tp1.z = plane.normal.z > 0 ? box.min.z : box.max.z;\n\
+\t\t\t\tp2.z = plane.normal.z > 0 ? box.max.z : box.min.z;\n\
+\n\
+\t\t\t\tvar d1 = plane.distanceToPoint( p1 );\n\
+\t\t\t\tvar d2 = plane.distanceToPoint( p2 );\n\
+\t\t\t\t\n\
+\t\t\t\t// if both outside plane, no intersection\n\
+\n\
+\t\t\t\tif ( d1 < 0 && d2 < 0 ) {\n\
+\t\t\t\t\t\n\
+\t\t\t\t\treturn false;\n\
+\t\t\n\
+\t\t\t\t}\n\
+\t\t\t}\n\
+\n\
+\t\t\treturn true;\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\n\
+\tcontainsPoint: function ( point ) {\n\
+\n\
+\t\tvar planes = this.planes;\n\
+\n\
+\t\tfor ( var i = 0; i < 6; i ++ ) {\n\
+\n\
+\t\t\tif ( planes[ i ].distanceToPoint( point ) < 0 ) {\n\
+\n\
+\t\t\t\treturn false;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn true;\n\
+\n\
+\t},\n\
+\n\
+\tclone: function () {\n\
+\n\
+\t\treturn new THREE.Frustum().copy( this );\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+/**\n\
+ * @author bhouston / http://exocortex.com\n\
+ */\n\
+\n\
+THREE.Plane = function ( normal, constant ) {\n\
+\n\
+\tthis.normal = ( normal !== undefined ) ? normal : new THREE.Vector3( 1, 0, 0 );\n\
+\tthis.constant = ( constant !== undefined ) ? constant : 0;\n\
+\n\
+};\n\
+\n\
+THREE.Plane.prototype = {\n\
+\n\
+\tconstructor: THREE.Plane,\n\
+\n\
+\tset: function ( normal, constant ) {\n\
+\n\
+\t\tthis.normal.copy( normal );\n\
+\t\tthis.constant = constant;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetComponents: function ( x, y, z, w ) {\n\
+\n\
+\t\tthis.normal.set( x, y, z );\n\
+\t\tthis.constant = w;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromNormalAndCoplanarPoint: function ( normal, point ) {\n\
+\n\
+\t\tthis.normal.copy( normal );\n\
+\t\tthis.constant = - point.dot( this.normal );\t// must be this.normal, not normal, as this.normal is normalized\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tsetFromCoplanarPoints: function() {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\t\tvar v2 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( a, b, c ) {\n\
+\n\
+\t\t\tvar normal = v1.subVectors( c, b ).cross( v2.subVectors( a, b ) ).normalize();\n\
+\n\
+\t\t\t// Q: should an error be thrown if normal is zero (e.g. degenerate plane)?\n\
+\n\
+\t\t\tthis.setFromNormalAndCoplanarPoint( normal, a );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\n\
+\tcopy: function ( plane ) {\n\
+\n\
+\t\tthis.normal.copy( plane.normal );\n\
+\t\tthis.constant = plane.constant;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tnormalize: function () {\n\
+\n\
+\t\t// Note: will lead to a divide by zero if the plane is invalid.\n\
+\n\
+\t\tvar inverseNormalLength = 1.0 / this.normal.length();\n\
+\t\tthis.normal.multiplyScalar( inverseNormalLength );\n\
+\t\tthis.constant *= inverseNormalLength;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tnegate: function () {\n\
+\n\
+\t\tthis.constant *= -1;\n\
+\t\tthis.normal.negate();\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tdistanceToPoint: function ( point ) {\n\
+\n\
+\t\treturn this.normal.dot( point ) + this.constant;\n\
+\n\
+\t},\n\
+\n\
+\tdistanceToSphere: function ( sphere ) {\n\
+\n\
+\t\treturn this.distanceToPoint( sphere.center ) - sphere.radius;\n\
+\n\
+\t},\n\
+\n\
+\tprojectPoint: function ( point, optionalTarget ) {\n\
+\n\
+\t\treturn this.orthoPoint( point, optionalTarget ).sub( point ).negate();\n\
+\n\
+\t},\n\
+\n\
+\torthoPoint: function ( point, optionalTarget ) {\n\
+\n\
+\t\tvar perpendicularMagnitude = this.distanceToPoint( point );\n\
+\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
+\t\treturn result.copy( this.normal ).multiplyScalar( perpendicularMagnitude );\n\
+\n\
+\t},\n\
+\n\
+\tisIntersectionLine: function ( line ) {\n\
+\n\
+\t\t// Note: this tests if a line intersects the plane, not whether it (or its end-points) are coplanar with it.\n\
+\n\
+\t\tvar startSign = this.distanceToPoint( line.start );\n\
+\t\tvar endSign = this.distanceToPoint( line.end );\n\
+\n\
+\t\treturn ( startSign < 0 && endSign > 0 ) || ( endSign < 0 && startSign > 0 );\n\
+\n\
+\t},\n\
+\n\
+\tintersectLine: function() {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( line, optionalTarget ) {\n\
+\n\
+\t\t\tvar result = optionalTarget || new THREE.Vector3();\n\
+\n\
+\t\t\tvar direction = line.delta( v1 );\n\
+\n\
+\t\t\tvar denominator = this.normal.dot( direction );\n\
+\n\
+\t\t\tif ( denominator == 0 ) {\n\
+\n\
+\t\t\t\t// line is coplanar, return origin\n\
+\t\t\t\tif( this.distanceToPoint( line.start ) == 0 ) {\n\
+\n\
+\t\t\t\t\treturn result.copy( line.start );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\t// Unsure if this is the correct method to handle this case.\n\
+\t\t\t\treturn undefined;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tvar t = - ( line.start.dot( this.normal ) + this.constant ) / denominator;\n\
+\n\
+\t\t\tif( t < 0 || t > 1 ) {\n\
+\n\
+\t\t\t\treturn undefined;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\treturn result.copy( direction ).multiplyScalar( t ).add( line.start );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\n\
+\tcoplanarPoint: function ( optionalTarget ) {\n\
+\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
+\t\treturn result.copy( this.normal ).multiplyScalar( - this.constant );\n\
+\n\
+\t},\n\
+\n\
+\tapplyMatrix4: function() {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\t\tvar v2 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( matrix, optionalNormalMatrix ) {\n\
+\n\
+\t\t\t// compute new normal based on theory here:\n\
+\t\t\t// http://www.songho.ca/opengl/gl_normaltransform.html\n\
+\t\t\toptionalNormalMatrix = optionalNormalMatrix || new THREE.Matrix3().getNormalMatrix( matrix );\n\
+\t\t\tvar newNormal = v1.copy( this.normal ).applyMatrix3( optionalNormalMatrix );\n\
+\n\
+\t\t\tvar newCoplanarPoint = this.coplanarPoint( v2 );\n\
+\t\t\tnewCoplanarPoint.applyMatrix4( matrix );\n\
+\n\
+\t\t\tthis.setFromNormalAndCoplanarPoint( newNormal, newCoplanarPoint );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\ttranslate: function ( offset ) {\n\
+\n\
+\t\tthis.constant = this.constant - offset.dot( this.normal );\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t},\n\
+\n\
+\tequals: function ( plane ) {\n\
+\n\
+\t\treturn plane.normal.equals( this.normal ) && ( plane.constant == this.constant );\n\
+\n\
+\t},\n\
+\n\
+\tclone: function () {\n\
+\n\
+\t\treturn new THREE.Plane().copy( this );\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
+ * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
 THREE.Math = {\n\
+\n\
+\tPI2: Math.PI * 2,\n\
+\n\
+\tgenerateUUID: function () {\n\
+\n\
+\t\t// http://www.broofa.com/Tools/Math.uuid.htm\n\
+\t\t\n\
+\t\tvar chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');\n\
+\t\tvar uuid = new Array(36);\n\
+\t\tvar rnd = 0, r;\n\
+\n\
+\t\treturn function () {\n\
+\n\
+\t\t\tfor ( var i = 0; i < 36; i ++ ) {\n\
+\n\
+\t\t\t\tif ( i == 8 || i == 13 || i == 18 || i == 23 ) {\n\
+\t\t\t\n\
+\t\t\t\t\tuuid[ i ] = '-';\n\
+\t\t\t\n\
+\t\t\t\t} else if ( i == 14 ) {\n\
+\t\t\t\n\
+\t\t\t\t\tuuid[ i ] = '4';\n\
+\t\t\t\n\
+\t\t\t\t} else {\n\
+\t\t\t\n\
+\t\t\t\t\tif (rnd <= 0x02) rnd = 0x2000000 + (Math.random()*0x1000000)|0;\n\
+\t\t\t\t\tr = rnd & 0xf;\n\
+\t\t\t\t\trnd = rnd >> 4;\n\
+\t\t\t\t\tuuid[i] = chars[(i == 19) ? (r & 0x3) | 0x8 : r];\n\
+\n\
+\t\t\t\t}\n\
+\t\t\t}\n\
+\t\t\t\n\
+\t\t\treturn uuid.join('');\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \t// Clamp value to range <a, b>\n\
 \n\
@@ -8021,6 +9818,30 @@ THREE.Math = {\n\
 \tmapLinear: function ( x, a1, a2, b1, b2 ) {\n\
 \n\
 \t\treturn b1 + ( x - a1 ) * ( b2 - b1 ) / ( a2 - a1 );\n\
+\n\
+\t},\n\
+\n\
+\t// http://en.wikipedia.org/wiki/Smoothstep\n\
+\n\
+\tsmoothstep: function ( x, min, max ) {\n\
+\n\
+\t\tif ( x <= min ) return 0;\n\
+\t\tif ( x >= max ) return 1;\n\
+\n\
+\t\tx = ( x - min )/( max - min );\n\
+\n\
+\t\treturn x*x*(3 - 2*x);\n\
+\n\
+\t},\n\
+\n\
+\tsmootherstep: function ( x, min, max ) {\n\
+\n\
+\t\tif ( x <= min ) return 0;\n\
+\t\tif ( x >= max ) return 1;\n\
+\n\
+\t\tx = ( x - min )/( max - min );\n\
+\n\
+\t\treturn x*x*x*(x*(x*6 - 15) + 10);\n\
 \n\
 \t},\n\
 \n\
@@ -8063,380 +9884,32 @@ THREE.Math = {\n\
 \n\
 \t},\n\
 \n\
-\tdegToRad: function ( degrees ) {\n\
+\tdegToRad: function() {\n\
 \n\
-\t\treturn degrees * THREE.Math.__d2r;\n\
+\t\tvar degreeToRadiansFactor = Math.PI / 180;\n\
 \n\
-\t},\n\
+\t\treturn function ( degrees ) {\n\
 \n\
-\tradToDeg: function ( radians ) {\n\
+\t\t\treturn degrees * degreeToRadiansFactor;\n\
 \n\
-\t\treturn radians * THREE.Math.__r2d;\n\
+\t\t};\n\
 \n\
-\t}\n\
+\t}(),\n\
 \n\
-};\n\
+\tradToDeg: function() {\n\
 \n\
-THREE.Math.__d2r =  Math.PI / 180;\n\
-THREE.Math.__r2d =  180 / Math.PI;\n\
-/**\n\
- * @author mikael emtinger / http://gomo.se/\n\
- * @author alteredq / http://alteredqualia.com/\n\
- * @author WestLangley / http://github.com/WestLangley\n\
- * @author bhouston / http://exocortex.com\n\
- */\n\
+\t\tvar radianToDegreesFactor = 180 / Math.PI;\n\
 \n\
-THREE.Quaternion = function( x, y, z, w ) {\n\
+\t\treturn function ( radians ) {\n\
 \n\
-\tthis.x = x || 0;\n\
-\tthis.y = y || 0;\n\
-\tthis.z = z || 0;\n\
-\tthis.w = ( w !== undefined ) ? w : 1;\n\
+\t\t\treturn radians * radianToDegreesFactor;\n\
+\n\
+\t\t};\n\
+\n\
+\t}()\n\
 \n\
 };\n\
 \n\
-THREE.Quaternion.prototype = {\n\
-\n\
-\tconstructor: THREE.Quaternion,\n\
-\n\
-\tset: function ( x, y, z, w ) {\n\
-\n\
-\t\tthis.x = x;\n\
-\t\tthis.y = y;\n\
-\t\tthis.z = z;\n\
-\t\tthis.w = w;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tcopy: function ( q ) {\n\
-\n\
-\t\tthis.x = q.x;\n\
-\t\tthis.y = q.y;\n\
-\t\tthis.z = q.z;\n\
-\t\tthis.w = q.w;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsetFromEuler: function ( v, order ) {\n\
-\n\
-\t\t// http://www.mathworks.com/matlabcentral/fileexchange/\n\
-\t\t// \t20696-function-to-convert-between-dcm-euler-angles-quaternions-and-euler-vectors/\n\
-\t\t//\tcontent/SpinCalc.m\n\
-\t\n\
-\t\tvar c1 = Math.cos( v.x / 2 );\n\
-\t\tvar c2 = Math.cos( v.y / 2 );\n\
-\t\tvar c3 = Math.cos( v.z / 2 );\n\
-\t\tvar s1 = Math.sin( v.x / 2 );\n\
-\t\tvar s2 = Math.sin( v.y / 2 );\n\
-\t\tvar s3 = Math.sin( v.z / 2 );\n\
-\n\
-\t\tif ( order === undefined || order === 'XYZ' ) {\n\
-\n\
-\t\t\tthis.x = s1 * c2 * c3 + c1 * s2 * s3;\n\
-\t\t\tthis.y = c1 * s2 * c3 - s1 * c2 * s3;\n\
-\t\t\tthis.z = c1 * c2 * s3 + s1 * s2 * c3;\n\
-\t\t\tthis.w = c1 * c2 * c3 - s1 * s2 * s3;\n\
-\n\
-\t\t} else if ( order === 'YXZ' ) {\n\
-\t\n\
-\t\t\tthis.x = s1 * c2 * c3 + c1 * s2 * s3;\n\
-\t\t\tthis.y = c1 * s2 * c3 - s1 * c2 * s3;\n\
-\t\t\tthis.z = c1 * c2 * s3 - s1 * s2 * c3;\n\
-\t\t\tthis.w = c1 * c2 * c3 + s1 * s2 * s3;\n\
-\t\t\t\t\n\
-\t\t} else if ( order === 'ZXY' ) {\n\
-\t\n\
-\t\t\tthis.x = s1 * c2 * c3 - c1 * s2 * s3;\n\
-\t\t\tthis.y = c1 * s2 * c3 + s1 * c2 * s3;\n\
-\t\t\tthis.z = c1 * c2 * s3 + s1 * s2 * c3;\n\
-\t\t\tthis.w = c1 * c2 * c3 - s1 * s2 * s3;\n\
-\t\t\t\t\n\
-\t\t} else if ( order === 'ZYX' ) {\n\
-\t\n\
-\t\t\tthis.x = s1 * c2 * c3 - c1 * s2 * s3;\n\
-\t\t\tthis.y = c1 * s2 * c3 + s1 * c2 * s3;\n\
-\t\t\tthis.z = c1 * c2 * s3 - s1 * s2 * c3;\n\
-\t\t\tthis.w = c1 * c2 * c3 + s1 * s2 * s3;\n\
-\t\t\t\t\n\
-\t\t} else if ( order === 'YZX' ) {\n\
-\t\t\t\n\
-\t\t\tthis.x = s1 * c2 * c3 + c1 * s2 * s3;\n\
-\t\t\tthis.y = c1 * s2 * c3 + s1 * c2 * s3;\n\
-\t\t\tthis.z = c1 * c2 * s3 - s1 * s2 * c3;\n\
-\t\t\tthis.w = c1 * c2 * c3 - s1 * s2 * s3;\n\
-\t\t\t\t\n\
-\t\t} else if ( order === 'XZY' ) {\n\
-\t\t\t\n\
-\t\t\tthis.x = s1 * c2 * c3 - c1 * s2 * s3;\n\
-\t\t\tthis.y = c1 * s2 * c3 - s1 * c2 * s3;\n\
-\t\t\tthis.z = c1 * c2 * s3 + s1 * s2 * c3;\n\
-\t\t\tthis.w = c1 * c2 * c3 + s1 * s2 * s3;\n\
-\t\t\t\t\n\
-\t\t}\n\
-\t\t\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsetFromAxisAngle: function ( axis, angle ) {\n\
-\n\
-\t\t// from http://www.euclideanspace.com/maths/geometry/rotations/conversions/angleToQuaternion/index.htm\n\
-\t\t// axis have to be normalized\n\
-\n\
-\t\tvar halfAngle = angle / 2,\n\
-\t\t\ts = Math.sin( halfAngle );\n\
-\n\
-\t\tthis.x = axis.x * s;\n\
-\t\tthis.y = axis.y * s;\n\
-\t\tthis.z = axis.z * s;\n\
-\t\tthis.w = Math.cos( halfAngle );\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tsetFromRotationMatrix: function ( m ) {\n\
-\n\
-\t\t// http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/index.htm\n\
-\t\t\n\
-\t\t// assumes the upper 3x3 of m is a pure rotation matrix (i.e, unscaled)\n\
-\t\t\n\
-\t\tvar te = m.elements,\n\
-\t\t\t\n\
-\t\t\tm11 = te[0], m12 = te[4], m13 = te[8],\n\
-\t\t\tm21 = te[1], m22 = te[5], m23 = te[9],\n\
-\t\t\tm31 = te[2], m32 = te[6], m33 = te[10],\n\
-\t\t\t\n\
-\t\t\ttrace = m11 + m22 + m33,\n\
-\t\t\ts;\n\
-\t\t\n\
-\t\tif( trace > 0 ) {\n\
-\t\t\n\
-\t\t\ts = 0.5 / Math.sqrt( trace + 1.0 );\n\
-\t\t\t\n\
-\t\t\tthis.w = 0.25 / s;\n\
-\t\t\tthis.x = ( m32 - m23 ) * s;\n\
-\t\t\tthis.y = ( m13 - m31 ) * s;\n\
-\t\t\tthis.z = ( m21 - m12 ) * s;\n\
-\t\t\n\
-\t\t} else if ( m11 > m22 && m11 > m33 ) {\n\
-\t\t\n\
-\t\t\ts = 2.0 * Math.sqrt( 1.0 + m11 - m22 - m33 );\n\
-\t\t\t\n\
-\t\t\tthis.w = (m32 - m23 ) / s;\n\
-\t\t\tthis.x = 0.25 * s;\n\
-\t\t\tthis.y = (m12 + m21 ) / s;\n\
-\t\t\tthis.z = (m13 + m31 ) / s;\n\
-\t\t\n\
-\t\t} else if (m22 > m33) {\n\
-\t\t\n\
-\t\t\ts = 2.0 * Math.sqrt( 1.0 + m22 - m11 - m33 );\n\
-\t\t\t\n\
-\t\t\tthis.w = (m13 - m31 ) / s;\n\
-\t\t\tthis.x = (m12 + m21 ) / s;\n\
-\t\t\tthis.y = 0.25 * s;\n\
-\t\t\tthis.z = (m23 + m32 ) / s;\n\
-\t\t\n\
-\t\t} else {\n\
-\t\t\n\
-\t\t\ts = 2.0 * Math.sqrt( 1.0 + m33 - m11 - m22 );\n\
-\t\t\t\n\
-\t\t\tthis.w = ( m21 - m12 ) / s;\n\
-\t\t\tthis.x = ( m13 + m31 ) / s;\n\
-\t\t\tthis.y = ( m23 + m32 ) / s;\n\
-\t\t\tthis.z = 0.25 * s;\n\
-\t\t\n\
-\t\t}\n\
-\t\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tinverse: function () {\n\
-\n\
-\t\tthis.conjugate().normalize();\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tconjugate: function () {\n\
-\n\
-\t\tthis.x *= -1;\n\
-\t\tthis.y *= -1;\n\
-\t\tthis.z *= -1;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tlengthSq: function () {\n\
-\n\
-\t\treturn this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;\n\
-\n\
-\t},\n\
-\n\
-\tlength: function () {\n\
-\n\
-\t\treturn Math.sqrt( this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w );\n\
-\n\
-\t},\n\
-\n\
-\tnormalize: function () {\n\
-\n\
-\t\tvar l = this.length();\n\
-\n\
-\t\tif ( l === 0 ) {\n\
-\n\
-\t\t\tthis.x = 0;\n\
-\t\t\tthis.y = 0;\n\
-\t\t\tthis.z = 0;\n\
-\t\t\tthis.w = 1;\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tl = 1 / l;\n\
-\n\
-\t\t\tthis.x = this.x * l;\n\
-\t\t\tthis.y = this.y * l;\n\
-\t\t\tthis.z = this.z * l;\n\
-\t\t\tthis.w = this.w * l;\n\
-\n\
-\t\t}\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tmultiply: function ( a, b ) {\n\
-\n\
-\t\tthis.copy( a );\n\
-\t\treturn this.multiplySelf( b );\n\
-\n\
-\t},\n\
-\n\
-\tmultiplySelf: function ( b ) {\n\
-\n\
-\t\t// from http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/code/index.htm\n\
-\t\tvar qax = this.x, qay = this.y, qaz = this.z, qaw = this.w,\n\
-\t\tqbx = b.x, qby = b.y, qbz = b.z, qbw = b.w;\n\
-\n\
-\t\tthis.x = qax * qbw + qaw * qbx + qay * qbz - qaz * qby;\n\
-\t\tthis.y = qay * qbw + qaw * qby + qaz * qbx - qax * qbz;\n\
-\t\tthis.z = qaz * qbw + qaw * qbz + qax * qby - qay * qbx;\n\
-\t\tthis.w = qaw * qbw - qax * qbx - qay * qby - qaz * qbz;\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tmultiplyVector3: function ( vector, dest ) {\n\
-\n\
-\t\tif ( !dest ) { dest = vector; }\n\
-\n\
-\t\tvar x    = vector.x,  y  = vector.y,  z  = vector.z,\n\
-\t\t\tqx   = this.x, qy = this.y, qz = this.z, qw = this.w;\n\
-\n\
-\t\t// calculate quat * vector\n\
-\n\
-\t\tvar ix =  qw * x + qy * z - qz * y,\n\
-\t\t\tiy =  qw * y + qz * x - qx * z,\n\
-\t\t\tiz =  qw * z + qx * y - qy * x,\n\
-\t\t\tiw = -qx * x - qy * y - qz * z;\n\
-\n\
-\t\t// calculate result * inverse quat\n\
-\n\
-\t\tdest.x = ix * qw + iw * -qx + iy * -qz - iz * -qy;\n\
-\t\tdest.y = iy * qw + iw * -qy + iz * -qx - ix * -qz;\n\
-\t\tdest.z = iz * qw + iw * -qz + ix * -qy - iy * -qx;\n\
-\n\
-\t\treturn dest;\n\
-\n\
-\t},\n\
-\n\
-\tslerpSelf: function ( qb, t ) {\n\
-\n\
-\t\tvar x = this.x, y = this.y, z = this.z, w = this.w;\n\
-\n\
-\t\t// http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/slerp/\n\
-\n\
-\t\tvar cosHalfTheta = w * qb.w + x * qb.x + y * qb.y + z * qb.z;\n\
-\n\
-\t\tif ( cosHalfTheta < 0 ) {\n\
-\n\
-\t\t\tthis.w = -qb.w;\n\
-\t\t\tthis.x = -qb.x;\n\
-\t\t\tthis.y = -qb.y;\n\
-\t\t\tthis.z = -qb.z;\n\
-\n\
-\t\t\tcosHalfTheta = -cosHalfTheta;\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tthis.copy( qb );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( cosHalfTheta >= 1.0 ) {\n\
-\n\
-\t\t\tthis.w = w;\n\
-\t\t\tthis.x = x;\n\
-\t\t\tthis.y = y;\n\
-\t\t\tthis.z = z;\n\
-\n\
-\t\t\treturn this;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tvar halfTheta = Math.acos( cosHalfTheta );\n\
-\t\tvar sinHalfTheta = Math.sqrt( 1.0 - cosHalfTheta * cosHalfTheta );\n\
-\n\
-\t\tif ( Math.abs( sinHalfTheta ) < 0.001 ) {\n\
-\n\
-\t\t\tthis.w = 0.5 * ( w + this.w );\n\
-\t\t\tthis.x = 0.5 * ( x + this.x );\n\
-\t\t\tthis.y = 0.5 * ( y + this.y );\n\
-\t\t\tthis.z = 0.5 * ( z + this.z );\n\
-\n\
-\t\t\treturn this;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tvar ratioA = Math.sin( ( 1 - t ) * halfTheta ) / sinHalfTheta,\n\
-\t\tratioB = Math.sin( t * halfTheta ) / sinHalfTheta;\n\
-\n\
-\t\tthis.w = ( w * ratioA + this.w * ratioB );\n\
-\t\tthis.x = ( x * ratioA + this.x * ratioB );\n\
-\t\tthis.y = ( y * ratioA + this.y * ratioB );\n\
-\t\tthis.z = ( z * ratioA + this.z * ratioB );\n\
-\n\
-\t\treturn this;\n\
-\n\
-\t},\n\
-\n\
-\tequals: function ( v ) {\n\
-\n\
-\t\treturn ( ( v.x === this.x ) && ( v.y === this.y ) && ( v.z === this.z ) && ( v.w === this.w ) );\n\
-\n\
-\t},\n\
-\n\
-\tclone: function () {\n\
-\n\
-\t\treturn new THREE.Quaternion( this.x, this.y, this.z, this.w );\n\
-\n\
-\t}\n\
-\n\
-}\n\
-\n\
-THREE.Quaternion.slerp = function ( qa, qb, qm, t ) {\n\
-\n\
-\treturn qm.copy( qa ).slerpSelf( qb, t );\n\
-\n\
-}\n\
 /**\n\
  * Spline from Tween.js, slightly optimized (and trashed)\n\
  * http://sole.github.com/tween.js/examples/05_spline.html\n\
@@ -8613,6 +10086,7 @@ THREE.Spline = function ( points ) {\n\
 \t};\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author bhouston / http://exocortex.com\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -8620,80 +10094,92 @@ THREE.Spline = function ( points ) {\n\
 \n\
 THREE.Triangle = function ( a, b, c ) {\n\
 \n\
-\tthis.a = new THREE.Vector3();\n\
-\tthis.b = new THREE.Vector3();\n\
-\tthis.c = new THREE.Vector3();\n\
-\n\
-\tif( a !== undefined && b !== undefined && c !== undefined ) {\n\
-\n\
-\t\tthis.a.copy( a );\n\
-\t\tthis.b.copy( b );\n\
-\t\tthis.c.copy( c );\n\
-\n\
-\t}\n\
+\tthis.a = ( a !== undefined ) ? a : new THREE.Vector3();\n\
+\tthis.b = ( b !== undefined ) ? b : new THREE.Vector3();\n\
+\tthis.c = ( c !== undefined ) ? c : new THREE.Vector3();\n\
 \n\
 };\n\
 \n\
-THREE.Triangle.normal = function( a, b, c, optionalTarget ) {\n\
+THREE.Triangle.normal = function() {\n\
 \n\
-\tvar result = optionalTarget || new THREE.Vector3();\n\
+\tvar v0 = new THREE.Vector3();\n\
 \n\
-\tresult.sub( c, b );\n\
-\tTHREE.Triangle.__v0.sub( a, b );\n\
-\tresult.crossSelf( THREE.Triangle.__v0 );\n\
+\treturn function ( a, b, c, optionalTarget ) {\n\
 \n\
-\tvar resultLengthSq = result.lengthSq();\n\
-\tif( resultLengthSq > 0 ) {\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
 \n\
-\t\treturn result.multiplyScalar( 1 / Math.sqrt( resultLengthSq ) );\n\
+\t\tresult.subVectors( c, b );\n\
+\t\tv0.subVectors( a, b );\n\
+\t\tresult.cross( v0 );\n\
 \n\
-\t}\n\
+\t\tvar resultLengthSq = result.lengthSq();\n\
+\t\tif( resultLengthSq > 0 ) {\n\
 \n\
-\treturn result.set( 0, 0, 0 );\n\
+\t\t\treturn result.multiplyScalar( 1 / Math.sqrt( resultLengthSq ) );\n\
 \n\
-};\n\
+\t\t}\n\
+\n\
+\t\treturn result.set( 0, 0, 0 );\n\
+\n\
+\t};\n\
+\n\
+}();\n\
 \n\
 // static/instance method to calculate barycoordinates\n\
-THREE.Triangle.barycoordFromPoint = function ( point, a, b, c, optionalTarget ) {\n\
+// based on: http://www.blackpawn.com/texts/pointinpoly/default.html\n\
+THREE.Triangle.barycoordFromPoint = function() {\n\
 \n\
-\tTHREE.Triangle.__v0.sub( c, a );\n\
-\tTHREE.Triangle.__v1.sub( b, a );\n\
-\tTHREE.Triangle.__v2.sub( point, a );\n\
+\tvar v0 = new THREE.Vector3();\n\
+\tvar v1 = new THREE.Vector3();\n\
+\tvar v2 = new THREE.Vector3();\n\
 \n\
-\tvar dot00 = THREE.Triangle.__v0.dot( THREE.Triangle.__v0 );\n\
-\tvar dot01 = THREE.Triangle.__v0.dot( THREE.Triangle.__v1 );\n\
-\tvar dot02 = THREE.Triangle.__v0.dot( THREE.Triangle.__v2 );\n\
-\tvar dot11 = THREE.Triangle.__v1.dot( THREE.Triangle.__v1 );\n\
-\tvar dot12 = THREE.Triangle.__v1.dot( THREE.Triangle.__v2 );\n\
+\treturn function ( point, a, b, c, optionalTarget ) {\n\
 \n\
-\tvar denom = ( dot00 * dot11 - dot01 * dot01 );\n\
+\t\tv0.subVectors( c, a );\n\
+\t\tv1.subVectors( b, a );\n\
+\t\tv2.subVectors( point, a );\n\
 \n\
-\tvar result = optionalTarget || new THREE.Vector3();\n\
+\t\tvar dot00 = v0.dot( v0 );\n\
+\t\tvar dot01 = v0.dot( v1 );\n\
+\t\tvar dot02 = v0.dot( v2 );\n\
+\t\tvar dot11 = v1.dot( v1 );\n\
+\t\tvar dot12 = v1.dot( v2 );\n\
 \n\
-\t// colinear or singular triangle\n\
-\tif( denom == 0 ) {\n\
-\t\t// arbitrary location outside of triangle?\n\
-\t\t// not sure if this is the best idea, maybe should be returning undefined\n\
-\t\treturn result.set( -2, -1, -1 );\n\
-\t}\n\
+\t\tvar denom = ( dot00 * dot11 - dot01 * dot01 );\n\
 \n\
-\tvar invDenom = 1 / denom;\n\
-\tvar u = ( dot11 * dot02 - dot01 * dot12 ) * invDenom;\n\
-\tvar v = ( dot00 * dot12 - dot01 * dot02 ) * invDenom;\n\
+\t\tvar result = optionalTarget || new THREE.Vector3();\n\
 \n\
-\t// barycoordinates must always sum to 1\n\
-\treturn result.set( 1 - u - v, v, u );\n\
+\t\t// colinear or singular triangle\n\
+\t\tif( denom == 0 ) {\n\
+\t\t\t// arbitrary location outside of triangle?\n\
+\t\t\t// not sure if this is the best idea, maybe should be returning undefined\n\
+\t\t\treturn result.set( -2, -1, -1 );\n\
+\t\t}\n\
 \n\
-};\n\
+\t\tvar invDenom = 1 / denom;\n\
+\t\tvar u = ( dot11 * dot02 - dot01 * dot12 ) * invDenom;\n\
+\t\tvar v = ( dot00 * dot12 - dot01 * dot02 ) * invDenom;\n\
 \n\
-THREE.Triangle.containsPoint = function ( point, a, b, c ) {\n\
+\t\t// barycoordinates must always sum to 1\n\
+\t\treturn result.set( 1 - u - v, v, u );\n\
 \n\
-\t// NOTE: need to use __v3 here because __v0, __v1 and __v2 are used in barycoordFromPoint.\n\
-\tvar result = THREE.Triangle.barycoordFromPoint( point, a, b, c, THREE.Triangle.__v3 );\n\
+\t};\n\
 \n\
-\treturn ( result.x >= 0 ) && ( result.y >= 0 ) && ( ( result.x + result.y ) <= 1 );\n\
+}();\n\
 \n\
-};\n\
+THREE.Triangle.containsPoint = function() {\n\
+\n\
+\tvar v1 = new THREE.Vector3();\n\
+\n\
+\treturn function ( point, a, b, c ) {\n\
+\n\
+\t\tvar result = THREE.Triangle.barycoordFromPoint( point, a, b, c, v1 );\n\
+\n\
+\t\treturn ( result.x >= 0 ) && ( result.y >= 0 ) && ( ( result.x + result.y ) <= 1 );\n\
+\n\
+\t};\n\
+\n\
+}();\n\
 \n\
 THREE.Triangle.prototype = {\n\
 \n\
@@ -8729,19 +10215,26 @@ THREE.Triangle.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tarea: function () {\n\
+\tarea: function() {\n\
 \n\
-\t\tTHREE.Triangle.__v0.sub( this.c, this.b );\n\
-\t\tTHREE.Triangle.__v1.sub( this.a, this.b );\n\
+\t\tvar v0 = new THREE.Vector3();\n\
+\t\tvar v1 = new THREE.Vector3();\n\
 \n\
-\t\treturn THREE.Triangle.__v0.crossSelf( THREE.Triangle.__v1 ).length() * 0.5;\n\
+\t\treturn function () {\n\
 \n\
-\t},\n\
+\t\t\tv0.subVectors( this.c, this.b );\n\
+\t\t\tv1.subVectors( this.a, this.b );\n\
+\n\
+\t\t\treturn v0.cross( v1 ).length() * 0.5;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tmidpoint: function ( optionalTarget ) {\n\
 \n\
 \t\tvar result = optionalTarget || new THREE.Vector3();\n\
-\t\treturn result.add( this.a, this.b ).addSelf( this.c ).multiplyScalar( 1 / 3 );\n\
+\t\treturn result.addVectors( this.a, this.b ).add( this.c ).multiplyScalar( 1 / 3 );\n\
 \n\
 \t},\n\
 \n\
@@ -8785,10 +10278,6 @@ THREE.Triangle.prototype = {\n\
 \n\
 };\n\
 \n\
-THREE.Triangle.__v0 = new THREE.Vector3();\n\
-THREE.Triangle.__v1 = new THREE.Vector3();\n\
-THREE.Triangle.__v2 = new THREE.Vector3();\n\
-THREE.Triangle.__v3 = new THREE.Vector3();\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -8799,6 +10288,7 @@ THREE.Vertex = function ( v ) {\n\
 \treturn v;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -8809,6 +10299,7 @@ THREE.UV = function ( u, v ) {\n\
 \treturn new THREE.Vector2( u, v );\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -8825,63 +10316,87 @@ THREE.Clock = function ( autoStart ) {\n\
 \n\
 };\n\
 \n\
-THREE.Clock.prototype.start = function () {\n\
+THREE.Clock.prototype = {\n\
 \n\
-\tthis.startTime = Date.now();\n\
-\tthis.oldTime = this.startTime;\n\
+\tconstructor: THREE.Clock,\n\
 \n\
-\tthis.running = true;\n\
+\tstart: function () {\n\
 \n\
-};\n\
+\t\tthis.startTime = self.performance !== undefined && self.performance.now !== undefined\n\
+\t\t\t\t\t? self.performance.now()\n\
+\t\t\t\t\t: Date.now();\n\
 \n\
-THREE.Clock.prototype.stop = function () {\n\
+\t\tthis.oldTime = this.startTime;\n\
+\t\tthis.running = true;\n\
+\t},\n\
 \n\
-\tthis.getElapsedTime();\n\
+\tstop: function () {\n\
 \n\
-\tthis.running = false;\n\
+\t\tthis.getElapsedTime();\n\
+\t\tthis.running = false;\n\
 \n\
-};\n\
+\t},\n\
 \n\
-THREE.Clock.prototype.getElapsedTime = function () {\n\
+\tgetElapsedTime: function () {\n\
 \n\
-\tthis.getDelta();\n\
+\t\tthis.getDelta();\n\
+\t\treturn this.elapsedTime;\n\
 \n\
-\treturn this.elapsedTime;\n\
+\t},\n\
 \n\
-};\n\
+\tgetDelta: function () {\n\
 \n\
+\t\tvar diff = 0;\n\
 \n\
-THREE.Clock.prototype.getDelta = function () {\n\
+\t\tif ( this.autoStart && ! this.running ) {\n\
 \n\
-\tvar diff = 0;\n\
+\t\t\tthis.start();\n\
 \n\
-\tif ( this.autoStart && ! this.running ) {\n\
+\t\t}\n\
 \n\
-\t\tthis.start();\n\
+\t\tif ( this.running ) {\n\
+\n\
+\t\t\tvar newTime = self.performance !== undefined && self.performance.now !== undefined\n\
+\t\t\t\t\t? self.performance.now()\n\
+\t\t\t\t\t: Date.now();\n\
+\n\
+\t\t\tdiff = 0.001 * ( newTime - this.oldTime );\n\
+\t\t\tthis.oldTime = newTime;\n\
+\n\
+\t\t\tthis.elapsedTime += diff;\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn diff;\n\
 \n\
 \t}\n\
 \n\
-\tif ( this.running ) {\n\
+};\n\
 \n\
-\t\tvar newTime = Date.now();\n\
-\t\tdiff = 0.001 * ( newTime - this.oldTime );\n\
-\t\tthis.oldTime = newTime;\n\
-\n\
-\t\tthis.elapsedTime += diff;\n\
-\n\
-\t}\n\
-\n\
-\treturn diff;\n\
-\n\
-};/**\n\
+/**\n\
  * https://github.com/mrdoob/eventdispatcher.js/\n\
  */\n\
 \n\
-THREE.EventDispatcher = function () {\n\
+THREE.EventDispatcher = function () {}\n\
 \n\
-\tvar listeners = {};\n\
+THREE.EventDispatcher.prototype = {\n\
 \n\
-\tthis.addEventListener = function ( type, listener ) {\n\
+\tconstructor: THREE.EventDispatcher,\n\
+\n\
+\tapply: function ( object ) {\n\
+\n\
+\t\tobject.addEventListener = THREE.EventDispatcher.prototype.addEventListener;\n\
+\t\tobject.hasEventListener = THREE.EventDispatcher.prototype.hasEventListener;\n\
+\t\tobject.removeEventListener = THREE.EventDispatcher.prototype.removeEventListener;\n\
+\t\tobject.dispatchEvent = THREE.EventDispatcher.prototype.dispatchEvent;\n\
+\n\
+\t},\n\
+\n\
+\taddEventListener: function ( type, listener ) {\n\
+\n\
+\t\tif ( this._listeners === undefined ) this._listeners = {};\n\
+\n\
+\t\tvar listeners = this._listeners;\n\
 \n\
 \t\tif ( listeners[ type ] === undefined ) {\n\
 \n\
@@ -8895,10 +10410,29 @@ THREE.EventDispatcher = function () {\n\
 \n\
 \t\t}\n\
 \n\
-\t};\n\
+\t},\n\
 \n\
-\tthis.removeEventListener = function ( type, listener ) {\n\
+\thasEventListener: function ( type, listener ) {\n\
 \n\
+\t\tif ( this._listeners === undefined ) return false;\n\
+\n\
+\t\tvar listeners = this._listeners;\n\
+\n\
+\t\tif ( listeners[ type ] !== undefined && listeners[ type ].indexOf( listener ) !== - 1 ) {\n\
+\n\
+\t\t\treturn true;\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn false;\n\
+\n\
+\t},\n\
+\n\
+\tremoveEventListener: function ( type, listener ) {\n\
+\n\
+\t\tif ( this._listeners === undefined ) return;\n\
+\n\
+\t\tvar listeners = this._listeners;\n\
 \t\tvar index = listeners[ type ].indexOf( listener );\n\
 \n\
 \t\tif ( index !== - 1 ) {\n\
@@ -8907,10 +10441,13 @@ THREE.EventDispatcher = function () {\n\
 \n\
 \t\t}\n\
 \n\
-\t};\n\
+\t},\n\
 \n\
-\tthis.dispatchEvent = function ( event ) {\n\
+\tdispatchEvent: function ( event ) {\n\
 \n\
+\t\tif ( this._listeners === undefined ) return;\n\
+\n\
+\t\tvar listeners = this._listeners;\n\
 \t\tvar listenerArray = listeners[ event.type ];\n\
 \n\
 \t\tif ( listenerArray !== undefined ) {\n\
@@ -8925,12 +10462,14 @@ THREE.EventDispatcher = function () {\n\
 \n\
 \t\t}\n\
 \n\
-\t};\n\
+\t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author bhouston / http://exocortex.com/\n\
+ * @author stephomi / http://stephaneginier.com/\n\
  */\n\
 \n\
 ( function ( THREE ) {\n\
@@ -8938,13 +10477,7 @@ THREE.EventDispatcher = function () {\n\
 \tTHREE.Raycaster = function ( origin, direction, near, far ) {\n\
 \n\
 \t\tthis.ray = new THREE.Ray( origin, direction );\n\
-\t\t\n\
-\t\t// normalized ray.direction required for accurate distance calculations\n\
-\t\tif( this.ray.direction.length() > 0 ) {\n\
-\n\
-\t\t\tthis.ray.direction.normalize();\n\
-\n\
-\t\t}\n\
+\t\t// direction is assumed to be normalized (for accurate distance calculations)\n\
 \n\
 \t\tthis.near = near || 0;\n\
 \t\tthis.far = far || Infinity;\n\
@@ -8955,6 +10488,7 @@ THREE.EventDispatcher = function () {\n\
 \tvar localRay = new THREE.Ray();\n\
 \tvar facePlane = new THREE.Plane();\n\
 \tvar intersectPoint = new THREE.Vector3();\n\
+\tvar matrixPosition = new THREE.Vector3();\n\
 \n\
 \tvar inverseMatrix = new THREE.Matrix4();\n\
 \n\
@@ -8964,15 +10498,16 @@ THREE.EventDispatcher = function () {\n\
 \n\
 \t};\n\
 \n\
-\tvar v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3();\n\
-\n\
-\t// http://www.blackpawn.com/texts/pointinpoly/default.html\n\
+\tvar vA = new THREE.Vector3();\n\
+\tvar vB = new THREE.Vector3();\n\
+\tvar vC = new THREE.Vector3();\n\
 \n\
 \tvar intersectObject = function ( object, raycaster, intersects ) {\n\
 \n\
 \t\tif ( object instanceof THREE.Particle ) {\n\
 \n\
-\t\t\tvar distance = raycaster.ray.distanceToPoint( object.matrixWorld.getPosition() );\n\
+\t\t\tmatrixPosition.getPositionFromMatrix( object.matrixWorld );\n\
+\t\t\tvar distance = raycaster.ray.distanceToPoint( matrixPosition );\n\
 \n\
 \t\t\tif ( distance > object.scale.x ) {\n\
 \n\
@@ -8989,103 +10524,263 @@ THREE.EventDispatcher = function () {\n\
 \n\
 \t\t\t} );\n\
 \n\
+\t\t} else if ( object instanceof THREE.LOD ) {\n\
+\n\
+\t\t\tmatrixPosition.getPositionFromMatrix( object.matrixWorld );\n\
+\t\t\tvar distance = raycaster.ray.origin.distanceTo( matrixPosition );\n\
+\n\
+\t\t\tintersectObject( object.getObjectForDistance( distance ), raycaster, intersects );\n\
+\n\
 \t\t} else if ( object instanceof THREE.Mesh ) {\n\
 \n\
-\t\t\t// Checking boundingSphere distance to ray\n\
-\t\t\tsphere.set(\n\
-\t\t\t\tobject.matrixWorld.getPosition(),\n\
-\t\t\t\tobject.geometry.boundingSphere.radius* object.matrixWorld.getMaxScaleOnAxis() );\n\
+\t\t\tvar geometry = object.geometry;\n\
 \n\
-\t\t\tif ( ! raycaster.ray.isIntersectionSphere( sphere ) ) {\n\
+\t\t\t// Checking boundingSphere distance to ray\n\
+\n\
+\t\t\tif ( geometry.boundingSphere === null ) geometry.computeBoundingSphere();\n\
+\n\
+\t\t\tsphere.copy( geometry.boundingSphere );\n\
+\t\t\tsphere.applyMatrix4( object.matrixWorld );\n\
+\n\
+\t\t\tif ( raycaster.ray.isIntersectionSphere( sphere ) === false ) {\n\
 \n\
 \t\t\t\treturn intersects;\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\t// Checking faces\n\
+\t\t\t// Check boundingBox before continuing\n\
+\t\t\t\n\
+\t\t\tinverseMatrix.getInverse( object.matrixWorld );  \n\
+\t\t\tlocalRay.copy( raycaster.ray ).applyMatrix4( inverseMatrix );\n\
 \n\
-\t\t\tvar geometry = object.geometry;\n\
-\t\t\tvar vertices = geometry.vertices;\n\
+\t\t\tif ( geometry.boundingBox !== null ) {\n\
 \n\
-\t\t\tvar isFaceMaterial = object.material instanceof THREE.MeshFaceMaterial;\n\
-\t\t\tvar objectMaterials = isFaceMaterial === true ? object.material.materials : null;\n\
+\t\t\t\tif ( localRay.isIntersectionBox( geometry.boundingBox ) === false )  {\n\
 \n\
-\t\t\tvar side = object.material.side;\n\
-\n\
-\t\t\tvar a, b, c, d;\n\
-\t\t\tvar precision = raycaster.precision;\n\
-\n\
-\t\t\tobject.matrixRotationWorld.extractRotation( object.matrixWorld );\n\
-\n\
-\t\t\tinverseMatrix.getInverse( object.matrixWorld );\n\
-\n\
-\t\t\tlocalRay.copy( raycaster.ray ).transform( inverseMatrix );\n\
-\t\n\
-\t\t\tfor ( var f = 0, fl = geometry.faces.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tvar face = geometry.faces[ f ];\n\
-\n\
-\t\t\t\tvar material = isFaceMaterial === true ? objectMaterials[ face.materialIndex ] : object.material;\n\
-\n\
-\t\t\t\tif ( material === undefined ) continue;\n\
-\t\t\t\t\n\
-\t\t\t\tfacePlane.setFromNormalAndCoplanarPoint( face.normal, vertices[face.a] );\n\
-\n\
-\t\t\t\tvar planeDistance = localRay.distanceToPlane( facePlane );\n\
-\t\n\
-\t\t\t\t// bail if raycaster and plane are parallel\n\
-\t\t\t\tif ( Math.abs( planeDistance ) < precision ) continue;\n\
-\t\n\
-\t\t\t\t// if negative distance, then plane is behind raycaster\n\
-\t\t\t\tif ( planeDistance < 0 ) continue;\n\
-\n\
-\t\t\t\t// check if we hit the wrong side of a single sided face\n\
-\t\t\t\tside = material.side;\n\
-\t\t\t\tif( side !== THREE.DoubleSide ) {\n\
-\n\
-\t\t\t\t\tvar planeSign = localRay.direction.dot( facePlane.normal );\n\
-\n\
-\t\t\t\t\tif( ! ( side === THREE.FrontSide ? planeSign < 0 : planeSign > 0 ) ) continue;\n\
+\t\t\t\t\treturn intersects;\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\t// this can be done using the planeDistance from localRay because localRay wasn't normalized, but ray was\n\
-\t\t\t\tif ( planeDistance < raycaster.near || planeDistance > raycaster.far ) continue;\n\
-\t\t\t\t\n\
-\t\t\t\tintersectPoint = localRay.at( planeDistance, intersectPoint ); // passing in intersectPoint avoids a copy\n\
+\t\t\t} \n\
 \n\
-\t\t\t\tif ( face instanceof THREE.Face3 ) {\n\
+\t\t\tvar vertices = geometry.vertices;\n\
 \n\
-\t\t\t\t\ta = vertices[ face.a ];\n\
-\t\t\t\t\tb = vertices[ face.b ];\n\
-\t\t\t\t\tc = vertices[ face.c ];\n\
+\t\t\tif ( geometry instanceof THREE.BufferGeometry ) {\n\
 \n\
-\t\t\t\t\tif ( ! THREE.Triangle.containsPoint( intersectPoint, a, b, c ) ) continue;\n\
+\t\t\t\tvar material = object.material;\n\
 \n\
-\t\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
+\t\t\t\tif ( material === undefined ) return intersects;\n\
+\t\t\t\tif ( geometry.dynamic === false ) return intersects;\n\
 \n\
-\t\t\t\t\ta = vertices[ face.a ];\n\
-\t\t\t\t\tb = vertices[ face.b ];\n\
-\t\t\t\t\tc = vertices[ face.c ];\n\
-\t\t\t\t\td = vertices[ face.d ];\n\
+\t\t\t\tvar a, b, c;\n\
+\t\t\t\tvar precision = raycaster.precision;\n\
 \n\
-\t\t\t\t\tif ( ( ! THREE.Triangle.containsPoint( intersectPoint, a, b, d ) ) &&\n\
-\t\t\t\t\t\t ( ! THREE.Triangle.containsPoint( intersectPoint, b, c, d ) ) ) continue;\n\
+\t\t\t\tif ( geometry.attributes.index !== undefined ) {\n\
+\n\
+\t\t\t\t\tvar offsets = geometry.offsets;\n\
+\t\t\t\t\tvar indices = geometry.attributes.index.array;\n\
+\t\t\t\t\tvar positions = geometry.attributes.position.array;\n\
+\t\t\t\t\tvar offLength = geometry.offsets.length;\n\
+\n\
+\t\t\t\t\tvar fl = geometry.attributes.index.array.length / 3;\n\
+\n\
+\t\t\t\t\tfor ( var oi = 0; oi < offLength; ++oi ) {\n\
+\n\
+\t\t\t\t\t\tvar start = offsets[ oi ].start;\n\
+\t\t\t\t\t\tvar count = offsets[ oi ].count;\n\
+\t\t\t\t\t\tvar index = offsets[ oi ].index;\n\
+\n\
+\t\t\t\t\t\tfor ( var i = start, il = start + count; i < il; i += 3 ) {\n\
+\n\
+\t\t\t\t\t\t\ta = index + indices[ i ];\n\
+\t\t\t\t\t\t\tb = index + indices[ i + 1 ]; \n\
+\t\t\t\t\t\t\tc = index + indices[ i + 2 ];\n\
+\n\
+\t\t\t\t\t\t\tvA.set(\n\
+\t\t\t\t\t\t\t\tpositions[ a * 3 ],\n\
+\t\t\t\t\t\t\t\tpositions[ a * 3 + 1 ],\n\
+\t\t\t\t\t\t\t\tpositions[ a * 3 + 2 ]\n\
+\t\t\t\t\t\t\t);\n\
+\t\t\t\t\t\t\tvB.set(\n\
+\t\t\t\t\t\t\t\tpositions[ b * 3 ],\n\
+\t\t\t\t\t\t\t\tpositions[ b * 3 + 1 ],\n\
+\t\t\t\t\t\t\t\tpositions[ b * 3 + 2 ]\n\
+\t\t\t\t\t\t\t);\n\
+\t\t\t\t\t\t\tvC.set(\n\
+\t\t\t\t\t\t\t\tpositions[ c * 3 ],\n\
+\t\t\t\t\t\t\t\tpositions[ c * 3 + 1 ],\n\
+\t\t\t\t\t\t\t\tpositions[ c * 3 + 2 ]\n\
+\t\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\t\tvar intersectionPoint = localRay.intersectTriangle( vA, vB, vC, material.side !== THREE.DoubleSide );\n\
+\n\
+\t\t\t\t\t\t\tif ( intersectionPoint === null ) continue;\n\
+\n\
+\t\t\t\t\t\t\tintersectionPoint.applyMatrix4( object.matrixWorld );\n\
+\n\
+\t\t\t\t\t\t\tvar distance = raycaster.ray.origin.distanceTo( intersectionPoint );\n\
+\n\
+\t\t\t\t\t\t\tif ( distance < precision || distance < raycaster.near || distance > raycaster.far ) continue;\n\
+\n\
+\t\t\t\t\t\t\tintersects.push( {\n\
+\n\
+\t\t\t\t\t\t\t\tdistance: distance,\n\
+\t\t\t\t\t\t\t\tpoint: intersectionPoint,\n\
+\t\t\t\t\t\t\t\tface: null,\n\
+\t\t\t\t\t\t\t\tfaceIndex: null,\n\
+\t\t\t\t\t\t\t\tobject: object\n\
+\n\
+\t\t\t\t\t\t\t} );\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t}\n\
 \n\
 \t\t\t\t} else {\n\
 \n\
-\t\t\t\t\t// This is added because if we call out of this if/else group when none of the cases\n\
-\t\t\t\t\t//    match it will add a point to the intersection list erroneously.\n\
-\t\t\t\t\tthrow Error( \"face type not supported\" );\n\
+\t\t\t\t\tvar offsets = geometry.offsets;\n\
+\t\t\t\t\tvar positions = geometry.attributes.position.array;\n\
+\t\t\t\t\tvar offLength = geometry.offsets.length;\n\
+\n\
+\t\t\t\t\tvar fl = geometry.attributes.position.array.length;\n\
+\n\
+\t\t\t\t\tfor ( var i = 0; i < fl; i += 3 ) {\n\
+\n\
+\t\t\t\t\t\ta = i;\n\
+\t\t\t\t\t\tb = i + 1;\n\
+\t\t\t\t\t\tc = i + 2;\n\
+\n\
+\t\t\t\t\t\tvA.set(\n\
+\t\t\t\t\t\t\tpositions[ a * 3 ],\n\
+\t\t\t\t\t\t\tpositions[ a * 3 + 1 ],\n\
+\t\t\t\t\t\t\tpositions[ a * 3 + 2 ]\n\
+\t\t\t\t\t\t);\n\
+\t\t\t\t\t\tvB.set(\n\
+\t\t\t\t\t\t\tpositions[ b * 3 ],\n\
+\t\t\t\t\t\t\tpositions[ b * 3 + 1 ],\n\
+\t\t\t\t\t\t\tpositions[ b * 3 + 2 ]\n\
+\t\t\t\t\t\t);\n\
+\t\t\t\t\t\tvC.set(\n\
+\t\t\t\t\t\t\tpositions[ c * 3 ],\n\
+\t\t\t\t\t\t\tpositions[ c * 3 + 1 ],\n\
+\t\t\t\t\t\t\tpositions[ c * 3 + 2 ]\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tvar intersectionPoint = localRay.intersectTriangle( vA, vB, vC, material.side !== THREE.DoubleSide );\n\
+\n\
+\t\t\t\t\t\tif ( intersectionPoint === null ) continue;\n\
+\n\
+\t\t\t\t\t\tintersectionPoint.applyMatrix4( object.matrixWorld );\n\
+\n\
+\t\t\t\t\t\tvar distance = raycaster.ray.origin.distanceTo( intersectionPoint );\n\
+\n\
+\t\t\t\t\t\tif ( distance < precision || distance < raycaster.near || distance > raycaster.far ) continue;\n\
+\n\
+\t\t\t\t\t\tintersects.push( {\n\
+\n\
+\t\t\t\t\t\t\tdistance: distance,\n\
+\t\t\t\t\t\t\tpoint: intersectionPoint,\n\
+\t\t\t\t\t\t\tface: null,\n\
+\t\t\t\t\t\t\tfaceIndex: null,\n\
+\t\t\t\t\t\t\tobject: object\n\
+\n\
+\t\t\t\t\t\t} );\n\
+\n\
+\t\t\t\t\t}\n\
 \n\
 \t\t\t\t}\n\
 \n\
+\t\t\t} else if ( geometry instanceof THREE.Geometry ) {\n\
+\n\
+\t\t\t\tvar isFaceMaterial = object.material instanceof THREE.MeshFaceMaterial;\n\
+\t\t\t\tvar objectMaterials = isFaceMaterial === true ? object.material.materials : null;\n\
+\n\
+\t\t\t\tvar a, b, c, d;\n\
+\t\t\t\tvar precision = raycaster.precision;\n\
+\n\
+\t\t\t\tfor ( var f = 0, fl = geometry.faces.length; f < fl; f ++ ) {\n\
+\n\
+\t\t\t\t\tvar face = geometry.faces[ f ];\n\
+\n\
+\t\t\t\t\tvar material = isFaceMaterial === true ? objectMaterials[ face.materialIndex ] : object.material;\n\
+\n\
+\t\t\t\t\tif ( material === undefined ) continue;\n\
+\n\
+\t\t\t\t\ta = vertices[ face.a ];\n\
+\t\t\t\t\tb = vertices[ face.b ];\n\
+\t\t\t\t\tc = vertices[ face.c ];\n\
+\t\t\t\t\t\n\
+\t\t\t\t\tvar intersectionPoint = localRay.intersectTriangle( a, b, c, material.side !== THREE.DoubleSide );\n\
+\n\
+\t\t\t\t\tif ( intersectionPoint === null ) continue;\n\
+\n\
+\t\t\t\t\tintersectionPoint.applyMatrix4( object.matrixWorld );\n\
+\n\
+\t\t\t\t\tvar distance = raycaster.ray.origin.distanceTo( intersectionPoint );\n\
+\n\
+\t\t\t\t\tif ( distance < precision || distance < raycaster.near || distance > raycaster.far ) continue;\n\
+\n\
+\t\t\t\t\tintersects.push( {\n\
+\n\
+\t\t\t\t\t\tdistance: distance,\n\
+\t\t\t\t\t\tpoint: intersectionPoint,\n\
+\t\t\t\t\t\tface: face,\n\
+\t\t\t\t\t\tfaceIndex: f,\n\
+\t\t\t\t\t\tobject: object\n\
+\n\
+\t\t\t\t\t} );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( object instanceof THREE.Line ) {\n\
+\n\
+\t\t\tvar precision = raycaster.linePrecision;\n\
+\t\t\tvar precisionSq = precision * precision;\n\
+\n\
+\t\t\tvar geometry = object.geometry;\n\
+\n\
+\t\t\tif ( geometry.boundingSphere === null ) geometry.computeBoundingSphere();\n\
+\n\
+\t\t\t// Checking boundingSphere distance to ray\n\
+\n\
+\t\t\tsphere.copy( geometry.boundingSphere );\n\
+\t\t\tsphere.applyMatrix4( object.matrixWorld );\n\
+\t\t\t\n\
+\t\t\tif ( raycaster.ray.isIntersectionSphere( sphere ) === false ) {\n\
+\n\
+\t\t\t\treturn intersects;\n\
+\n\
+\t\t\t}\n\
+\t\t\t\n\
+\t\t\tinverseMatrix.getInverse( object.matrixWorld );\n\
+\t\t\tlocalRay.copy( raycaster.ray ).applyMatrix4( inverseMatrix );\n\
+\n\
+\t\t\tvar vertices = geometry.vertices;\n\
+\t\t\tvar nbVertices = vertices.length;\n\
+\t\t\tvar interSegment = new THREE.Vector3();\n\
+\t\t\tvar interRay = new THREE.Vector3();\n\
+\t\t\tvar step = object.type === THREE.LineStrip ? 1 : 2;\n\
+\n\
+\t\t\tfor ( var i = 0; i < nbVertices - 1; i = i + step ) {\n\
+\n\
+\t\t\t\tvar distSq = localRay.distanceSqToSegment( vertices[ i ], vertices[ i + 1 ], interRay, interSegment );\n\
+\n\
+\t\t\t\tif ( distSq > precisionSq ) continue;\n\
+\n\
+\t\t\t\tvar distance = localRay.origin.distanceTo( interRay );\n\
+\n\
+\t\t\t\tif ( distance < raycaster.near || distance > raycaster.far ) continue;\n\
+\n\
 \t\t\t\tintersects.push( {\n\
 \n\
-\t\t\t\t\tdistance: planeDistance,\t// this works because the original ray was normalized, and the transformed localRay wasn't\n\
-\t\t\t\t\tpoint: raycaster.ray.at( planeDistance ),\n\
-\t\t\t\t\tface: face,\n\
-\t\t\t\t\tfaceIndex: f,\n\
+\t\t\t\t\tdistance: distance,\n\
+\t\t\t\t\t// What do we want? intersection point on the ray or on the segment??\n\
+\t\t\t\t\t// point: raycaster.ray.at( distance ),\n\
+\t\t\t\t\tpoint: interSegment.clone().applyMatrix4( object.matrixWorld ),\n\
+\t\t\t\t\tface: null,\n\
+\t\t\t\t\tfaceIndex: null,\n\
 \t\t\t\t\tobject: object\n\
 \n\
 \t\t\t\t} );\n\
@@ -9110,17 +10805,12 @@ THREE.EventDispatcher = function () {\n\
 \t//\n\
 \n\
 \tTHREE.Raycaster.prototype.precision = 0.0001;\n\
+\tTHREE.Raycaster.prototype.linePrecision = 1;\n\
 \n\
 \tTHREE.Raycaster.prototype.set = function ( origin, direction ) {\n\
 \n\
 \t\tthis.ray.set( origin, direction );\n\
-\n\
-\t\t// normalized ray.direction required for accurate distance calculations\n\
-\t\tif( this.ray.direction.length() > 0 ) {\n\
-\n\
-\t\t\tthis.ray.direction.normalize();\n\
-\n\
-\t\t}\n\
+\t\t// direction is assumed to be normalized (for accurate distance calculations)\n\
 \n\
 \t};\n\
 \n\
@@ -9155,6 +10845,7 @@ THREE.EventDispatcher = function () {\n\
 \t\t\t\tintersectDescendants( objects[ i ], this, intersects );\n\
 \n\
 \t\t\t}\n\
+\n\
 \t\t}\n\
 \n\
 \t\tintersects.sort( descSort );\n\
@@ -9164,18 +10855,20 @@ THREE.EventDispatcher = function () {\n\
 \t};\n\
 \n\
 }( THREE ) );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
  */\n\
 \n\
 THREE.Object3D = function () {\n\
 \n\
 \tthis.id = THREE.Object3DIdCount ++;\n\
+\tthis.uuid = THREE.Math.generateUUID();\n\
 \n\
 \tthis.name = '';\n\
-\tthis.properties = {};\n\
 \n\
 \tthis.parent = undefined;\n\
 \tthis.children = [];\n\
@@ -9183,9 +10876,14 @@ THREE.Object3D = function () {\n\
 \tthis.up = new THREE.Vector3( 0, 1, 0 );\n\
 \n\
 \tthis.position = new THREE.Vector3();\n\
-\tthis.rotation = new THREE.Vector3();\n\
-\tthis.eulerOrder = THREE.Object3D.defaultEulerOrder;\n\
+\tthis.rotation = new THREE.Euler();\n\
+\tthis.quaternion = new THREE.Quaternion();\n\
 \tthis.scale = new THREE.Vector3( 1, 1, 1 );\n\
+\n\
+\t// keep rotation and quaternion in sync\n\
+\n\
+\tthis.rotation._quaternion = this.quaternion;\n\
+\tthis.quaternion._euler = this.rotation;\n\
 \n\
 \tthis.renderDepth = null;\n\
 \n\
@@ -9193,13 +10891,9 @@ THREE.Object3D = function () {\n\
 \n\
 \tthis.matrix = new THREE.Matrix4();\n\
 \tthis.matrixWorld = new THREE.Matrix4();\n\
-\tthis.matrixRotationWorld = new THREE.Matrix4();\n\
 \n\
 \tthis.matrixAutoUpdate = true;\n\
 \tthis.matrixWorldNeedsUpdate = true;\n\
-\n\
-\tthis.quaternion = new THREE.Quaternion();\n\
-\tthis.useQuaternion = false;\n\
 \n\
 \tthis.visible = true;\n\
 \n\
@@ -9208,7 +10902,7 @@ THREE.Object3D = function () {\n\
 \n\
 \tthis.frustumCulled = true;\n\
 \n\
-\tthis._vector = new THREE.Vector3();\n\
+\tthis.userData = {};\n\
 \n\
 };\n\
 \n\
@@ -9217,77 +10911,236 @@ THREE.Object3D.prototype = {\n\
 \n\
 \tconstructor: THREE.Object3D,\n\
 \n\
-\tapplyMatrix: function ( matrix ) {\n\
+\tget eulerOrder () {\n\
 \n\
-\t\tthis.matrix.multiply( matrix, this.matrix );\n\
+\t\tconsole.warn( 'DEPRECATED: Object3D\\'s .eulerOrder has been moved to Object3D\\'s .rotation.order.' );\n\
 \n\
-\t\tthis.scale.getScaleFromMatrix( this.matrix );\n\
-\n\
-\t\tvar mat = new THREE.Matrix4().extractRotation( this.matrix );\n\
-\t\tthis.rotation.setEulerFromRotationMatrix( mat, this.eulerOrder );\n\
-\n\
-\t\tthis.position.getPositionFromMatrix( this.matrix );\n\
+\t\treturn this.rotation.order;\n\
 \n\
 \t},\n\
 \n\
-\ttranslate: function ( distance, axis ) {\n\
+\tset eulerOrder ( value ) {\n\
 \n\
-\t\tthis.matrix.rotateAxis( axis );\n\
-\t\tthis.position.addSelf( axis.multiplyScalar( distance ) );\n\
+\t\tconsole.warn( 'DEPRECATED: Object3D\\'s .eulerOrder has been moved to Object3D\\'s .rotation.order.' );\n\
 \n\
-\t},\n\
-\n\
-\ttranslateX: function ( distance ) {\n\
-\n\
-\t\tthis.translate( distance, this._vector.set( 1, 0, 0 ) );\n\
+\t\tthis.rotation.order = value;\n\
 \n\
 \t},\n\
 \n\
-\ttranslateY: function ( distance ) {\n\
+\tget useQuaternion () {\n\
 \n\
-\t\tthis.translate( distance, this._vector.set( 0, 1, 0 ) );\n\
-\n\
-\t},\n\
-\n\
-\ttranslateZ: function ( distance ) {\n\
-\n\
-\t\tthis.translate( distance, this._vector.set( 0, 0, 1 ) );\n\
+\t\tconsole.warn( 'DEPRECATED: Object3D\\'s .useQuaternion has been removed. The library now uses quaternions by default.' );\n\
 \n\
 \t},\n\
 \n\
-\tlocalToWorld: function ( vector ) {\n\
+\tset useQuaternion ( value ) {\n\
 \n\
-\t\treturn this.matrixWorld.multiplyVector3( vector );\n\
-\n\
-\t},\n\
-\n\
-\tworldToLocal: function ( vector ) {\n\
-\n\
-\t\treturn THREE.Object3D.__m1.getInverse( this.matrixWorld ).multiplyVector3( vector );\n\
+\t\tconsole.warn( 'DEPRECATED: Object3D\\'s .useQuaternion has been removed. The library now uses quaternions by default.' );\n\
 \n\
 \t},\n\
 \n\
-\tlookAt: function ( vector ) {\n\
+\tapplyMatrix: function () {\n\
 \n\
-\t\t// TODO: Add hierarchy support.\n\
+\t\tvar m1 = new THREE.Matrix4();\n\
 \n\
-\t\tthis.matrix.lookAt( vector, this.position, this.up );\n\
+\t\treturn function ( matrix ) {\n\
 \n\
-\t\tif ( this.rotationAutoUpdate ) {\n\
+\t\t\tthis.matrix.multiplyMatrices( matrix, this.matrix );\n\
 \n\
-\t\t\tif ( this.useQuaternion === false )  {\n\
+\t\t\tthis.position.getPositionFromMatrix( this.matrix );\n\
 \n\
-\t\t\t\tthis.rotation.setEulerFromRotationMatrix( this.matrix, this.eulerOrder );\n\
+\t\t\tthis.scale.getScaleFromMatrix( this.matrix );\n\
 \n\
-\t\t\t} else {\n\
+\t\t\tm1.extractRotation( this.matrix );\n\
 \n\
-\t\t\t\tthis.quaternion.copy( this.matrix.decompose()[ 1 ] );\n\
-\n\
-\t\t\t}\n\
+\t\t\tthis.quaternion.setFromRotationMatrix( m1 );\n\
 \n\
 \t\t}\n\
 \n\
+\t}(),\n\
+\n\
+\tsetRotationFromAxisAngle: function ( axis, angle ) {\n\
+\n\
+\t\t// assumes axis is normalized\n\
+\n\
+\t\tthis.quaternion.setFromAxisAngle( axis, angle );\n\
+\n\
 \t},\n\
+\n\
+\tsetRotationFromEuler: function ( euler ) {\n\
+\n\
+\t\tthis.quaternion.setFromEuler( euler, true );\n\
+\n\
+\t},\n\
+\n\
+\tsetRotationFromMatrix: function ( m ) {\n\
+\n\
+\t\t// assumes the upper 3x3 of m is a pure rotation matrix (i.e, unscaled)\n\
+\n\
+\t\tthis.quaternion.setFromRotationMatrix( m );\n\
+\n\
+\t},\n\
+\n\
+\tsetRotationFromQuaternion: function ( q ) {\n\
+\n\
+\t\t// assumes q is normalized\n\
+\n\
+\t\tthis.quaternion.copy( q );\n\
+\n\
+\t},\n\
+\n\
+\trotateOnAxis: function() {\n\
+\n\
+\t\t// rotate object on axis in object space\n\
+\t\t// axis is assumed to be normalized\n\
+\n\
+\t\tvar q1 = new THREE.Quaternion();\n\
+\n\
+\t\treturn function ( axis, angle ) {\n\
+\n\
+\t\t\tq1.setFromAxisAngle( axis, angle );\n\
+\n\
+\t\t\tthis.quaternion.multiply( q1 );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t}\n\
+\n\
+\t}(),\n\
+\n\
+\trotateX: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3( 1, 0, 0 );\n\
+\n\
+\t\treturn function ( angle ) {\n\
+\n\
+\t\t\treturn this.rotateOnAxis( v1, angle );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\trotateY: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3( 0, 1, 0 );\n\
+\n\
+\t\treturn function ( angle ) {\n\
+\n\
+\t\t\treturn this.rotateOnAxis( v1, angle );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\trotateZ: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3( 0, 0, 1 );\n\
+\n\
+\t\treturn function ( angle ) {\n\
+\n\
+\t\t\treturn this.rotateOnAxis( v1, angle );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\ttranslateOnAxis: function () {\n\
+\n\
+\t\t// translate object by distance along axis in object space\n\
+\t\t// axis is assumed to be normalized\n\
+\n\
+\t\tvar v1 = new THREE.Vector3();\n\
+\n\
+\t\treturn function ( axis, distance ) {\n\
+\n\
+\t\t\tv1.copy( axis );\n\
+\n\
+\t\t\tv1.applyQuaternion( this.quaternion );\n\
+\n\
+\t\t\tthis.position.add( v1.multiplyScalar( distance ) );\n\
+\n\
+\t\t\treturn this;\n\
+\n\
+\t\t}\n\
+\n\
+\t}(),\n\
+\n\
+\ttranslate: function ( distance, axis ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: Object3D\\'s .translate() has been removed. Use .translateOnAxis( axis, distance ) instead. Note args have been changed.' );\n\
+\t\treturn this.translateOnAxis( axis, distance );\n\
+\n\
+\t},\n\
+\n\
+\ttranslateX: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3( 1, 0, 0 );\n\
+\n\
+\t\treturn function ( distance ) {\n\
+\n\
+\t\t\treturn this.translateOnAxis( v1, distance );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\ttranslateY: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3( 0, 1, 0 );\n\
+\n\
+\t\treturn function ( distance ) {\n\
+\n\
+\t\t\treturn this.translateOnAxis( v1, distance );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\ttranslateZ: function () {\n\
+\n\
+\t\tvar v1 = new THREE.Vector3( 0, 0, 1 );\n\
+\n\
+\t\treturn function ( distance ) {\n\
+\n\
+\t\t\treturn this.translateOnAxis( v1, distance );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tlocalToWorld: function ( vector ) {\n\
+\n\
+\t\treturn vector.applyMatrix4( this.matrixWorld );\n\
+\n\
+\t},\n\
+\n\
+\tworldToLocal: function () {\n\
+\n\
+\t\tvar m1 = new THREE.Matrix4();\n\
+\n\
+\t\treturn function ( vector ) {\n\
+\n\
+\t\t\treturn vector.applyMatrix4( m1.getInverse( this.matrixWorld ) );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
+\n\
+\tlookAt: function () {\n\
+\n\
+\t\t// This routine does not support objects with rotated and/or translated parent(s)\n\
+\n\
+\t\tvar m1 = new THREE.Matrix4();\n\
+\n\
+\t\treturn function ( vector ) {\n\
+\n\
+\t\t\tm1.lookAt( vector, this.position, this.up );\n\
+\n\
+\t\t\tthis.quaternion.setFromRotationMatrix( m1 );\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \tadd: function ( object ) {\n\
 \n\
@@ -9307,6 +11160,8 @@ THREE.Object3D.prototype = {\n\
 \t\t\t}\n\
 \n\
 \t\t\tobject.parent = this;\n\
+\t\t\tobject.dispatchEvent( { type: 'added' } );\n\
+\n\
 \t\t\tthis.children.push( object );\n\
 \n\
 \t\t\t// add to scene\n\
@@ -9336,6 +11191,8 @@ THREE.Object3D.prototype = {\n\
 \t\tif ( index !== - 1 ) {\n\
 \n\
 \t\t\tobject.parent = undefined;\n\
+\t\t\tobject.dispatchEvent( { type: 'removed' } );\n\
+\n\
 \t\t\tthis.children.splice( index, 1 );\n\
 \n\
 \t\t\t// remove from scene\n\
@@ -9370,7 +11227,37 @@ THREE.Object3D.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tgetChildByName: function ( name, recursive ) {\n\
+\tgetObjectById: function ( id, recursive ) {\n\
+\n\
+\t\tfor ( var i = 0, l = this.children.length; i < l; i ++ ) {\n\
+\n\
+\t\t\tvar child = this.children[ i ];\n\
+\n\
+\t\t\tif ( child.id === id ) {\n\
+\n\
+\t\t\t\treturn child;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( recursive === true ) {\n\
+\n\
+\t\t\t\tchild = child.getObjectById( id, recursive );\n\
+\n\
+\t\t\t\tif ( child !== undefined ) {\n\
+\n\
+\t\t\t\t\treturn child;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn undefined;\n\
+\n\
+\t},\n\
+\n\
+\tgetObjectByName: function ( name, recursive ) {\n\
 \n\
 \t\tfor ( var i = 0, l = this.children.length; i < l; i ++ ) {\n\
 \n\
@@ -9384,7 +11271,7 @@ THREE.Object3D.prototype = {\n\
 \n\
 \t\t\tif ( recursive === true ) {\n\
 \n\
-\t\t\t\tchild = child.getChildByName( name, recursive );\n\
+\t\t\t\tchild = child.getObjectByName( name, recursive );\n\
 \n\
 \t\t\t\tif ( child !== undefined ) {\n\
 \n\
@@ -9397,6 +11284,13 @@ THREE.Object3D.prototype = {\n\
 \t\t}\n\
 \n\
 \t\treturn undefined;\n\
+\n\
+\t},\n\
+\n\
+\tgetChildByName: function ( name, recursive ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: Object3D\\'s .getChildByName() has been renamed to .getObjectByName().' );\n\
+\t\treturn this.getObjectByName( name, recursive );\n\
 \n\
 \t},\n\
 \n\
@@ -9418,23 +11312,7 @@ THREE.Object3D.prototype = {\n\
 \n\
 \tupdateMatrix: function () {\n\
 \n\
-\t\tthis.matrix.setPosition( this.position );\n\
-\n\
-\t\tif ( this.useQuaternion === false )  {\n\
-\n\
-\t\t\tthis.matrix.setRotationFromEuler( this.rotation, this.eulerOrder );\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tthis.matrix.setRotationFromQuaternion( this.quaternion );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( this.scale.x !== 1 || this.scale.y !== 1 || this.scale.z !== 1 ) {\n\
-\n\
-\t\t\tthis.matrix.scale( this.scale );\n\
-\n\
-\t\t}\n\
+\t\tthis.matrix.compose( this.position, this.quaternion, this.scale );\n\
 \n\
 \t\tthis.matrixWorldNeedsUpdate = true;\n\
 \n\
@@ -9452,7 +11330,7 @@ THREE.Object3D.prototype = {\n\
 \n\
 \t\t\t} else {\n\
 \n\
-\t\t\t\tthis.matrixWorld.multiply( this.parent.matrixWorld, this.matrix );\n\
+\t\t\t\tthis.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -9472,17 +11350,17 @@ THREE.Object3D.prototype = {\n\
 \n\
 \t},\n\
 \n\
-\tclone: function ( object ) {\n\
+\tclone: function ( object, recursive ) {\n\
 \n\
 \t\tif ( object === undefined ) object = new THREE.Object3D();\n\
+\t\tif ( recursive === undefined ) recursive = true;\n\
 \n\
 \t\tobject.name = this.name;\n\
 \n\
 \t\tobject.up.copy( this.up );\n\
 \n\
 \t\tobject.position.copy( this.position );\n\
-\t\tif ( object.rotation instanceof THREE.Vector3 ) object.rotation.copy( this.rotation ); // because of Sprite madness\n\
-\t\tobject.eulerOrder = this.eulerOrder;\n\
+\t\tobject.quaternion.copy( this.quaternion );\n\
 \t\tobject.scale.copy( this.scale );\n\
 \n\
 \t\tobject.renderDepth = this.renderDepth;\n\
@@ -9491,13 +11369,9 @@ THREE.Object3D.prototype = {\n\
 \n\
 \t\tobject.matrix.copy( this.matrix );\n\
 \t\tobject.matrixWorld.copy( this.matrixWorld );\n\
-\t\tobject.matrixRotationWorld.copy( this.matrixRotationWorld );\n\
 \n\
 \t\tobject.matrixAutoUpdate = this.matrixAutoUpdate;\n\
 \t\tobject.matrixWorldNeedsUpdate = this.matrixWorldNeedsUpdate;\n\
-\n\
-\t\tobject.quaternion.copy( this.quaternion );\n\
-\t\tobject.useQuaternion = this.useQuaternion;\n\
 \n\
 \t\tobject.visible = this.visible;\n\
 \n\
@@ -9506,10 +11380,16 @@ THREE.Object3D.prototype = {\n\
 \n\
 \t\tobject.frustumCulled = this.frustumCulled;\n\
 \n\
-\t\tfor ( var i = 0; i < this.children.length; i ++ ) {\n\
+\t\tobject.userData = JSON.parse( JSON.stringify( this.userData ) );\n\
 \n\
-\t\t\tvar child = this.children[ i ];\n\
-\t\t\tobject.add( child.clone() );\n\
+\t\tif ( recursive === true ) {\n\
+\n\
+\t\t\tfor ( var i = 0; i < this.children.length; i ++ ) {\n\
+\n\
+\t\t\t\tvar child = this.children[ i ];\n\
+\t\t\t\tobject.add( child.clone() );\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
@@ -9519,22 +11399,21 @@ THREE.Object3D.prototype = {\n\
 \n\
 };\n\
 \n\
-THREE.Object3D.__m1 = new THREE.Matrix4();\n\
-THREE.Object3D.defaultEulerOrder = 'XYZ',\n\
+THREE.EventDispatcher.prototype.apply( THREE.Object3D.prototype );\n\
 \n\
 THREE.Object3DIdCount = 0;\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author supereggbert / http://www.paulbrunt.co.uk/\n\
  * @author julianwa / https://github.com/julianwa\n\
  */\n\
 \n\
-THREE.Projector = function() {\n\
+THREE.Projector = function () {\n\
 \n\
 \tvar _object, _objectCount, _objectPool = [], _objectPoolLength = 0,\n\
 \t_vertex, _vertexCount, _vertexPool = [], _vertexPoolLength = 0,\n\
 \t_face, _face3Count, _face3Pool = [], _face3PoolLength = 0,\n\
-\t_face4Count, _face4Pool = [], _face4PoolLength = 0,\n\
 \t_line, _lineCount, _linePool = [], _linePoolLength = 0,\n\
 \t_particle, _particleCount, _particlePool = [], _particlePoolLength = 0,\n\
 \n\
@@ -9543,25 +11422,34 @@ THREE.Projector = function() {\n\
 \t_vector3 = new THREE.Vector3(),\n\
 \t_vector4 = new THREE.Vector4(),\n\
 \n\
+\t_clipBox = new THREE.Box3( new THREE.Vector3( -1, -1, -1 ), new THREE.Vector3( 1, 1, 1 ) ),\n\
+\t_boundingBox = new THREE.Box3(),\n\
+\t_points3 = new Array( 3 ),\n\
+\t_points4 = new Array( 4 ),\n\
+\n\
+\t_viewMatrix = new THREE.Matrix4(),\n\
 \t_viewProjectionMatrix = new THREE.Matrix4(),\n\
+\n\
+\t_modelMatrix,\n\
 \t_modelViewProjectionMatrix = new THREE.Matrix4(),\n\
+\n\
 \t_normalMatrix = new THREE.Matrix3(),\n\
+\t_normalViewMatrix = new THREE.Matrix3(),\n\
+\n\
+\t_centroid = new THREE.Vector3(),\n\
 \n\
 \t_frustum = new THREE.Frustum(),\n\
 \n\
 \t_clippedVertex1PositionScreen = new THREE.Vector4(),\n\
-\t_clippedVertex2PositionScreen = new THREE.Vector4(),\n\
-\n\
-\t_face3VertexNormals;\n\
+\t_clippedVertex2PositionScreen = new THREE.Vector4();\n\
 \n\
 \tthis.projectVector = function ( vector, camera ) {\n\
 \n\
 \t\tcamera.matrixWorldInverse.getInverse( camera.matrixWorld );\n\
 \n\
-\t\t_viewProjectionMatrix.multiply( camera.projectionMatrix, camera.matrixWorldInverse );\n\
-\t\t_viewProjectionMatrix.multiplyVector3( vector );\n\
+\t\t_viewProjectionMatrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );\n\
 \n\
-\t\treturn vector;\n\
+\t\treturn vector.applyProjection( _viewProjectionMatrix );\n\
 \n\
 \t};\n\
 \n\
@@ -9569,10 +11457,9 @@ THREE.Projector = function() {\n\
 \n\
 \t\tcamera.projectionMatrixInverse.getInverse( camera.projectionMatrix );\n\
 \n\
-\t\t_viewProjectionMatrix.multiply( camera.matrixWorld, camera.projectionMatrixInverse );\n\
-\t\t_viewProjectionMatrix.multiplyVector3( vector );\n\
+\t\t_viewProjectionMatrix.multiplyMatrices( camera.matrixWorld, camera.projectionMatrixInverse );\n\
 \n\
-\t\treturn vector;\n\
+\t\treturn vector.applyProjection( _viewProjectionMatrix );\n\
 \n\
 \t};\n\
 \n\
@@ -9586,9 +11473,61 @@ THREE.Projector = function() {\n\
 \t\tthis.unprojectVector( end, camera );\n\
 \n\
 \t\t// find direction from vector to end\n\
-\t\tend.subSelf( vector ).normalize();\n\
+\t\tend.sub( vector ).normalize();\n\
 \n\
 \t\treturn new THREE.Raycaster( vector, end );\n\
+\n\
+\t};\n\
+\n\
+\tvar getObject = function ( object ) {\n\
+\n\
+\t\t_object = getNextObjectInPool();\n\
+\t\t_object.id = object.id;\n\
+\t\t_object.object = object;\n\
+\n\
+\t\tif ( object.renderDepth !== null ) {\n\
+\n\
+\t\t\t_object.z = object.renderDepth;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\t_vector3.getPositionFromMatrix( object.matrixWorld );\n\
+\t\t\t_vector3.applyProjection( _viewProjectionMatrix );\n\
+\t\t\t_object.z = _vector3.z;\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn _object;\n\
+\n\
+\t};\n\
+\n\
+\tvar projectObject = function ( object ) {\n\
+\n\
+\t\tif ( object.visible === false ) return;\n\
+\n\
+\t\tif ( object instanceof THREE.Light ) {\n\
+\n\
+\t\t\t_renderData.lights.push( object );\n\
+\n\
+\t\t} else if ( object instanceof THREE.Mesh || object instanceof THREE.Line ) {\n\
+\n\
+\t\t\tif ( object.frustumCulled === false || _frustum.intersectsObject( object ) === true ) {\n\
+\n\
+\t\t\t\t_renderData.objects.push( getObject( object ) );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( object instanceof THREE.Sprite || object instanceof THREE.Particle ) {\n\
+\n\
+\t\t\t_renderData.sprites.push( getObject( object ) );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tfor ( var i = 0, l = object.children.length; i < l; i ++ ) {\n\
+\n\
+\t\t\tprojectObject( object.children[ i ] );\n\
+\n\
+\t\t}\n\
 \n\
 \t};\n\
 \n\
@@ -9600,129 +11539,46 @@ THREE.Projector = function() {\n\
 \t\t_renderData.sprites.length = 0;\n\
 \t\t_renderData.lights.length = 0;\n\
 \n\
-\t\tvar projectObject = function ( parent ) {\n\
-\n\
-\t\t\tfor ( var c = 0, cl = parent.children.length; c < cl; c ++ ) {\n\
-\n\
-\t\t\t\tvar object = parent.children[ c ];\n\
-\n\
-\t\t\t\tif ( object.visible === false ) continue;\n\
-\n\
-\t\t\t\tif ( object instanceof THREE.Light ) {\n\
-\n\
-\t\t\t\t\t_renderData.lights.push( object );\n\
-\n\
-\t\t\t\t} else if ( object instanceof THREE.Mesh || object instanceof THREE.Line ) {\n\
-\n\
-\t\t\t\t\tif ( object.frustumCulled === false || _frustum.contains( object ) === true ) {\n\
-\n\
-\t\t\t\t\t\t_object = getNextObjectInPool();\n\
-\t\t\t\t\t\t_object.object = object;\n\
-\n\
-\t\t\t\t\t\tif ( object.renderDepth !== null ) {\n\
-\n\
-\t\t\t\t\t\t\t_object.z = object.renderDepth;\n\
-\n\
-\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\t_vector3.copy( object.matrixWorld.getPosition() );\n\
-\t\t\t\t\t\t\t_viewProjectionMatrix.multiplyVector3( _vector3 );\n\
-\t\t\t\t\t\t\t_object.z = _vector3.z;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t_renderData.objects.push( _object );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t} else if ( object instanceof THREE.Sprite || object instanceof THREE.Particle ) {\n\
-\n\
-\t\t\t\t\t_object = getNextObjectInPool();\n\
-\t\t\t\t\t_object.object = object;\n\
-\n\
-\t\t\t\t\t// TODO: Find an elegant and performant solution and remove this dupe code.\n\
-\n\
-\t\t\t\t\tif ( object.renderDepth !== null ) {\n\
-\n\
-\t\t\t\t\t\t_object.z = object.renderDepth;\n\
-\n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t_vector3.copy( object.matrixWorld.getPosition() );\n\
-\t\t\t\t\t\t_viewProjectionMatrix.multiplyVector3( _vector3 );\n\
-\t\t\t\t\t\t_object.z = _vector3.z;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t_renderData.sprites.push( _object );\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t_object = getNextObjectInPool();\n\
-\t\t\t\t\t_object.object = object;\n\
-\n\
-\t\t\t\t\tif ( object.renderDepth !== null ) {\n\
-\n\
-\t\t\t\t\t\t_object.z = object.renderDepth;\n\
-\n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t_vector3.copy( object.matrixWorld.getPosition() );\n\
-\t\t\t\t\t\t_viewProjectionMatrix.multiplyVector3( _vector3 );\n\
-\t\t\t\t\t\t_object.z = _vector3.z;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t_renderData.objects.push( _object );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tprojectObject( object );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
 \t\tprojectObject( root );\n\
 \n\
-\t\tif ( sortObjects === true ) _renderData.objects.sort( painterSort );\n\
+\t\tif ( sortObjects === true ) {\n\
 \n\
-\t\treturn _renderData;\n\
+\t\t\t_renderData.objects.sort( painterSort );\n\
+\n\
+\t\t}\n\
 \n\
 \t};\n\
 \n\
 \tthis.projectScene = function ( scene, camera, sortObjects, sortElements ) {\n\
 \n\
-\t\tvar near = camera.near, far = camera.far, visible = false,\n\
-\t\to, ol, v, vl, f, fl, n, nl, c, cl, u, ul, object, modelMatrix,\n\
-\t\tgeometry, vertices, vertex, vertexPositionScreen,\n\
-\t\tfaces, face, faceVertexNormals, normal, faceVertexUvs, uvs,\n\
-\t\tv1, v2, v3, v4, isFaceMaterial, objectMaterials, material, side;\n\
+\t\tvar visible = false,\n\
+\t\to, ol, v, vl, f, fl, n, nl, c, cl, u, ul, object,\n\
+\t\tgeometry, vertices, faces, face, faceVertexNormals, faceVertexUvs, uvs,\n\
+\t\tv1, v2, v3, v4, isFaceMaterial, objectMaterials;\n\
 \n\
 \t\t_face3Count = 0;\n\
-\t\t_face4Count = 0;\n\
 \t\t_lineCount = 0;\n\
 \t\t_particleCount = 0;\n\
 \n\
 \t\t_renderData.elements.length = 0;\n\
 \n\
-\t\tscene.updateMatrixWorld();\n\
-\n\
+\t\tif ( scene.autoUpdate === true ) scene.updateMatrixWorld();\n\
 \t\tif ( camera.parent === undefined ) camera.updateMatrixWorld();\n\
 \n\
-\t\tcamera.matrixWorldInverse.getInverse( camera.matrixWorld );\n\
+\t\t_viewMatrix.copy( camera.matrixWorldInverse.getInverse( camera.matrixWorld ) );\n\
+\t\t_viewProjectionMatrix.multiplyMatrices( camera.projectionMatrix, _viewMatrix );\n\
 \n\
-\t\t_viewProjectionMatrix.multiply( camera.projectionMatrix, camera.matrixWorldInverse );\n\
+\t\t_normalViewMatrix.getNormalMatrix( _viewMatrix );\n\
 \n\
 \t\t_frustum.setFromMatrix( _viewProjectionMatrix );\n\
 \n\
-\t\t_renderData = projectGraph( scene, sortObjects );\n\
+\t\tprojectGraph( scene, sortObjects );\n\
 \n\
 \t\tfor ( o = 0, ol = _renderData.objects.length; o < ol; o ++ ) {\n\
 \n\
 \t\t\tobject = _renderData.objects[ o ].object;\n\
 \n\
-\t\t\tmodelMatrix = object.matrixWorld;\n\
+\t\t\t_modelMatrix = object.matrixWorld;\n\
 \n\
 \t\t\t_vertexCount = 0;\n\
 \n\
@@ -9734,28 +11590,27 @@ THREE.Projector = function() {\n\
 \t\t\t\tfaces = geometry.faces;\n\
 \t\t\t\tfaceVertexUvs = geometry.faceVertexUvs;\n\
 \n\
-\t\t\t\t_normalMatrix.getInverse( modelMatrix );\n\
-\t\t\t\t_normalMatrix.transpose();\n\
+\t\t\t\t_normalMatrix.getNormalMatrix( _modelMatrix );\n\
 \n\
 \t\t\t\tisFaceMaterial = object.material instanceof THREE.MeshFaceMaterial;\n\
 \t\t\t\tobjectMaterials = isFaceMaterial === true ? object.material : null;\n\
 \n\
-\t\t\t\tside = object.material.side;\n\
-\n\
 \t\t\t\tfor ( v = 0, vl = vertices.length; v < vl; v ++ ) {\n\
 \n\
 \t\t\t\t\t_vertex = getNextVertexInPool();\n\
-\t\t\t\t\t_vertex.positionWorld.copy( vertices[ v ] );\n\
 \n\
-\t\t\t\t\tmodelMatrix.multiplyVector3( _vertex.positionWorld );\n\
+\t\t\t\t\t_vertex.positionWorld.copy( vertices[ v ] ).applyMatrix4( _modelMatrix );\n\
+\t\t\t\t\t_vertex.positionScreen.copy( _vertex.positionWorld ).applyMatrix4( _viewProjectionMatrix );\n\
 \n\
-\t\t\t\t\t_vertex.positionScreen.copy( _vertex.positionWorld );\n\
-\t\t\t\t\t_viewProjectionMatrix.multiplyVector4( _vertex.positionScreen );\n\
+\t\t\t\t\tvar invW = 1 / _vertex.positionScreen.w;\n\
 \n\
-\t\t\t\t\t_vertex.positionScreen.x /= _vertex.positionScreen.w;\n\
-\t\t\t\t\t_vertex.positionScreen.y /= _vertex.positionScreen.w;\n\
+\t\t\t\t\t_vertex.positionScreen.x *= invW;\n\
+\t\t\t\t\t_vertex.positionScreen.y *= invW;\n\
+\t\t\t\t\t_vertex.positionScreen.z *= invW;\n\
 \n\
-\t\t\t\t\t_vertex.visible = _vertex.positionScreen.z > near && _vertex.positionScreen.z < far;\n\
+\t\t\t\t\t_vertex.visible = ! ( _vertex.positionScreen.x < -1 || _vertex.positionScreen.x > 1 ||\n\
+\t\t\t\t\t\t\t      _vertex.positionScreen.y < -1 || _vertex.positionScreen.y > 1 ||\n\
+\t\t\t\t\t\t\t      _vertex.positionScreen.z < -1 || _vertex.positionScreen.z > 1 );\n\
 \n\
 \t\t\t\t}\n\
 \n\
@@ -9763,108 +11618,88 @@ THREE.Projector = function() {\n\
 \n\
 \t\t\t\t\tface = faces[ f ];\n\
 \n\
-\t\t\t\t\tmaterial = isFaceMaterial === true ? objectMaterials.materials[ face.materialIndex ] : object.material;\n\
+\t\t\t\t\tvar material = isFaceMaterial === true\n\
+\t\t\t\t\t\t? objectMaterials.materials[ face.materialIndex ]\n\
+\t\t\t\t\t\t: object.material;\n\
 \n\
 \t\t\t\t\tif ( material === undefined ) continue;\n\
 \n\
-\t\t\t\t\tside = material.side;\n\
+\t\t\t\t\tvar side = material.side;\n\
 \n\
-\t\t\t\t\tif ( face instanceof THREE.Face3 ) {\n\
+\t\t\t\t\tv1 = _vertexPool[ face.a ];\n\
+\t\t\t\t\tv2 = _vertexPool[ face.b ];\n\
+\t\t\t\t\tv3 = _vertexPool[ face.c ];\n\
 \n\
-\t\t\t\t\t\tv1 = _vertexPool[ face.a ];\n\
-\t\t\t\t\t\tv2 = _vertexPool[ face.b ];\n\
-\t\t\t\t\t\tv3 = _vertexPool[ face.c ];\n\
+\t\t\t\t\t_points3[ 0 ] = v1.positionScreen;\n\
+\t\t\t\t\t_points3[ 1 ] = v2.positionScreen;\n\
+\t\t\t\t\t_points3[ 2 ] = v3.positionScreen;\n\
 \n\
-\t\t\t\t\t\tif ( v1.visible === true && v2.visible === true && v3.visible === true ) {\n\
+\t\t\t\t\tif ( v1.visible === true || v2.visible === true || v3.visible === true ||\n\
+\t\t\t\t\t\t_clipBox.isIntersectionBox( _boundingBox.setFromPoints( _points3 ) ) ) {\n\
 \n\
-\t\t\t\t\t\t\tvisible = ( ( v3.positionScreen.x - v1.positionScreen.x ) * ( v2.positionScreen.y - v1.positionScreen.y ) -\n\
-\t\t\t\t\t\t\t\t( v3.positionScreen.y - v1.positionScreen.y ) * ( v2.positionScreen.x - v1.positionScreen.x ) ) < 0;\n\
+\t\t\t\t\t\tvisible = ( ( v3.positionScreen.x - v1.positionScreen.x ) *\n\
+\t\t\t\t\t\t\t    ( v2.positionScreen.y - v1.positionScreen.y ) -\n\
+\t\t\t\t\t\t\t    ( v3.positionScreen.y - v1.positionScreen.y ) *\n\
+\t\t\t\t\t\t\t    ( v2.positionScreen.x - v1.positionScreen.x ) ) < 0;\n\
 \n\
-\t\t\t\t\t\t\tif ( side === THREE.DoubleSide || visible === ( side === THREE.FrontSide ) ) {\n\
+\t\t\t\t\t\tif ( side === THREE.DoubleSide || visible === ( side === THREE.FrontSide ) ) {\n\
 \n\
-\t\t\t\t\t\t\t\t_face = getNextFace3InPool();\n\
+\t\t\t\t\t\t\t_face = getNextFace3InPool();\n\
 \n\
-\t\t\t\t\t\t\t\t_face.v1.copy( v1 );\n\
-\t\t\t\t\t\t\t\t_face.v2.copy( v2 );\n\
-\t\t\t\t\t\t\t\t_face.v3.copy( v3 );\n\
-\n\
-\t\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\t\tcontinue;\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\tcontinue;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\t\t\tv1 = _vertexPool[ face.a ];\n\
-\t\t\t\t\t\tv2 = _vertexPool[ face.b ];\n\
-\t\t\t\t\t\tv3 = _vertexPool[ face.c ];\n\
-\t\t\t\t\t\tv4 = _vertexPool[ face.d ];\n\
-\n\
-\t\t\t\t\t\tif ( v1.visible === true && v2.visible === true && v3.visible === true && v4.visible === true ) {\n\
-\n\
-\t\t\t\t\t\t\tvisible = ( v4.positionScreen.x - v1.positionScreen.x ) * ( v2.positionScreen.y - v1.positionScreen.y ) -\n\
-\t\t\t\t\t\t\t\t( v4.positionScreen.y - v1.positionScreen.y ) * ( v2.positionScreen.x - v1.positionScreen.x ) < 0 ||\n\
-\t\t\t\t\t\t\t\t( v2.positionScreen.x - v3.positionScreen.x ) * ( v4.positionScreen.y - v3.positionScreen.y ) -\n\
-\t\t\t\t\t\t\t\t( v2.positionScreen.y - v3.positionScreen.y ) * ( v4.positionScreen.x - v3.positionScreen.x ) < 0;\n\
-\n\
-\n\
-\t\t\t\t\t\t\tif ( side === THREE.DoubleSide || visible === ( side === THREE.FrontSide ) ) {\n\
-\n\
-\t\t\t\t\t\t\t\t_face = getNextFace4InPool();\n\
-\n\
-\t\t\t\t\t\t\t\t_face.v1.copy( v1 );\n\
-\t\t\t\t\t\t\t\t_face.v2.copy( v2 );\n\
-\t\t\t\t\t\t\t\t_face.v3.copy( v3 );\n\
-\t\t\t\t\t\t\t\t_face.v4.copy( v4 );\n\
-\n\
-\t\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\t\tcontinue;\n\
-\n\
-\t\t\t\t\t\t\t}\n\
+\t\t\t\t\t\t\t_face.id = object.id;\n\
+\t\t\t\t\t\t\t_face.v1.copy( v1 );\n\
+\t\t\t\t\t\t\t_face.v2.copy( v2 );\n\
+\t\t\t\t\t\t\t_face.v3.copy( v3 );\n\
 \n\
 \t\t\t\t\t\t} else {\n\
 \n\
 \t\t\t\t\t\t\tcontinue;\n\
 \n\
 \t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t\tcontinue;\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t_face.normalWorld.copy( face.normal );\n\
+\t\t\t\t\t_face.normalModel.copy( face.normal );\n\
 \n\
-\t\t\t\t\tif ( visible === false && ( side === THREE.BackSide || side === THREE.DoubleSide ) ) _face.normalWorld.negate();\n\
-\t\t\t\t\t_normalMatrix.multiplyVector3( _face.normalWorld ).normalize();\n\
+\t\t\t\t\tif ( visible === false && ( side === THREE.BackSide || side === THREE.DoubleSide ) ) {\n\
 \n\
-\t\t\t\t\t_face.centroidWorld.copy( face.centroid );\n\
-\t\t\t\t\tmodelMatrix.multiplyVector3( _face.centroidWorld );\n\
+\t\t\t\t\t\t_face.normalModel.negate();\n\
 \n\
-\t\t\t\t\t_face.centroidScreen.copy( _face.centroidWorld );\n\
-\t\t\t\t\t_viewProjectionMatrix.multiplyVector3( _face.centroidScreen );\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t_face.normalModel.applyMatrix3( _normalMatrix ).normalize();\n\
+\n\
+\t\t\t\t\t_face.normalModelView.copy( _face.normalModel ).applyMatrix3( _normalViewMatrix );\n\
+\n\
+\t\t\t\t\t_face.centroidModel.copy( face.centroid ).applyMatrix4( _modelMatrix );\n\
 \n\
 \t\t\t\t\tfaceVertexNormals = face.vertexNormals;\n\
 \n\
-\t\t\t\t\tfor ( n = 0, nl = faceVertexNormals.length; n < nl; n ++ ) {\n\
+\t\t\t\t\tfor ( n = 0, nl = Math.min( faceVertexNormals.length, 3 ); n < nl; n ++ ) {\n\
 \n\
-\t\t\t\t\t\tnormal = _face.vertexNormalsWorld[ n ];\n\
-\t\t\t\t\t\tnormal.copy( faceVertexNormals[ n ] );\n\
+\t\t\t\t\t\tvar normalModel = _face.vertexNormalsModel[ n ];\n\
+\t\t\t\t\t\tnormalModel.copy( faceVertexNormals[ n ] );\n\
 \n\
-\t\t\t\t\t\tif ( visible === false && ( side === THREE.BackSide || side === THREE.DoubleSide ) ) normal.negate();\n\
+\t\t\t\t\t\tif ( visible === false && ( side === THREE.BackSide || side === THREE.DoubleSide ) ) {\n\
 \n\
-\t\t\t\t\t\t_normalMatrix.multiplyVector3( normal ).normalize();\n\
+\t\t\t\t\t\t\tnormalModel.negate();\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\tnormalModel.applyMatrix3( _normalMatrix ).normalize();\n\
+\n\
+\t\t\t\t\t\tvar normalModelView = _face.vertexNormalsModelView[ n ];\n\
+\t\t\t\t\t\tnormalModelView.copy( normalModel ).applyMatrix3( _normalViewMatrix );\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t_face.vertexNormalsLength = faceVertexNormals.length;\n\
 \n\
-\t\t\t\t\tfor ( c = 0, cl = faceVertexUvs.length; c < cl; c ++ ) {\n\
+\t\t\t\t\tfor ( c = 0, cl = Math.min( faceVertexUvs.length, 3 ); c < cl; c ++ ) {\n\
 \n\
 \t\t\t\t\t\tuvs = faceVertexUvs[ c ][ f ];\n\
 \n\
@@ -9881,7 +11716,9 @@ THREE.Projector = function() {\n\
 \t\t\t\t\t_face.color = face.color;\n\
 \t\t\t\t\t_face.material = material;\n\
 \n\
-\t\t\t\t\t_face.z = _face.centroidScreen.z;\n\
+\t\t\t\t\t_centroid.copy( _face.centroidModel ).applyProjection( _viewProjectionMatrix );\n\
+\n\
+\t\t\t\t\t_face.z = _centroid.z;\n\
 \n\
 \t\t\t\t\t_renderData.elements.push( _face );\n\
 \n\
@@ -9889,13 +11726,12 @@ THREE.Projector = function() {\n\
 \n\
 \t\t\t} else if ( object instanceof THREE.Line ) {\n\
 \n\
-\t\t\t\t_modelViewProjectionMatrix.multiply( _viewProjectionMatrix, modelMatrix );\n\
+\t\t\t\t_modelViewProjectionMatrix.multiplyMatrices( _viewProjectionMatrix, _modelMatrix );\n\
 \n\
 \t\t\t\tvertices = object.geometry.vertices;\n\
 \n\
 \t\t\t\tv1 = getNextVertexInPool();\n\
-\t\t\t\tv1.positionScreen.copy( vertices[ 0 ] );\n\
-\t\t\t\t_modelViewProjectionMatrix.multiplyVector4( v1.positionScreen );\n\
+\t\t\t\tv1.positionScreen.copy( vertices[ 0 ] ).applyMatrix4( _modelViewProjectionMatrix );\n\
 \n\
 \t\t\t\t// Handle LineStrip and LinePieces\n\
 \t\t\t\tvar step = object.type === THREE.LinePieces ? 2 : 1;\n\
@@ -9903,8 +11739,7 @@ THREE.Projector = function() {\n\
 \t\t\t\tfor ( v = 1, vl = vertices.length; v < vl; v ++ ) {\n\
 \n\
 \t\t\t\t\tv1 = getNextVertexInPool();\n\
-\t\t\t\t\tv1.positionScreen.copy( vertices[ v ] );\n\
-\t\t\t\t\t_modelViewProjectionMatrix.multiplyVector4( v1.positionScreen );\n\
+\t\t\t\t\tv1.positionScreen.copy( vertices[ v ] ).applyMatrix4( _modelViewProjectionMatrix );\n\
 \n\
 \t\t\t\t\tif ( ( v + 1 ) % step > 0 ) continue;\n\
 \n\
@@ -9920,12 +11755,21 @@ THREE.Projector = function() {\n\
 \t\t\t\t\t\t_clippedVertex2PositionScreen.multiplyScalar( 1 / _clippedVertex2PositionScreen.w );\n\
 \n\
 \t\t\t\t\t\t_line = getNextLineInPool();\n\
+\n\
+\t\t\t\t\t\t_line.id = object.id;\n\
 \t\t\t\t\t\t_line.v1.positionScreen.copy( _clippedVertex1PositionScreen );\n\
 \t\t\t\t\t\t_line.v2.positionScreen.copy( _clippedVertex2PositionScreen );\n\
 \n\
 \t\t\t\t\t\t_line.z = Math.max( _clippedVertex1PositionScreen.z, _clippedVertex2PositionScreen.z );\n\
 \n\
 \t\t\t\t\t\t_line.material = object.material;\n\
+\n\
+\t\t\t\t\t\tif ( object.material.vertexColors === THREE.VertexColors ) {\n\
+\n\
+\t\t\t\t\t\t\t_line.vertexColors[ 0 ].copy( object.geometry.colors[ v ] );\n\
+\t\t\t\t\t\t\t_line.vertexColors[ 1 ].copy( object.geometry.colors[ v - 1 ] );\n\
+\n\
+\t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t\t_renderData.elements.push( _line );\n\
 \n\
@@ -9941,22 +11785,25 @@ THREE.Projector = function() {\n\
 \n\
 \t\t\tobject = _renderData.sprites[ o ].object;\n\
 \n\
-\t\t\tmodelMatrix = object.matrixWorld;\n\
+\t\t\t_modelMatrix = object.matrixWorld;\n\
 \n\
 \t\t\tif ( object instanceof THREE.Particle ) {\n\
 \n\
-\t\t\t\t_vector4.set( modelMatrix.elements[12], modelMatrix.elements[13], modelMatrix.elements[14], 1 );\n\
-\t\t\t\t_viewProjectionMatrix.multiplyVector4( _vector4 );\n\
+\t\t\t\t_vector4.set( _modelMatrix.elements[12], _modelMatrix.elements[13], _modelMatrix.elements[14], 1 );\n\
+\t\t\t\t_vector4.applyMatrix4( _viewProjectionMatrix );\n\
 \n\
-\t\t\t\t_vector4.z /= _vector4.w;\n\
+\t\t\t\tvar invW = 1 / _vector4.w;\n\
+\n\
+\t\t\t\t_vector4.z *= invW;\n\
 \n\
 \t\t\t\tif ( _vector4.z > 0 && _vector4.z < 1 ) {\n\
 \n\
 \t\t\t\t\t_particle = getNextParticleInPool();\n\
-\t\t\t\t\t_particle.object = object;\n\
-\t\t\t\t\t_particle.x = _vector4.x / _vector4.w;\n\
-\t\t\t\t\t_particle.y = _vector4.y / _vector4.w;\n\
+\t\t\t\t\t_particle.id = object.id;\n\
+\t\t\t\t\t_particle.x = _vector4.x * invW;\n\
+\t\t\t\t\t_particle.y = _vector4.y * invW;\n\
 \t\t\t\t\t_particle.z = _vector4.z;\n\
+\t\t\t\t\t_particle.object = object;\n\
 \n\
 \t\t\t\t\t_particle.rotation = object.rotation.z;\n\
 \n\
@@ -10030,22 +11877,6 @@ THREE.Projector = function() {\n\
 \n\
 \t}\n\
 \n\
-\tfunction getNextFace4InPool() {\n\
-\n\
-\t\tif ( _face4Count === _face4PoolLength ) {\n\
-\n\
-\t\t\tvar face = new THREE.RenderableFace4();\n\
-\t\t\t_face4Pool.push( face );\n\
-\t\t\t_face4PoolLength ++;\n\
-\t\t\t_face4Count ++;\n\
-\t\t\treturn face;\n\
-\n\
-\t\t}\n\
-\n\
-\t\treturn _face4Pool[ _face4Count ++ ];\n\
-\n\
-\t}\n\
-\n\
 \tfunction getNextLineInPool() {\n\
 \n\
 \t\tif ( _lineCount === _linePoolLength ) {\n\
@@ -10082,7 +11913,19 @@ THREE.Projector = function() {\n\
 \n\
 \tfunction painterSort( a, b ) {\n\
 \n\
-\t\treturn b.z - a.z;\n\
+\t\tif ( a.z !== b.z ) {\n\
+\n\
+\t\t\treturn b.z - a.z;\n\
+\n\
+\t\t} else if ( a.id !== b.id ) {\n\
+\n\
+\t\t\treturn a.id - b.id;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\treturn 0;\n\
+\n\
+\t\t}\n\
 \n\
 \t}\n\
 \n\
@@ -10145,8 +11988,8 @@ THREE.Projector = function() {\n\
 \t\t\t} else {\n\
 \n\
 \t\t\t\t// Update the s1 and s2 vertices to match the clipped line segment.\n\
-\t\t\t\ts1.lerpSelf( s2, alpha1 );\n\
-\t\t\t\ts2.lerpSelf( s1, 1 - alpha2 );\n\
+\t\t\t\ts1.lerp( s2, alpha1 );\n\
+\t\t\t\ts2.lerp( s1, 1 - alpha2 );\n\
 \n\
 \t\t\t\treturn true;\n\
 \n\
@@ -10157,6 +12000,7 @@ THREE.Projector = function() {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -10206,56 +12050,17 @@ THREE.Face3.prototype = {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
- * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
 THREE.Face4 = function ( a, b, c, d, normal, color, materialIndex ) {\n\
 \n\
-\tthis.a = a;\n\
-\tthis.b = b;\n\
-\tthis.c = c;\n\
-\tthis.d = d;\n\
-\n\
-\tthis.normal = normal instanceof THREE.Vector3 ? normal : new THREE.Vector3();\n\
-\tthis.vertexNormals = normal instanceof Array ? normal : [ ];\n\
-\n\
-\tthis.color = color instanceof THREE.Color ? color : new THREE.Color();\n\
-\tthis.vertexColors = color instanceof Array ? color : [];\n\
-\n\
-\tthis.vertexTangents = [];\n\
-\n\
-\tthis.materialIndex = materialIndex !== undefined ? materialIndex : 0;\n\
-\n\
-\tthis.centroid = new THREE.Vector3();\n\
+\treturn new THREE.Face3( a, b, c, normal, color, materialIndex );\n\
 \n\
 };\n\
 \n\
-THREE.Face4.prototype = {\n\
-\n\
-\tconstructor: THREE.Face4,\n\
-\n\
-\tclone: function () {\n\
-\n\
-\t\tvar face = new THREE.Face4( this.a, this.b, this.c, this.d );\n\
-\n\
-\t\tface.normal.copy( this.normal );\n\
-\t\tface.color.copy( this.color );\n\
-\t\tface.centroid.copy( this.centroid );\n\
-\n\
-\t\tface.materialIndex = this.materialIndex;\n\
-\n\
-\t\tvar i, il;\n\
-\t\tfor ( i = 0, il = this.vertexNormals.length; i < il; i ++ ) face.vertexNormals[ i ] = this.vertexNormals[ i ].clone();\n\
-\t\tfor ( i = 0, il = this.vertexColors.length; i < il; i ++ ) face.vertexColors[ i ] = this.vertexColors[ i ].clone();\n\
-\t\tfor ( i = 0, il = this.vertexTangents.length; i < il; i ++ ) face.vertexTangents[ i ] = this.vertexTangents[ i ].clone();\n\
-\n\
-\t\treturn face;\n\
-\n\
-\t}\n\
-\n\
-};\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author kile / http://kile.stravaganza.org/\n\
@@ -10267,9 +12072,8 @@ THREE.Face4.prototype = {\n\
 \n\
 THREE.Geometry = function () {\n\
 \n\
-\tTHREE.EventDispatcher.call( this );\n\
-\n\
 \tthis.id = THREE.GeometryIdCount ++;\n\
+\tthis.uuid = THREE.Math.generateUUID();\n\
 \n\
 \tthis.name = '';\n\
 \n\
@@ -10279,7 +12083,6 @@ THREE.Geometry = function () {\n\
 \n\
 \tthis.faces = [];\n\
 \n\
-\tthis.faceUvs = [[]];\n\
 \tthis.faceVertexUvs = [[]];\n\
 \n\
 \tthis.morphTargets = [];\n\
@@ -10318,31 +12121,39 @@ THREE.Geometry.prototype = {\n\
 \n\
 \tapplyMatrix: function ( matrix ) {\n\
 \n\
-\t\tvar normalMatrix = new THREE.Matrix3();\n\
-\n\
-\t\tnormalMatrix.getInverse( matrix ).transpose();\n\
+\t\tvar normalMatrix = new THREE.Matrix3().getNormalMatrix( matrix );\n\
 \n\
 \t\tfor ( var i = 0, il = this.vertices.length; i < il; i ++ ) {\n\
 \n\
 \t\t\tvar vertex = this.vertices[ i ];\n\
-\n\
-\t\t\tmatrix.multiplyVector3( vertex );\n\
+\t\t\tvertex.applyMatrix4( matrix );\n\
 \n\
 \t\t}\n\
 \n\
 \t\tfor ( var i = 0, il = this.faces.length; i < il; i ++ ) {\n\
 \n\
 \t\t\tvar face = this.faces[ i ];\n\
-\n\
-\t\t\tnormalMatrix.multiplyVector3( face.normal ).normalize();\n\
+\t\t\tface.normal.applyMatrix3( normalMatrix ).normalize();\n\
 \n\
 \t\t\tfor ( var j = 0, jl = face.vertexNormals.length; j < jl; j ++ ) {\n\
 \n\
-\t\t\t\tnormalMatrix.multiplyVector3( face.vertexNormals[ j ] ).normalize();\n\
+\t\t\t\tface.vertexNormals[ j ].applyMatrix3( normalMatrix ).normalize();\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tmatrix.multiplyVector3( face.centroid );\n\
+\t\t\tface.centroid.applyMatrix4( matrix );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.boundingBox instanceof THREE.Box3 ) {\n\
+\n\
+\t\t\tthis.computeBoundingBox();\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.boundingSphere instanceof THREE.Sphere ) {\n\
+\n\
+\t\t\tthis.computeBoundingSphere();\n\
 \n\
 \t\t}\n\
 \n\
@@ -10357,22 +12168,10 @@ THREE.Geometry.prototype = {\n\
 \t\t\tface = this.faces[ f ];\n\
 \t\t\tface.centroid.set( 0, 0, 0 );\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\tface.centroid.addSelf( this.vertices[ face.a ] );\n\
-\t\t\t\tface.centroid.addSelf( this.vertices[ face.b ] );\n\
-\t\t\t\tface.centroid.addSelf( this.vertices[ face.c ] );\n\
-\t\t\t\tface.centroid.divideScalar( 3 );\n\
-\n\
-\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\tface.centroid.addSelf( this.vertices[ face.a ] );\n\
-\t\t\t\tface.centroid.addSelf( this.vertices[ face.b ] );\n\
-\t\t\t\tface.centroid.addSelf( this.vertices[ face.c ] );\n\
-\t\t\t\tface.centroid.addSelf( this.vertices[ face.d ] );\n\
-\t\t\t\tface.centroid.divideScalar( 4 );\n\
-\n\
-\t\t\t}\n\
+\t\t\tface.centroid.add( this.vertices[ face.a ] );\n\
+\t\t\tface.centroid.add( this.vertices[ face.b ] );\n\
+\t\t\tface.centroid.add( this.vertices[ face.c ] );\n\
+\t\t\tface.centroid.divideScalar( 3 );\n\
 \n\
 \t\t}\n\
 \n\
@@ -10380,20 +12179,19 @@ THREE.Geometry.prototype = {\n\
 \n\
 \tcomputeFaceNormals: function () {\n\
 \n\
-\t\tvar n, nl, v, vl, vertex, f, fl, face, vA, vB, vC,\n\
-\t\tcb = new THREE.Vector3(), ab = new THREE.Vector3();\n\
+\t\tvar cb = new THREE.Vector3(), ab = new THREE.Vector3();\n\
 \n\
-\t\tfor ( f = 0, fl = this.faces.length; f < fl; f ++ ) {\n\
+\t\tfor ( var f = 0, fl = this.faces.length; f < fl; f ++ ) {\n\
 \n\
-\t\t\tface = this.faces[ f ];\n\
+\t\t\tvar face = this.faces[ f ];\n\
 \n\
-\t\t\tvA = this.vertices[ face.a ];\n\
-\t\t\tvB = this.vertices[ face.b ];\n\
-\t\t\tvC = this.vertices[ face.c ];\n\
+\t\t\tvar vA = this.vertices[ face.a ];\n\
+\t\t\tvar vB = this.vertices[ face.b ];\n\
+\t\t\tvar vC = this.vertices[ face.c ];\n\
 \n\
-\t\t\tcb.sub( vC, vB );\n\
-\t\t\tab.sub( vA, vB );\n\
-\t\t\tcb.crossSelf( ab );\n\
+\t\t\tcb.subVectors( vC, vB );\n\
+\t\t\tab.subVectors( vA, vB );\n\
+\t\t\tcb.cross( ab );\n\
 \n\
 \t\t\tcb.normalize();\n\
 \n\
@@ -10424,16 +12222,7 @@ THREE.Geometry.prototype = {\n\
 \t\t\tfor ( f = 0, fl = this.faces.length; f < fl; f ++ ) {\n\
 \n\
 \t\t\t\tface = this.faces[ f ];\n\
-\n\
-\t\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\t\tface.vertexNormals = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];\n\
-\n\
-\t\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\t\tface.vertexNormals = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];\n\
-\n\
-\t\t\t\t}\n\
+\t\t\t\tface.vertexNormals = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -10462,48 +12251,17 @@ THREE.Geometry.prototype = {\n\
 \n\
 \t\t\t\tface = this.faces[ f ];\n\
 \n\
-\t\t\t\tif ( face instanceof THREE.Face3 ) {\n\
+\t\t\t\tvA = this.vertices[ face.a ];\n\
+\t\t\t\tvB = this.vertices[ face.b ];\n\
+\t\t\t\tvC = this.vertices[ face.c ];\n\
 \n\
-\t\t\t\t\tvA = this.vertices[ face.a ];\n\
-\t\t\t\t\tvB = this.vertices[ face.b ];\n\
-\t\t\t\t\tvC = this.vertices[ face.c ];\n\
+\t\t\t\tcb.subVectors( vC, vB );\n\
+\t\t\t\tab.subVectors( vA, vB );\n\
+\t\t\t\tcb.cross( ab );\n\
 \n\
-\t\t\t\t\tcb.sub( vC, vB );\n\
-\t\t\t\t\tab.sub( vA, vB );\n\
-\t\t\t\t\tcb.crossSelf( ab );\n\
-\n\
-\t\t\t\t\tvertices[ face.a ].addSelf( cb );\n\
-\t\t\t\t\tvertices[ face.b ].addSelf( cb );\n\
-\t\t\t\t\tvertices[ face.c ].addSelf( cb );\n\
-\n\
-\t\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\t\tvA = this.vertices[ face.a ];\n\
-\t\t\t\t\tvB = this.vertices[ face.b ];\n\
-\t\t\t\t\tvC = this.vertices[ face.c ];\n\
-\t\t\t\t\tvD = this.vertices[ face.d ];\n\
-\n\
-\t\t\t\t\t// abd\n\
-\n\
-\t\t\t\t\tdb.sub( vD, vB );\n\
-\t\t\t\t\tab.sub( vA, vB );\n\
-\t\t\t\t\tdb.crossSelf( ab );\n\
-\n\
-\t\t\t\t\tvertices[ face.a ].addSelf( db );\n\
-\t\t\t\t\tvertices[ face.b ].addSelf( db );\n\
-\t\t\t\t\tvertices[ face.d ].addSelf( db );\n\
-\n\
-\t\t\t\t\t// bcd\n\
-\n\
-\t\t\t\t\tdc.sub( vD, vC );\n\
-\t\t\t\t\tbc.sub( vB, vC );\n\
-\t\t\t\t\tdc.crossSelf( bc );\n\
-\n\
-\t\t\t\t\tvertices[ face.b ].addSelf( dc );\n\
-\t\t\t\t\tvertices[ face.c ].addSelf( dc );\n\
-\t\t\t\t\tvertices[ face.d ].addSelf( dc );\n\
-\n\
-\t\t\t\t}\n\
+\t\t\t\tvertices[ face.a ].add( cb );\n\
+\t\t\t\tvertices[ face.b ].add( cb );\n\
+\t\t\t\tvertices[ face.c ].add( cb );\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -10513,20 +12271,9 @@ THREE.Geometry.prototype = {\n\
 \n\
 \t\t\t\tface = this.faces[ f ];\n\
 \n\
-\t\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\t\tvertices[ face.a ].addSelf( face.normal );\n\
-\t\t\t\t\tvertices[ face.b ].addSelf( face.normal );\n\
-\t\t\t\t\tvertices[ face.c ].addSelf( face.normal );\n\
-\n\
-\t\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\t\tvertices[ face.a ].addSelf( face.normal );\n\
-\t\t\t\t\tvertices[ face.b ].addSelf( face.normal );\n\
-\t\t\t\t\tvertices[ face.c ].addSelf( face.normal );\n\
-\t\t\t\t\tvertices[ face.d ].addSelf( face.normal );\n\
-\n\
-\t\t\t\t}\n\
+\t\t\t\tvertices[ face.a ].add( face.normal );\n\
+\t\t\t\tvertices[ face.b ].add( face.normal );\n\
+\t\t\t\tvertices[ face.c ].add( face.normal );\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -10542,20 +12289,9 @@ THREE.Geometry.prototype = {\n\
 \n\
 \t\t\tface = this.faces[ f ];\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\tface.vertexNormals[ 0 ].copy( vertices[ face.a ] );\n\
-\t\t\t\tface.vertexNormals[ 1 ].copy( vertices[ face.b ] );\n\
-\t\t\t\tface.vertexNormals[ 2 ].copy( vertices[ face.c ] );\n\
-\n\
-\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\tface.vertexNormals[ 0 ].copy( vertices[ face.a ] );\n\
-\t\t\t\tface.vertexNormals[ 1 ].copy( vertices[ face.b ] );\n\
-\t\t\t\tface.vertexNormals[ 2 ].copy( vertices[ face.c ] );\n\
-\t\t\t\tface.vertexNormals[ 3 ].copy( vertices[ face.d ] );\n\
-\n\
-\t\t\t}\n\
+\t\t\tface.vertexNormals[ 0 ].copy( vertices[ face.a ] );\n\
+\t\t\tface.vertexNormals[ 1 ].copy( vertices[ face.b ] );\n\
+\t\t\tface.vertexNormals[ 2 ].copy( vertices[ face.c ] );\n\
 \n\
 \t\t}\n\
 \n\
@@ -10626,16 +12362,7 @@ THREE.Geometry.prototype = {\n\
 \t\t\t\t\tface = this.faces[ f ];\n\
 \n\
 \t\t\t\t\tfaceNormal = new THREE.Vector3();\n\
-\n\
-\t\t\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\t\t\tvertexNormals = { a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3() };\n\
-\n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\tvertexNormals = { a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), d: new THREE.Vector3() };\n\
-\n\
-\t\t\t\t\t}\n\
+\t\t\t\t\tvertexNormals = { a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3() };\n\
 \n\
 \t\t\t\t\tdstNormalsFace.push( faceNormal );\n\
 \t\t\t\t\tdstNormalsVertex.push( vertexNormals );\n\
@@ -10668,20 +12395,9 @@ THREE.Geometry.prototype = {\n\
 \n\
 \t\t\t\tfaceNormal.copy( face.normal );\n\
 \n\
-\t\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\t\tvertexNormals.a.copy( face.vertexNormals[ 0 ] );\n\
-\t\t\t\t\tvertexNormals.b.copy( face.vertexNormals[ 1 ] );\n\
-\t\t\t\t\tvertexNormals.c.copy( face.vertexNormals[ 2 ] );\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tvertexNormals.a.copy( face.vertexNormals[ 0 ] );\n\
-\t\t\t\t\tvertexNormals.b.copy( face.vertexNormals[ 1 ] );\n\
-\t\t\t\t\tvertexNormals.c.copy( face.vertexNormals[ 2 ] );\n\
-\t\t\t\t\tvertexNormals.d.copy( face.vertexNormals[ 3 ] );\n\
-\n\
-\t\t\t\t}\n\
+\t\t\t\tvertexNormals.a.copy( face.vertexNormals[ 0 ] );\n\
+\t\t\t\tvertexNormals.b.copy( face.vertexNormals[ 1 ] );\n\
+\t\t\t\tvertexNormals.c.copy( face.vertexNormals[ 2 ] );\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -10751,13 +12467,13 @@ THREE.Geometry.prototype = {\n\
 \t\t\t\t\t  ( s1 * y2 - s2 * y1 ) * r,\n\
 \t\t\t\t\t  ( s1 * z2 - s2 * z1 ) * r );\n\
 \n\
-\t\t\ttan1[ a ].addSelf( sdir );\n\
-\t\t\ttan1[ b ].addSelf( sdir );\n\
-\t\t\ttan1[ c ].addSelf( sdir );\n\
+\t\t\ttan1[ a ].add( sdir );\n\
+\t\t\ttan1[ b ].add( sdir );\n\
+\t\t\ttan1[ c ].add( sdir );\n\
 \n\
-\t\t\ttan2[ a ].addSelf( tdir );\n\
-\t\t\ttan2[ b ].addSelf( tdir );\n\
-\t\t\ttan2[ c ].addSelf( tdir );\n\
+\t\t\ttan2[ a ].add( tdir );\n\
+\t\t\ttan2[ b ].add( tdir );\n\
+\t\t\ttan2[ c ].add( tdir );\n\
 \n\
 \t\t}\n\
 \n\
@@ -10766,16 +12482,7 @@ THREE.Geometry.prototype = {\n\
 \t\t\tface = this.faces[ f ];\n\
 \t\t\tuv = this.faceVertexUvs[ 0 ][ f ]; // use UV layer 0 for tangents\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\thandleTriangle( this, face.a, face.b, face.c, 0, 1, 2 );\n\
-\n\
-\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\thandleTriangle( this, face.a, face.b, face.d, 0, 1, 3 );\n\
-\t\t\t\thandleTriangle( this, face.b, face.c, face.d, 1, 2, 3 );\n\
-\n\
-\t\t\t}\n\
+\t\t\thandleTriangle( this, face.a, face.b, face.c, 0, 1, 2 );\n\
 \n\
 \t\t}\n\
 \n\
@@ -10785,7 +12492,7 @@ THREE.Geometry.prototype = {\n\
 \n\
 \t\t\tface = this.faces[ f ];\n\
 \n\
-\t\t\tfor ( i = 0; i < face.vertexNormals.length; i++ ) {\n\
+\t\t\tfor ( i = 0; i < Math.min( face.vertexNormals.length, 3 ); i++ ) {\n\
 \n\
 \t\t\t\tn.copy( face.vertexNormals[ i ] );\n\
 \n\
@@ -10796,11 +12503,11 @@ THREE.Geometry.prototype = {\n\
 \t\t\t\t// Gram-Schmidt orthogonalize\n\
 \n\
 \t\t\t\ttmp.copy( t );\n\
-\t\t\t\ttmp.subSelf( n.multiplyScalar( n.dot( t ) ) ).normalize();\n\
+\t\t\t\ttmp.sub( n.multiplyScalar( n.dot( t ) ) ).normalize();\n\
 \n\
 \t\t\t\t// Calculate handedness\n\
 \n\
-\t\t\t\ttmp2.cross( face.vertexNormals[ i ], t );\n\
+\t\t\t\ttmp2.crossVectors( face.vertexNormals[ i ], t );\n\
 \t\t\t\ttest = tmp2.dot( tan2[ vertexIndex ] );\n\
 \t\t\t\tw = (test < 0.0) ? -1.0 : 1.0;\n\
 \n\
@@ -10853,7 +12560,7 @@ THREE.Geometry.prototype = {\n\
 \n\
 \t\t}\n\
 \n\
-\t\tthis.boundingSphere.setFromCenterAndPoints( this.boundingSphere.center, this.vertices );\n\
+\t\tthis.boundingSphere.setFromPoints( this.vertices );\n\
 \n\
 \t},\n\
 \n\
@@ -10872,12 +12579,15 @@ THREE.Geometry.prototype = {\n\
 \t\tvar precisionPoints = 4; // number of decimal points, eg. 4 for epsilon of 0.0001\n\
 \t\tvar precision = Math.pow( 10, precisionPoints );\n\
 \t\tvar i,il, face;\n\
-\t\tvar abcd = 'abcd', o, k, j, jl, u;\n\
+\t\tvar indices, k, j, jl, u;\n\
+\n\
+\t\t// reset cache of vertices as it now will be changing.\n\
+\t\tthis.__tmpVertices = undefined;\n\
 \n\
 \t\tfor ( i = 0, il = this.vertices.length; i < il; i ++ ) {\n\
 \n\
 \t\t\tv = this.vertices[ i ];\n\
-\t\t\tkey = [ Math.round( v.x * precision ), Math.round( v.y * precision ), Math.round( v.z * precision ) ].join( '_' );\n\
+\t\t\tkey = Math.round( v.x * precision ) + '_' + Math.round( v.y * precision ) + '_' + Math.round( v.z * precision );\n\
 \n\
 \t\t\tif ( verticesMap[ key ] === undefined ) {\n\
 \n\
@@ -10895,52 +12605,43 @@ THREE.Geometry.prototype = {\n\
 \t\t};\n\
 \n\
 \n\
-\t\t// Start to patch face indices\n\
+\t\t// if faces are completely degenerate after merging vertices, we\n\
+\t\t// have to remove them from the geometry.\n\
+\t\tvar faceIndicesToRemove = [];\n\
 \n\
 \t\tfor( i = 0, il = this.faces.length; i < il; i ++ ) {\n\
 \n\
 \t\t\tface = this.faces[ i ];\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
+\t\t\tface.a = changes[ face.a ];\n\
+\t\t\tface.b = changes[ face.b ];\n\
+\t\t\tface.c = changes[ face.c ];\n\
 \n\
-\t\t\t\tface.a = changes[ face.a ];\n\
-\t\t\t\tface.b = changes[ face.b ];\n\
-\t\t\t\tface.c = changes[ face.c ];\n\
+\t\t\tindices = [ face.a, face.b, face.c ];\n\
 \n\
-\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
+\t\t\tvar dupIndex = -1;\n\
 \n\
-\t\t\t\tface.a = changes[ face.a ];\n\
-\t\t\t\tface.b = changes[ face.b ];\n\
-\t\t\t\tface.c = changes[ face.c ];\n\
-\t\t\t\tface.d = changes[ face.d ];\n\
+\t\t\t// if any duplicate vertices are found in a Face3\n\
+\t\t\t// we have to remove the face as nothing can be saved\n\
+\t\t\tfor ( var n = 0; n < 3; n ++ ) {\n\
+\t\t\t\tif ( indices[ n ] == indices[ ( n + 1 ) % 3 ] ) {\n\
 \n\
-\t\t\t\t// check dups in (a, b, c, d) and convert to -> face3\n\
-\n\
-\t\t\t\to = [ face.a, face.b, face.c, face.d ];\n\
-\n\
-\t\t\t\tfor ( k = 3; k > 0; k -- ) {\n\
-\n\
-\t\t\t\t\tif ( o.indexOf( face[ abcd[ k ] ] ) !== k ) {\n\
-\n\
-\t\t\t\t\t\t// console.log('faces', face.a, face.b, face.c, face.d, 'dup at', k);\n\
-\n\
-\t\t\t\t\t\to.splice( k, 1 );\n\
-\n\
-\t\t\t\t\t\tthis.faces[ i ] = new THREE.Face3( o[0], o[1], o[2], face.normal, face.color, face.materialIndex );\n\
-\n\
-\t\t\t\t\t\tfor ( j = 0, jl = this.faceVertexUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tu = this.faceVertexUvs[ j ][ i ];\n\
-\t\t\t\t\t\t\tif ( u ) u.splice( k, 1 );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tthis.faces[ i ].vertexColors = face.vertexColors;\n\
-\n\
-\t\t\t\t\t\tbreak;\n\
-\t\t\t\t\t}\n\
+\t\t\t\t\tdupIndex = n;\n\
+\t\t\t\t\tfaceIndicesToRemove.push( i );\n\
+\t\t\t\t\tbreak;\n\
 \n\
 \t\t\t\t}\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\tfor ( i = faceIndicesToRemove.length - 1; i >= 0; i -- ) {\n\
+\n\
+\t\t\tthis.faces.splice( i, 1 );\n\
+\n\
+\t\t\tfor ( j = 0, jl = this.faceVertexUvs.length; j < jl; j ++ ) {\n\
+\n\
+\t\t\t\tthis.faceVertexUvs[ j ].splice( i, 1 );\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -11002,16 +12703,20 @@ THREE.Geometry.prototype = {\n\
 \n\
 };\n\
 \n\
+THREE.EventDispatcher.prototype.apply( THREE.Geometry.prototype );\n\
+\n\
 THREE.GeometryIdCount = 0;\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
 THREE.BufferGeometry = function () {\n\
 \n\
-\tTHREE.EventDispatcher.call( this );\n\
-\n\
 \tthis.id = THREE.GeometryIdCount ++;\n\
+\tthis.uuid = THREE.Math.generateUUID();\n\
+\n\
+\tthis.name = '';\n\
 \n\
 \t// attributes\n\
 \n\
@@ -11019,7 +12724,7 @@ THREE.BufferGeometry = function () {\n\
 \n\
 \t// attributes typed arrays are kept only if dynamic flag is set\n\
 \n\
-\tthis.dynamic = false;\n\
+\tthis.dynamic = true;\n\
 \n\
 \t// offsets for chunks when using indexed elements\n\
 \n\
@@ -11040,7 +12745,7 @@ THREE.BufferGeometry = function () {\n\
 \n\
 THREE.BufferGeometry.prototype = {\n\
 \n\
-\tconstructor : THREE.BufferGeometry,\n\
+\tconstructor: THREE.BufferGeometry,\n\
 \n\
 \tapplyMatrix: function ( matrix ) {\n\
 \n\
@@ -11059,8 +12764,7 @@ THREE.BufferGeometry.prototype = {\n\
 \n\
 \t\tif ( normalArray !== undefined ) {\n\
 \n\
-\t\t\tvar normalMatrix = new THREE.Matrix3();\n\
-\t\t\tnormalMatrix.getInverse( matrix ).transpose();\n\
+\t\t\tvar normalMatrix = new THREE.Matrix3().getNormalMatrix( matrix );\n\
 \n\
 \t\t\tnormalMatrix.multiplyVector3Array( normalArray );\n\
 \n\
@@ -11146,35 +12850,48 @@ THREE.BufferGeometry.prototype = {\n\
 \n\
 \tcomputeBoundingSphere: function () {\n\
 \n\
-\t\tif ( this.boundingSphere === null ) {\n\
+\t\tvar box = new THREE.Box3();\n\
+\t\tvar vector = new THREE.Vector3();\n\
 \n\
-\t\t\tthis.boundingSphere = new THREE.Sphere();\n\
+\t\treturn function () {\n\
 \n\
-\t\t}\n\
+\t\t\tif ( this.boundingSphere === null ) {\n\
 \n\
-\t\tvar positions = this.attributes[ \"position\" ].array;\n\
-\n\
-\t\tif ( positions ) {\n\
-\n\
-\t\t\tvar radiusSq, maxRadiusSq = 0;\n\
-\t\t\tvar x, y, z;\n\
-\n\
-\t\t\tfor ( var i = 0, il = positions.length; i < il; i += 3 ) {\n\
-\n\
-\t\t\t\tx = positions[ i ];\n\
-\t\t\t\ty = positions[ i + 1 ];\n\
-\t\t\t\tz = positions[ i + 2 ];\n\
-\n\
-\t\t\t\tradiusSq =  x * x + y * y + z * z;\n\
-\t\t\t\tif ( radiusSq > maxRadiusSq ) maxRadiusSq = radiusSq;\n\
+\t\t\t\tthis.boundingSphere = new THREE.Sphere();\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tthis.boundingSphere.radius = Math.sqrt( maxRadiusSq );\n\
+\t\t\tvar positions = this.attributes[ \"position\" ].array;\n\
+\n\
+\t\t\tif ( positions ) {\n\
+\n\
+\t\t\t\tvar center = this.boundingSphere.center;\n\
+\n\
+\t\t\t\tfor ( var i = 0, il = positions.length; i < il; i += 3 ) {\n\
+\n\
+\t\t\t\t\tvector.set( positions[ i ], positions[ i + 1 ], positions[ i + 2 ] );\n\
+\t\t\t\t\tbox.addPoint( vector );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tbox.center( center );\n\
+\n\
+\t\t\t\tvar maxRadiusSq = 0;\n\
+\n\
+\t\t\t\tfor ( var i = 0, il = positions.length; i < il; i += 3 ) {\n\
+\n\
+\t\t\t\t\tvector.set( positions[ i ], positions[ i + 1 ], positions[ i + 2 ] );\n\
+\t\t\t\t\tmaxRadiusSq = Math.max( maxRadiusSq, center.distanceToSquared( vector ) );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tthis.boundingSphere.radius = Math.sqrt( maxRadiusSq );\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t},\n\
+\t}(),\n\
 \n\
 \tcomputeVertexNormals: function () {\n\
 \n\
@@ -11190,8 +12907,7 @@ THREE.BufferGeometry.prototype = {\n\
 \t\t\t\tthis.attributes[ \"normal\" ] = {\n\
 \n\
 \t\t\t\t\titemSize: 3,\n\
-\t\t\t\t\tarray: new Float32Array( nVertexElements ),\n\
-\t\t\t\t\tnumItems: nVertexElements\n\
+\t\t\t\t\tarray: new Float32Array( nVertexElements )\n\
 \n\
 \t\t\t\t};\n\
 \n\
@@ -11254,9 +12970,9 @@ THREE.BufferGeometry.prototype = {\n\
 \t\t\t\t\t\tz = positions[ vC * 3 + 2 ];\n\
 \t\t\t\t\t\tpC.set( x, y, z );\n\
 \n\
-\t\t\t\t\t\tcb.sub( pC, pB );\n\
-\t\t\t\t\t\tab.sub( pA, pB );\n\
-\t\t\t\t\t\tcb.crossSelf( ab );\n\
+\t\t\t\t\t\tcb.subVectors( pC, pB );\n\
+\t\t\t\t\t\tab.subVectors( pA, pB );\n\
+\t\t\t\t\t\tcb.cross( ab );\n\
 \n\
 \t\t\t\t\t\tnormals[ vA * 3 ]     += cb.x;\n\
 \t\t\t\t\t\tnormals[ vA * 3 + 1 ] += cb.y;\n\
@@ -11295,9 +13011,9 @@ THREE.BufferGeometry.prototype = {\n\
 \t\t\t\t\tz = positions[ i + 8 ];\n\
 \t\t\t\t\tpC.set( x, y, z );\n\
 \n\
-\t\t\t\t\tcb.sub( pC, pB );\n\
-\t\t\t\t\tab.sub( pA, pB );\n\
-\t\t\t\t\tcb.crossSelf( ab );\n\
+\t\t\t\t\tcb.subVectors( pC, pB );\n\
+\t\t\t\t\tab.subVectors( pA, pB );\n\
+\t\t\t\t\tcb.cross( ab );\n\
 \n\
 \t\t\t\t\tnormals[ i ] \t = cb.x;\n\
 \t\t\t\t\tnormals[ i + 1 ] = cb.y;\n\
@@ -11374,8 +13090,7 @@ THREE.BufferGeometry.prototype = {\n\
 \t\t\tthis.attributes[ \"tangent\" ] = {\n\
 \n\
 \t\t\t\titemSize: 4,\n\
-\t\t\t\tarray: new Float32Array( nTangentElements ),\n\
-\t\t\t\tnumItems: nTangentElements\n\
+\t\t\t\tarray: new Float32Array( nTangentElements )\n\
 \n\
 \t\t\t};\n\
 \n\
@@ -11457,13 +13172,13 @@ THREE.BufferGeometry.prototype = {\n\
 \t\t\t\t( s1 * z2 - s2 * z1 ) * r\n\
 \t\t\t);\n\
 \n\
-\t\t\ttan1[ a ].addSelf( sdir );\n\
-\t\t\ttan1[ b ].addSelf( sdir );\n\
-\t\t\ttan1[ c ].addSelf( sdir );\n\
+\t\t\ttan1[ a ].add( sdir );\n\
+\t\t\ttan1[ b ].add( sdir );\n\
+\t\t\ttan1[ c ].add( sdir );\n\
 \n\
-\t\t\ttan2[ a ].addSelf( tdir );\n\
-\t\t\ttan2[ b ].addSelf( tdir );\n\
-\t\t\ttan2[ c ].addSelf( tdir );\n\
+\t\t\ttan2[ a ].add( tdir );\n\
+\t\t\ttan2[ b ].add( tdir );\n\
+\t\t\ttan2[ c ].add( tdir );\n\
 \n\
 \t\t}\n\
 \n\
@@ -11494,7 +13209,6 @@ THREE.BufferGeometry.prototype = {\n\
 \t\tvar tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();\n\
 \t\tvar n = new THREE.Vector3(), n2 = new THREE.Vector3();\n\
 \t\tvar w, t, test;\n\
-\t\tvar nx, ny, nz;\n\
 \n\
 \t\tfunction handleVertex( v ) {\n\
 \n\
@@ -11509,15 +13223,15 @@ THREE.BufferGeometry.prototype = {\n\
 \t\t\t// Gram-Schmidt orthogonalize\n\
 \n\
 \t\t\ttmp.copy( t );\n\
-\t\t\ttmp.subSelf( n.multiplyScalar( n.dot( t ) ) ).normalize();\n\
+\t\t\ttmp.sub( n.multiplyScalar( n.dot( t ) ) ).normalize();\n\
 \n\
 \t\t\t// Calculate handedness\n\
 \n\
-\t\t\ttmp2.cross( n2, t );\n\
+\t\t\ttmp2.crossVectors( n2, t );\n\
 \t\t\ttest = tmp2.dot( tan2[ v ] );\n\
 \t\t\tw = ( test < 0.0 ) ? -1.0 : 1.0;\n\
 \n\
-\t\t\ttangents[ v * 4 ] \t  = tmp.x;\n\
+\t\t\ttangents[ v * 4 ]     = tmp.x;\n\
 \t\t\ttangents[ v * 4 + 1 ] = tmp.y;\n\
 \t\t\ttangents[ v * 4 + 2 ] = tmp.z;\n\
 \t\t\ttangents[ v * 4 + 3 ] = w;\n\
@@ -11557,10 +13271,13 @@ THREE.BufferGeometry.prototype = {\n\
 \n\
 };\n\
 \n\
+THREE.EventDispatcher.prototype.apply( THREE.BufferGeometry.prototype );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author mikael emtinger / http://gomo.se/\n\
- */\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+*/\n\
 \n\
 THREE.Camera = function () {\n\
 \n\
@@ -11575,27 +13292,35 @@ THREE.Camera = function () {\n\
 \n\
 THREE.Camera.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
-THREE.Camera.prototype.lookAt = function ( vector ) {\n\
+THREE.Camera.prototype.lookAt = function () {\n\
 \n\
-\t// TODO: Add hierarchy support.\n\
+\t// This routine does not support cameras with rotated and/or translated parent(s)\n\
 \n\
-\tthis.matrix.lookAt( this.position, vector, this.up );\n\
+\tvar m1 = new THREE.Matrix4();\n\
 \n\
-\tif ( this.rotationAutoUpdate === true ) {\n\
+\treturn function ( vector ) {\n\
 \n\
-\t\tif ( this.useQuaternion === false )  {\n\
+\t\tm1.lookAt( this.position, vector, this.up );\n\
 \n\
-\t\t\tthis.rotation.setEulerFromRotationMatrix( this.matrix, this.eulerOrder );\n\
+\t\tthis.quaternion.setFromRotationMatrix( m1 );\n\
 \n\
-\t\t} else {\n\
+\t};\n\
 \n\
-\t\t\tthis.quaternion.copy( this.matrix.decompose()[ 1 ] );\n\
+}();\n\
 \n\
-\t\t}\n\
+THREE.Camera.prototype.clone = function (camera) {\n\
 \n\
-\t}\n\
+\tif ( camera === undefined ) camera = new THREE.Camera();\n\
 \n\
+\tTHREE.Object3D.prototype.clone.call( this, camera );\n\
+\n\
+\tcamera.matrixWorldInverse.copy( this.matrixWorldInverse );\n\
+\tcamera.projectionMatrix.copy( this.projectionMatrix );\n\
+\tcamera.projectionMatrixInverse.copy( this.projectionMatrixInverse );\n\
+\n\
+\treturn camera;\n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -11623,6 +13348,24 @@ THREE.OrthographicCamera.prototype.updateProjectionMatrix = function () {\n\
 \tthis.projectionMatrix.makeOrthographic( this.left, this.right, this.top, this.bottom, this.near, this.far );\n\
 \n\
 };\n\
+\n\
+THREE.OrthographicCamera.prototype.clone = function () {\n\
+\n\
+\tvar camera = new THREE.OrthographicCamera();\n\
+\n\
+\tTHREE.Camera.prototype.clone.call( this, camera );\n\
+\n\
+\tcamera.left = this.left;\n\
+\tcamera.right = this.right;\n\
+\tcamera.top = this.top;\n\
+\tcamera.bottom = this.bottom;\n\
+\t\n\
+\tcamera.near = this.near;\n\
+\tcamera.far = this.far;\n\
+\n\
+\treturn camera;\n\
+};\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author greggman / http://games.greggman.com/\n\
@@ -11739,6 +13482,21 @@ THREE.PerspectiveCamera.prototype.updateProjectionMatrix = function () {\n\
 \t}\n\
 \n\
 };\n\
+\n\
+THREE.PerspectiveCamera.prototype.clone = function () {\n\
+\n\
+\tvar camera = new THREE.PerspectiveCamera();\n\
+\n\
+\tTHREE.Camera.prototype.clone.call( this, camera );\n\
+\n\
+\tcamera.fov = this.fov;\n\
+\tcamera.aspect = this.aspect;\n\
+\tcamera.near = this.near;\n\
+\tcamera.far = this.far;\n\
+\n\
+\treturn camera;\n\
+};\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -11753,6 +13511,19 @@ THREE.Light = function ( hex ) {\n\
 };\n\
 \n\
 THREE.Light.prototype = Object.create( THREE.Object3D.prototype );\n\
+\n\
+THREE.Light.prototype.clone = function ( light ) {\n\
+\n\
+\tif ( light === undefined ) light = new THREE.Light();\n\
+\n\
+\tTHREE.Object3D.prototype.clone.call( this, light );\n\
+\n\
+\tlight.color.copy( this.color );\n\
+\n\
+\treturn light;\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -11764,6 +13535,17 @@ THREE.AmbientLight = function ( hex ) {\n\
 };\n\
 \n\
 THREE.AmbientLight.prototype = Object.create( THREE.Light.prototype );\n\
+\n\
+THREE.AmbientLight.prototype.clone = function () {\n\
+\n\
+\tvar light = new THREE.AmbientLight();\n\
+\n\
+\tTHREE.Light.prototype.clone.call( this, light );\n\
+\n\
+\treturn light;\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author MPanknin / http://www.redplant.de/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -11789,6 +13571,7 @@ THREE.AreaLight = function ( hex, intensity ) {\n\
 \n\
 THREE.AreaLight.prototype = Object.create( THREE.Light.prototype );\n\
 \n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -11798,7 +13581,7 @@ THREE.DirectionalLight = function ( hex, intensity ) {\n\
 \n\
 \tTHREE.Light.call( this, hex );\n\
 \n\
-\tthis.position = new THREE.Vector3( 0, 1, 0 );\n\
+\tthis.position.set( 0, 1, 0 );\n\
 \tthis.target = new THREE.Object3D();\n\
 \n\
 \tthis.intensity = ( intensity !== undefined ) ? intensity : 1;\n\
@@ -11850,6 +13633,24 @@ THREE.DirectionalLight = function ( hex, intensity ) {\n\
 };\n\
 \n\
 THREE.DirectionalLight.prototype = Object.create( THREE.Light.prototype );\n\
+\n\
+THREE.DirectionalLight.prototype.clone = function () {\n\
+\n\
+\tvar light = new THREE.DirectionalLight();\n\
+\n\
+\tTHREE.Light.prototype.clone.call( this, light );\n\
+\n\
+\tlight.target = this.target.clone();\n\
+\n\
+\tlight.intensity = this.intensity;\n\
+\n\
+\tlight.castShadow = this.castShadow;\n\
+\tlight.onlyShadow = this.onlyShadow;\n\
+\n\
+\treturn light;\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -11858,15 +13659,28 @@ THREE.HemisphereLight = function ( skyColorHex, groundColorHex, intensity ) {\n\
 \n\
 \tTHREE.Light.call( this, skyColorHex );\n\
 \n\
+\tthis.position.set( 0, 100, 0 );\n\
+\n\
 \tthis.groundColor = new THREE.Color( groundColorHex );\n\
-\n\
-\tthis.position = new THREE.Vector3( 0, 100, 0 );\n\
-\n\
 \tthis.intensity = ( intensity !== undefined ) ? intensity : 1;\n\
 \n\
 };\n\
 \n\
 THREE.HemisphereLight.prototype = Object.create( THREE.Light.prototype );\n\
+\n\
+THREE.HemisphereLight.prototype.clone = function () {\n\
+\n\
+\tvar light = new THREE.HemisphereLight();\n\
+\n\
+\tTHREE.Light.prototype.clone.call( this, light );\n\
+\n\
+\tlight.groundColor.copy( this.groundColor );\n\
+\tlight.intensity = this.intensity;\n\
+\n\
+\treturn light;\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -11875,13 +13689,26 @@ THREE.PointLight = function ( hex, intensity, distance ) {\n\
 \n\
 \tTHREE.Light.call( this, hex );\n\
 \n\
-\tthis.position = new THREE.Vector3( 0, 0, 0 );\n\
 \tthis.intensity = ( intensity !== undefined ) ? intensity : 1;\n\
 \tthis.distance = ( distance !== undefined ) ? distance : 0;\n\
 \n\
 };\n\
 \n\
 THREE.PointLight.prototype = Object.create( THREE.Light.prototype );\n\
+\n\
+THREE.PointLight.prototype.clone = function () {\n\
+\n\
+\tvar light = new THREE.PointLight();\n\
+\n\
+\tTHREE.Light.prototype.clone.call( this, light );\n\
+\n\
+\tlight.intensity = this.intensity;\n\
+\tlight.distance = this.distance;\n\
+\n\
+\treturn light;\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -11890,12 +13717,12 @@ THREE.SpotLight = function ( hex, intensity, distance, angle, exponent ) {\n\
 \n\
 \tTHREE.Light.call( this, hex );\n\
 \n\
-\tthis.position = new THREE.Vector3( 0, 1, 0 );\n\
+\tthis.position.set( 0, 1, 0 );\n\
 \tthis.target = new THREE.Object3D();\n\
 \n\
 \tthis.intensity = ( intensity !== undefined ) ? intensity : 1;\n\
 \tthis.distance = ( distance !== undefined ) ? distance : 0;\n\
-\tthis.angle = ( angle !== undefined ) ? angle : Math.PI / 2;\n\
+\tthis.angle = ( angle !== undefined ) ? angle : Math.PI / 3;\n\
 \tthis.exponent = ( exponent !== undefined ) ? exponent : 10;\n\
 \n\
 \tthis.castShadow = false;\n\
@@ -11925,6 +13752,27 @@ THREE.SpotLight = function ( hex, intensity, distance, angle, exponent ) {\n\
 };\n\
 \n\
 THREE.SpotLight.prototype = Object.create( THREE.Light.prototype );\n\
+\n\
+THREE.SpotLight.prototype.clone = function () {\n\
+\n\
+\tvar light = new THREE.SpotLight();\n\
+\n\
+\tTHREE.Light.prototype.clone.call( this, light );\n\
+\n\
+\tlight.target = this.target.clone();\n\
+\n\
+\tlight.intensity = this.intensity;\n\
+\tlight.distance = this.distance;\n\
+\tlight.angle = this.angle;\n\
+\tlight.exponent = this.exponent;\n\
+\n\
+\tlight.castShadow = this.castShadow;\n\
+\tlight.onlyShadow = this.onlyShadow;\n\
+\n\
+\treturn light;\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -12072,7 +13920,7 @@ THREE.Loader.prototype = {\n\
 \n\
 \t\tfunction create_texture( where, name, sourceFile, repeat, offset, wrap, anisotropy ) {\n\
 \n\
-\t\t\tvar isCompressed = sourceFile.toLowerCase().endsWith( \".dds\" );\n\
+\t\t\tvar isCompressed = /\\.dds$/i.test( sourceFile );\n\
 \t\t\tvar fullPath = texturePath + \"/\" + sourceFile;\n\
 \n\
 \t\t\tif ( isCompressed ) {\n\
@@ -12298,7 +14146,7 @@ THREE.Loader.prototype = {\n\
 \n\
 \t\tif ( m.mapNormal ) {\n\
 \n\
-\t\t\tvar shader = THREE.ShaderUtils.lib[ \"normal\" ];\n\
+\t\t\tvar shader = THREE.ShaderLib[ \"normalmap\" ];\n\
 \t\t\tvar uniforms = THREE.UniformsUtils.clone( shader.uniforms );\n\
 \n\
 \t\t\tuniforms[ \"tNormal\" ].value = mpars.normalMap;\n\
@@ -12366,782 +14214,81 @@ THREE.Loader.prototype = {\n\
 \t}\n\
 \n\
 };\n\
-/**\n\
- * @author alteredq / http://alteredqualia.com/\n\
- */\n\
 \n\
-THREE.BinaryLoader = function ( showStatus ) {\n\
-\n\
-\tTHREE.Loader.call( this, showStatus );\n\
-\n\
-};\n\
-\n\
-THREE.BinaryLoader.prototype = Object.create( THREE.Loader.prototype );\n\
-\n\
-// Load models generated by slim OBJ converter with BINARY option (converter_obj_three_slim.py -t binary)\n\
-//  - binary models consist of two files: JS and BIN\n\
-//  - parameters\n\
-//\t\t- url (required)\n\
-//\t\t- callback (required)\n\
-//\t\t- texturePath (optional: if not specified, textures will be assumed to be in the same folder as JS model file)\n\
-//\t\t- binaryPath (optional: if not specified, binary file will be assumed to be in the same folder as JS model file)\n\
-\n\
-THREE.BinaryLoader.prototype.load = function( url, callback, texturePath, binaryPath ) {\n\
-\n\
-\t// todo: unify load API to for easier SceneLoader use\n\
-\n\
-\ttexturePath = texturePath && ( typeof texturePath === \"string\" ) ? texturePath : this.extractUrlBase( url );\n\
-\tbinaryPath = binaryPath && ( typeof binaryPath === \"string\" ) ? binaryPath : this.extractUrlBase( url );\n\
-\n\
-\tvar callbackProgress = this.showProgress ? THREE.Loader.prototype.updateProgress : null;\n\
-\n\
-\tthis.onLoadStart();\n\
-\n\
-\t// #1 load JS part via web worker\n\
-\n\
-\tthis.loadAjaxJSON( this, url, callback, texturePath, binaryPath, callbackProgress );\n\
-\n\
-};\n\
-\n\
-THREE.BinaryLoader.prototype.loadAjaxJSON = function ( context, url, callback, texturePath, binaryPath, callbackProgress ) {\n\
-\n\
-\tvar xhr = new XMLHttpRequest();\n\
-\n\
-\txhr.onreadystatechange = function () {\n\
-\n\
-\t\tif ( xhr.readyState == 4 ) {\n\
-\n\
-\t\t\tif ( xhr.status == 200 || xhr.status == 0 ) {\n\
-\n\
-\t\t\t\tvar json = JSON.parse( xhr.responseText );\n\
-\t\t\t\tcontext.loadAjaxBuffers( json, callback, binaryPath, texturePath, callbackProgress );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tconsole.error( \"THREE.BinaryLoader: Couldn't load [\" + url + \"] [\" + xhr.status + \"]\" );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
-\txhr.open( \"GET\", url, true );\n\
-\txhr.send( null );\n\
-\n\
-};\n\
-\n\
-THREE.BinaryLoader.prototype.loadAjaxBuffers = function ( json, callback, binaryPath, texturePath, callbackProgress ) {\n\
-\n\
-\tvar xhr = new XMLHttpRequest(),\n\
-\t\turl = binaryPath + \"/\" + json.buffers;\n\
-\n\
-\tvar length = 0;\n\
-\n\
-\txhr.onreadystatechange = function () {\n\
-\n\
-\t\tif ( xhr.readyState == 4 ) {\n\
-\n\
-\t\t\tif ( xhr.status == 200 || xhr.status == 0 ) {\n\
-\n\
-\t\t\t\tvar buffer = xhr.response;\n\
-\t\t\t\tif ( buffer === undefined ) buffer = ( new Uint8Array( xhr.responseBody ) ).buffer; // IEWEBGL needs this\n\
-\t\t\t\tTHREE.BinaryLoader.prototype.createBinModel( buffer, callback, texturePath, json.materials );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tconsole.error( \"THREE.BinaryLoader: Couldn't load [\" + url + \"] [\" + xhr.status + \"]\" );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else if ( xhr.readyState == 3 ) {\n\
-\n\
-\t\t\tif ( callbackProgress ) {\n\
-\n\
-\t\t\t\tif ( length == 0 ) {\n\
-\n\
-\t\t\t\t\tlength = xhr.getResponseHeader( \"Content-Length\" );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tcallbackProgress( { total: length, loaded: xhr.responseText.length } );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else if ( xhr.readyState == 2 ) {\n\
-\n\
-\t\t\tlength = xhr.getResponseHeader( \"Content-Length\" );\n\
-\n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
-\txhr.open( \"GET\", url, true );\n\
-\txhr.responseType = \"arraybuffer\";\n\
-\txhr.send( null );\n\
-\n\
-};\n\
-\n\
-// Binary AJAX parser\n\
-\n\
-THREE.BinaryLoader.prototype.createBinModel = function ( data, callback, texturePath, jsonMaterials ) {\n\
-\n\
-\tvar Model = function ( texturePath ) {\n\
-\n\
-\t\tvar scope = this,\n\
-\t\t\tcurrentOffset = 0,\n\
-\t\t\tmd,\n\
-\t\t\tnormals = [],\n\
-\t\t\tuvs = [],\n\
-\t\t\tstart_tri_flat, start_tri_smooth, start_tri_flat_uv, start_tri_smooth_uv,\n\
-\t\t\tstart_quad_flat, start_quad_smooth, start_quad_flat_uv, start_quad_smooth_uv,\n\
-\t\t\ttri_size, quad_size,\n\
-\t\t\tlen_tri_flat, len_tri_smooth, len_tri_flat_uv, len_tri_smooth_uv,\n\
-\t\t\tlen_quad_flat, len_quad_smooth, len_quad_flat_uv, len_quad_smooth_uv;\n\
-\n\
-\n\
-\t\tTHREE.Geometry.call( this );\n\
-\n\
-\t\tmd = parseMetaData( data, currentOffset );\n\
-\n\
-\t\tcurrentOffset += md.header_bytes;\n\
-/*\n\
-\t\tmd.vertex_index_bytes = Uint32Array.BYTES_PER_ELEMENT;\n\
-\t\tmd.material_index_bytes = Uint16Array.BYTES_PER_ELEMENT;\n\
-\t\tmd.normal_index_bytes = Uint32Array.BYTES_PER_ELEMENT;\n\
-\t\tmd.uv_index_bytes = Uint32Array.BYTES_PER_ELEMENT;\n\
-*/\n\
-\t\t// buffers sizes\n\
-\n\
-\t\ttri_size =  md.vertex_index_bytes * 3 + md.material_index_bytes;\n\
-\t\tquad_size = md.vertex_index_bytes * 4 + md.material_index_bytes;\n\
-\n\
-\t\tlen_tri_flat      = md.ntri_flat      * ( tri_size );\n\
-\t\tlen_tri_smooth    = md.ntri_smooth    * ( tri_size + md.normal_index_bytes * 3 );\n\
-\t\tlen_tri_flat_uv   = md.ntri_flat_uv   * ( tri_size + md.uv_index_bytes * 3 );\n\
-\t\tlen_tri_smooth_uv = md.ntri_smooth_uv * ( tri_size + md.normal_index_bytes * 3 + md.uv_index_bytes * 3 );\n\
-\n\
-\t\tlen_quad_flat      = md.nquad_flat      * ( quad_size );\n\
-\t\tlen_quad_smooth    = md.nquad_smooth    * ( quad_size + md.normal_index_bytes * 4 );\n\
-\t\tlen_quad_flat_uv   = md.nquad_flat_uv   * ( quad_size + md.uv_index_bytes * 4 );\n\
-\t\tlen_quad_smooth_uv = md.nquad_smooth_uv * ( quad_size + md.normal_index_bytes * 4 + md.uv_index_bytes * 4 );\n\
-\n\
-\t\t// read buffers\n\
-\n\
-\t\tcurrentOffset += init_vertices( currentOffset );\n\
-\n\
-\t\tcurrentOffset += init_normals( currentOffset );\n\
-\t\tcurrentOffset += handlePadding( md.nnormals * 3 );\n\
-\n\
-\t\tcurrentOffset += init_uvs( currentOffset );\n\
-\n\
-\t\tstart_tri_flat \t\t= currentOffset;\n\
-\t\tstart_tri_smooth    = start_tri_flat    + len_tri_flat    + handlePadding( md.ntri_flat * 2 );\n\
-\t\tstart_tri_flat_uv   = start_tri_smooth  + len_tri_smooth  + handlePadding( md.ntri_smooth * 2 );\n\
-\t\tstart_tri_smooth_uv = start_tri_flat_uv + len_tri_flat_uv + handlePadding( md.ntri_flat_uv * 2 );\n\
-\n\
-\t\tstart_quad_flat     = start_tri_smooth_uv + len_tri_smooth_uv  + handlePadding( md.ntri_smooth_uv * 2 );\n\
-\t\tstart_quad_smooth   = start_quad_flat     + len_quad_flat\t   + handlePadding( md.nquad_flat * 2 );\n\
-\t\tstart_quad_flat_uv  = start_quad_smooth   + len_quad_smooth    + handlePadding( md.nquad_smooth * 2 );\n\
-\t\tstart_quad_smooth_uv= start_quad_flat_uv  + len_quad_flat_uv   + handlePadding( md.nquad_flat_uv * 2 );\n\
-\n\
-\t\t// have to first process faces with uvs\n\
-\t\t// so that face and uv indices match\n\
-\n\
-\t\tinit_triangles_flat_uv( start_tri_flat_uv );\n\
-\t\tinit_triangles_smooth_uv( start_tri_smooth_uv );\n\
-\n\
-\t\tinit_quads_flat_uv( start_quad_flat_uv );\n\
-\t\tinit_quads_smooth_uv( start_quad_smooth_uv );\n\
-\n\
-\t\t// now we can process untextured faces\n\
-\n\
-\t\tinit_triangles_flat( start_tri_flat );\n\
-\t\tinit_triangles_smooth( start_tri_smooth );\n\
-\n\
-\t\tinit_quads_flat( start_quad_flat );\n\
-\t\tinit_quads_smooth( start_quad_smooth );\n\
-\n\
-\t\tthis.computeCentroids();\n\
-\t\tthis.computeFaceNormals();\n\
-\n\
-\t\tfunction handlePadding( n ) {\n\
-\n\
-\t\t\treturn ( n % 4 ) ? ( 4 - n % 4 ) : 0;\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction parseMetaData( data, offset ) {\n\
-\n\
-\t\t\tvar metaData = {\n\
-\n\
-\t\t\t\t'signature'               :parseString( data, offset,  12 ),\n\
-\t\t\t\t'header_bytes'            :parseUChar8( data, offset + 12 ),\n\
-\n\
-\t\t\t\t'vertex_coordinate_bytes' :parseUChar8( data, offset + 13 ),\n\
-\t\t\t\t'normal_coordinate_bytes' :parseUChar8( data, offset + 14 ),\n\
-\t\t\t\t'uv_coordinate_bytes'     :parseUChar8( data, offset + 15 ),\n\
-\n\
-\t\t\t\t'vertex_index_bytes'      :parseUChar8( data, offset + 16 ),\n\
-\t\t\t\t'normal_index_bytes'      :parseUChar8( data, offset + 17 ),\n\
-\t\t\t\t'uv_index_bytes'          :parseUChar8( data, offset + 18 ),\n\
-\t\t\t\t'material_index_bytes'    :parseUChar8( data, offset + 19 ),\n\
-\n\
-\t\t\t\t'nvertices'    :parseUInt32( data, offset + 20 ),\n\
-\t\t\t\t'nnormals'     :parseUInt32( data, offset + 20 + 4*1 ),\n\
-\t\t\t\t'nuvs'         :parseUInt32( data, offset + 20 + 4*2 ),\n\
-\n\
-\t\t\t\t'ntri_flat'      :parseUInt32( data, offset + 20 + 4*3 ),\n\
-\t\t\t\t'ntri_smooth'    :parseUInt32( data, offset + 20 + 4*4 ),\n\
-\t\t\t\t'ntri_flat_uv'   :parseUInt32( data, offset + 20 + 4*5 ),\n\
-\t\t\t\t'ntri_smooth_uv' :parseUInt32( data, offset + 20 + 4*6 ),\n\
-\n\
-\t\t\t\t'nquad_flat'      :parseUInt32( data, offset + 20 + 4*7 ),\n\
-\t\t\t\t'nquad_smooth'    :parseUInt32( data, offset + 20 + 4*8 ),\n\
-\t\t\t\t'nquad_flat_uv'   :parseUInt32( data, offset + 20 + 4*9 ),\n\
-\t\t\t\t'nquad_smooth_uv' :parseUInt32( data, offset + 20 + 4*10 )\n\
-\n\
-\t\t\t};\n\
-/*\n\
-\t\t\tconsole.log( \"signature: \" + metaData.signature );\n\
-\n\
-\t\t\tconsole.log( \"header_bytes: \" + metaData.header_bytes );\n\
-\t\t\tconsole.log( \"vertex_coordinate_bytes: \" + metaData.vertex_coordinate_bytes );\n\
-\t\t\tconsole.log( \"normal_coordinate_bytes: \" + metaData.normal_coordinate_bytes );\n\
-\t\t\tconsole.log( \"uv_coordinate_bytes: \" + metaData.uv_coordinate_bytes );\n\
-\n\
-\t\t\tconsole.log( \"vertex_index_bytes: \" + metaData.vertex_index_bytes );\n\
-\t\t\tconsole.log( \"normal_index_bytes: \" + metaData.normal_index_bytes );\n\
-\t\t\tconsole.log( \"uv_index_bytes: \" + metaData.uv_index_bytes );\n\
-\t\t\tconsole.log( \"material_index_bytes: \" + metaData.material_index_bytes );\n\
-\n\
-\t\t\tconsole.log( \"nvertices: \" + metaData.nvertices );\n\
-\t\t\tconsole.log( \"nnormals: \" + metaData.nnormals );\n\
-\t\t\tconsole.log( \"nuvs: \" + metaData.nuvs );\n\
-\n\
-\t\t\tconsole.log( \"ntri_flat: \" + metaData.ntri_flat );\n\
-\t\t\tconsole.log( \"ntri_smooth: \" + metaData.ntri_smooth );\n\
-\t\t\tconsole.log( \"ntri_flat_uv: \" + metaData.ntri_flat_uv );\n\
-\t\t\tconsole.log( \"ntri_smooth_uv: \" + metaData.ntri_smooth_uv );\n\
-\n\
-\t\t\tconsole.log( \"nquad_flat: \" + metaData.nquad_flat );\n\
-\t\t\tconsole.log( \"nquad_smooth: \" + metaData.nquad_smooth );\n\
-\t\t\tconsole.log( \"nquad_flat_uv: \" + metaData.nquad_flat_uv );\n\
-\t\t\tconsole.log( \"nquad_smooth_uv: \" + metaData.nquad_smooth_uv );\n\
-\n\
-\t\t\tvar total = metaData.header_bytes\n\
-\t\t\t\t\t  + metaData.nvertices * metaData.vertex_coordinate_bytes * 3\n\
-\t\t\t\t\t  + metaData.nnormals * metaData.normal_coordinate_bytes * 3\n\
-\t\t\t\t\t  + metaData.nuvs * metaData.uv_coordinate_bytes * 2\n\
-\t\t\t\t\t  + metaData.ntri_flat * ( metaData.vertex_index_bytes*3 + metaData.material_index_bytes )\n\
-\t\t\t\t\t  + metaData.ntri_smooth * ( metaData.vertex_index_bytes*3 + metaData.material_index_bytes + metaData.normal_index_bytes*3 )\n\
-\t\t\t\t\t  + metaData.ntri_flat_uv * ( metaData.vertex_index_bytes*3 + metaData.material_index_bytes + metaData.uv_index_bytes*3 )\n\
-\t\t\t\t\t  + metaData.ntri_smooth_uv * ( metaData.vertex_index_bytes*3 + metaData.material_index_bytes + metaData.normal_index_bytes*3 + metaData.uv_index_bytes*3 )\n\
-\t\t\t\t\t  + metaData.nquad_flat * ( metaData.vertex_index_bytes*4 + metaData.material_index_bytes )\n\
-\t\t\t\t\t  + metaData.nquad_smooth * ( metaData.vertex_index_bytes*4 + metaData.material_index_bytes + metaData.normal_index_bytes*4 )\n\
-\t\t\t\t\t  + metaData.nquad_flat_uv * ( metaData.vertex_index_bytes*4 + metaData.material_index_bytes + metaData.uv_index_bytes*4 )\n\
-\t\t\t\t\t  + metaData.nquad_smooth_uv * ( metaData.vertex_index_bytes*4 + metaData.material_index_bytes + metaData.normal_index_bytes*4 + metaData.uv_index_bytes*4 );\n\
-\t\t\tconsole.log( \"total bytes: \" + total );\n\
-*/\n\
-\n\
-\t\t\treturn metaData;\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction parseString( data, offset, length ) {\n\
-\n\
-\t\t\tvar charArray = new Uint8Array( data, offset, length );\n\
-\n\
-\t\t\tvar text = \"\";\n\
-\n\
-\t\t\tfor ( var i = 0; i < length; i ++ ) {\n\
-\n\
-\t\t\t\ttext += String.fromCharCode( charArray[ offset + i ] );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\treturn text;\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction parseUChar8( data, offset ) {\n\
-\n\
-\t\t\tvar charArray = new Uint8Array( data, offset, 1 );\n\
-\n\
-\t\t\treturn charArray[ 0 ];\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction parseUInt32( data, offset ) {\n\
-\n\
-\t\t\tvar intArray = new Uint32Array( data, offset, 1 );\n\
-\n\
-\t\t\treturn intArray[ 0 ];\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_vertices( start ) {\n\
-\n\
-\t\t\tvar nElements = md.nvertices;\n\
-\n\
-\t\t\tvar coordArray = new Float32Array( data, start, nElements * 3 );\n\
-\n\
-\t\t\tvar i, x, y, z;\n\
-\n\
-\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\tx = coordArray[ i * 3 ];\n\
-\t\t\t\ty = coordArray[ i * 3 + 1 ];\n\
-\t\t\t\tz = coordArray[ i * 3 + 2 ];\n\
-\n\
-\t\t\t\tvertex( scope, x, y, z );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\treturn nElements * 3 * Float32Array.BYTES_PER_ELEMENT;\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_normals( start ) {\n\
-\n\
-\t\t\tvar nElements = md.nnormals;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar normalArray = new Int8Array( data, start, nElements * 3 );\n\
-\n\
-\t\t\t\tvar i, x, y, z;\n\
-\n\
-\t\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\t\tx = normalArray[ i * 3 ];\n\
-\t\t\t\t\ty = normalArray[ i * 3 + 1 ];\n\
-\t\t\t\t\tz = normalArray[ i * 3 + 2 ];\n\
-\n\
-\t\t\t\t\tnormals.push( x/127, y/127, z/127 );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\treturn nElements * 3 * Int8Array.BYTES_PER_ELEMENT;\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_uvs( start ) {\n\
-\n\
-\t\t\tvar nElements = md.nuvs;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar uvArray = new Float32Array( data, start, nElements * 2 );\n\
-\n\
-\t\t\t\tvar i, u, v;\n\
-\n\
-\t\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\t\tu = uvArray[ i * 2 ];\n\
-\t\t\t\t\tv = uvArray[ i * 2 + 1 ];\n\
-\n\
-\t\t\t\t\tuvs.push( u, v );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\treturn nElements * 2 * Float32Array.BYTES_PER_ELEMENT;\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_uvs3( nElements, offset ) {\n\
-\n\
-\t\t\tvar i, uva, uvb, uvc, u1, u2, u3, v1, v2, v3;\n\
-\n\
-\t\t\tvar uvIndexBuffer = new Uint32Array( data, offset, 3 * nElements );\n\
-\n\
-\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\tuva = uvIndexBuffer[ i * 3 ];\n\
-\t\t\t\tuvb = uvIndexBuffer[ i * 3 + 1 ];\n\
-\t\t\t\tuvc = uvIndexBuffer[ i * 3 + 2 ];\n\
-\n\
-\t\t\t\tu1 = uvs[ uva*2 ];\n\
-\t\t\t\tv1 = uvs[ uva*2 + 1 ];\n\
-\n\
-\t\t\t\tu2 = uvs[ uvb*2 ];\n\
-\t\t\t\tv2 = uvs[ uvb*2 + 1 ];\n\
-\n\
-\t\t\t\tu3 = uvs[ uvc*2 ];\n\
-\t\t\t\tv3 = uvs[ uvc*2 + 1 ];\n\
-\n\
-\t\t\t\tuv3( scope.faceVertexUvs[ 0 ], u1, v1, u2, v2, u3, v3 );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_uvs4( nElements, offset ) {\n\
-\n\
-\t\t\tvar i, uva, uvb, uvc, uvd, u1, u2, u3, u4, v1, v2, v3, v4;\n\
-\n\
-\t\t\tvar uvIndexBuffer = new Uint32Array( data, offset, 4 * nElements );\n\
-\n\
-\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\tuva = uvIndexBuffer[ i * 4 ];\n\
-\t\t\t\tuvb = uvIndexBuffer[ i * 4 + 1 ];\n\
-\t\t\t\tuvc = uvIndexBuffer[ i * 4 + 2 ];\n\
-\t\t\t\tuvd = uvIndexBuffer[ i * 4 + 3 ];\n\
-\n\
-\t\t\t\tu1 = uvs[ uva*2 ];\n\
-\t\t\t\tv1 = uvs[ uva*2 + 1 ];\n\
-\n\
-\t\t\t\tu2 = uvs[ uvb*2 ];\n\
-\t\t\t\tv2 = uvs[ uvb*2 + 1 ];\n\
-\n\
-\t\t\t\tu3 = uvs[ uvc*2 ];\n\
-\t\t\t\tv3 = uvs[ uvc*2 + 1 ];\n\
-\n\
-\t\t\t\tu4 = uvs[ uvd*2 ];\n\
-\t\t\t\tv4 = uvs[ uvd*2 + 1 ];\n\
-\n\
-\t\t\t\tuv4( scope.faceVertexUvs[ 0 ], u1, v1, u2, v2, u3, v3, u4, v4 );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_faces3_flat( nElements, offsetVertices, offsetMaterials ) {\n\
-\n\
-\t\t\tvar i, a, b, c, m;\n\
-\n\
-\t\t\tvar vertexIndexBuffer = new Uint32Array( data, offsetVertices, 3 * nElements );\n\
-\t\t\tvar materialIndexBuffer = new Uint16Array( data, offsetMaterials, nElements );\n\
-\n\
-\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\ta = vertexIndexBuffer[ i * 3 ];\n\
-\t\t\t\tb = vertexIndexBuffer[ i * 3 + 1 ];\n\
-\t\t\t\tc = vertexIndexBuffer[ i * 3 + 2 ];\n\
-\n\
-\t\t\t\tm = materialIndexBuffer[ i ];\n\
-\n\
-\t\t\t\tf3( scope, a, b, c, m );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_faces4_flat( nElements, offsetVertices, offsetMaterials ) {\n\
-\n\
-\t\t\tvar i, a, b, c, d, m;\n\
-\n\
-\t\t\tvar vertexIndexBuffer = new Uint32Array( data, offsetVertices, 4 * nElements );\n\
-\t\t\tvar materialIndexBuffer = new Uint16Array( data, offsetMaterials, nElements );\n\
-\n\
-\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\ta = vertexIndexBuffer[ i * 4 ];\n\
-\t\t\t\tb = vertexIndexBuffer[ i * 4 + 1 ];\n\
-\t\t\t\tc = vertexIndexBuffer[ i * 4 + 2 ];\n\
-\t\t\t\td = vertexIndexBuffer[ i * 4 + 3 ];\n\
-\n\
-\t\t\t\tm = materialIndexBuffer[ i ];\n\
-\n\
-\t\t\t\tf4( scope, a, b, c, d, m );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_faces3_smooth( nElements, offsetVertices, offsetNormals, offsetMaterials ) {\n\
-\n\
-\t\t\tvar i, a, b, c, m;\n\
-\t\t\tvar na, nb, nc;\n\
-\n\
-\t\t\tvar vertexIndexBuffer = new Uint32Array( data, offsetVertices, 3 * nElements );\n\
-\t\t\tvar normalIndexBuffer = new Uint32Array( data, offsetNormals, 3 * nElements );\n\
-\t\t\tvar materialIndexBuffer = new Uint16Array( data, offsetMaterials, nElements );\n\
-\n\
-\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\ta = vertexIndexBuffer[ i * 3 ];\n\
-\t\t\t\tb = vertexIndexBuffer[ i * 3 + 1 ];\n\
-\t\t\t\tc = vertexIndexBuffer[ i * 3 + 2 ];\n\
-\n\
-\t\t\t\tna = normalIndexBuffer[ i * 3 ];\n\
-\t\t\t\tnb = normalIndexBuffer[ i * 3 + 1 ];\n\
-\t\t\t\tnc = normalIndexBuffer[ i * 3 + 2 ];\n\
-\n\
-\t\t\t\tm = materialIndexBuffer[ i ];\n\
-\n\
-\t\t\t\tf3n( scope, normals, a, b, c, m, na, nb, nc );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_faces4_smooth( nElements, offsetVertices, offsetNormals, offsetMaterials ) {\n\
-\n\
-\t\t\tvar i, a, b, c, d, m;\n\
-\t\t\tvar na, nb, nc, nd;\n\
-\n\
-\t\t\tvar vertexIndexBuffer = new Uint32Array( data, offsetVertices, 4 * nElements );\n\
-\t\t\tvar normalIndexBuffer = new Uint32Array( data, offsetNormals, 4 * nElements );\n\
-\t\t\tvar materialIndexBuffer = new Uint16Array( data, offsetMaterials, nElements );\n\
-\n\
-\t\t\tfor( i = 0; i < nElements; i ++ ) {\n\
-\n\
-\t\t\t\ta = vertexIndexBuffer[ i * 4 ];\n\
-\t\t\t\tb = vertexIndexBuffer[ i * 4 + 1 ];\n\
-\t\t\t\tc = vertexIndexBuffer[ i * 4 + 2 ];\n\
-\t\t\t\td = vertexIndexBuffer[ i * 4 + 3 ];\n\
-\n\
-\t\t\t\tna = normalIndexBuffer[ i * 4 ];\n\
-\t\t\t\tnb = normalIndexBuffer[ i * 4 + 1 ];\n\
-\t\t\t\tnc = normalIndexBuffer[ i * 4 + 2 ];\n\
-\t\t\t\tnd = normalIndexBuffer[ i * 4 + 3 ];\n\
-\n\
-\t\t\t\tm = materialIndexBuffer[ i ];\n\
-\n\
-\t\t\t\tf4n( scope, normals, a, b, c, d, m, na, nb, nc, nd );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_triangles_flat( start ) {\n\
-\n\
-\t\t\tvar nElements = md.ntri_flat;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetMaterials = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\t\t\t\tinit_faces3_flat( nElements, start, offsetMaterials );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_triangles_flat_uv( start ) {\n\
-\n\
-\t\t\tvar nElements = md.ntri_flat_uv;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetUvs = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\t\t\t\tvar offsetMaterials = offsetUvs + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\n\
-\t\t\t\tinit_faces3_flat( nElements, start, offsetMaterials );\n\
-\t\t\t\tinit_uvs3( nElements, offsetUvs );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_triangles_smooth( start ) {\n\
-\n\
-\t\t\tvar nElements = md.ntri_smooth;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetNormals = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\t\t\t\tvar offsetMaterials = offsetNormals + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\n\
-\t\t\t\tinit_faces3_smooth( nElements, start, offsetNormals, offsetMaterials );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_triangles_smooth_uv( start ) {\n\
-\n\
-\t\t\tvar nElements = md.ntri_smooth_uv;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetNormals = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\t\t\t\tvar offsetUvs = offsetNormals + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\t\t\t\tvar offsetMaterials = offsetUvs + nElements * Uint32Array.BYTES_PER_ELEMENT * 3;\n\
-\n\
-\t\t\t\tinit_faces3_smooth( nElements, start, offsetNormals, offsetMaterials );\n\
-\t\t\t\tinit_uvs3( nElements, offsetUvs );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_quads_flat( start ) {\n\
-\n\
-\t\t\tvar nElements = md.nquad_flat;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetMaterials = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\t\t\t\tinit_faces4_flat( nElements, start, offsetMaterials );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_quads_flat_uv( start ) {\n\
-\n\
-\t\t\tvar nElements = md.nquad_flat_uv;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetUvs = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\t\t\t\tvar offsetMaterials = offsetUvs + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\n\
-\t\t\t\tinit_faces4_flat( nElements, start, offsetMaterials );\n\
-\t\t\t\tinit_uvs4( nElements, offsetUvs );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_quads_smooth( start ) {\n\
-\n\
-\t\t\tvar nElements = md.nquad_smooth;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetNormals = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\t\t\t\tvar offsetMaterials = offsetNormals + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\n\
-\t\t\t\tinit_faces4_smooth( nElements, start, offsetNormals, offsetMaterials );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t\tfunction init_quads_smooth_uv( start ) {\n\
-\n\
-\t\t\tvar nElements = md.nquad_smooth_uv;\n\
-\n\
-\t\t\tif ( nElements ) {\n\
-\n\
-\t\t\t\tvar offsetNormals = start + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\t\t\t\tvar offsetUvs = offsetNormals + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\t\t\t\tvar offsetMaterials = offsetUvs + nElements * Uint32Array.BYTES_PER_ELEMENT * 4;\n\
-\n\
-\t\t\t\tinit_faces4_smooth( nElements, start, offsetNormals, offsetMaterials );\n\
-\t\t\t\tinit_uvs4( nElements, offsetUvs );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t};\n\
-\n\
-\t};\n\
-\n\
-\tfunction vertex ( scope, x, y, z ) {\n\
-\n\
-\t\tscope.vertices.push( new THREE.Vector3( x, y, z ) );\n\
-\n\
-\t};\n\
-\n\
-\tfunction f3 ( scope, a, b, c, mi ) {\n\
-\n\
-\t\tscope.faces.push( new THREE.Face3( a, b, c, null, null, mi ) );\n\
-\n\
-\t};\n\
-\n\
-\tfunction f4 ( scope, a, b, c, d, mi ) {\n\
-\n\
-\t\tscope.faces.push( new THREE.Face4( a, b, c, d, null, null, mi ) );\n\
-\n\
-\t};\n\
-\n\
-\tfunction f3n ( scope, normals, a, b, c, mi, na, nb, nc ) {\n\
-\n\
-\t\tvar nax = normals[ na*3     ],\n\
-\t\t\tnay = normals[ na*3 + 1 ],\n\
-\t\t\tnaz = normals[ na*3 + 2 ],\n\
-\n\
-\t\t\tnbx = normals[ nb*3     ],\n\
-\t\t\tnby = normals[ nb*3 + 1 ],\n\
-\t\t\tnbz = normals[ nb*3 + 2 ],\n\
-\n\
-\t\t\tncx = normals[ nc*3     ],\n\
-\t\t\tncy = normals[ nc*3 + 1 ],\n\
-\t\t\tncz = normals[ nc*3 + 2 ];\n\
-\n\
-\t\tscope.faces.push( new THREE.Face3( a, b, c,\n\
-\t\t\t\t\t\t  [new THREE.Vector3( nax, nay, naz ),\n\
-\t\t\t\t\t\t   new THREE.Vector3( nbx, nby, nbz ),\n\
-\t\t\t\t\t\t   new THREE.Vector3( ncx, ncy, ncz )],\n\
-\t\t\t\t\t\t  null,\n\
-\t\t\t\t\t\t  mi ) );\n\
-\n\
-\t};\n\
-\n\
-\tfunction f4n ( scope, normals, a, b, c, d, mi, na, nb, nc, nd ) {\n\
-\n\
-\t\tvar nax = normals[ na*3     ],\n\
-\t\t\tnay = normals[ na*3 + 1 ],\n\
-\t\t\tnaz = normals[ na*3 + 2 ],\n\
-\n\
-\t\t\tnbx = normals[ nb*3     ],\n\
-\t\t\tnby = normals[ nb*3 + 1 ],\n\
-\t\t\tnbz = normals[ nb*3 + 2 ],\n\
-\n\
-\t\t\tncx = normals[ nc*3     ],\n\
-\t\t\tncy = normals[ nc*3 + 1 ],\n\
-\t\t\tncz = normals[ nc*3 + 2 ],\n\
-\n\
-\t\t\tndx = normals[ nd*3     ],\n\
-\t\t\tndy = normals[ nd*3 + 1 ],\n\
-\t\t\tndz = normals[ nd*3 + 2 ];\n\
-\n\
-\t\tscope.faces.push( new THREE.Face4( a, b, c, d,\n\
-\t\t\t\t\t\t  [new THREE.Vector3( nax, nay, naz ),\n\
-\t\t\t\t\t\t   new THREE.Vector3( nbx, nby, nbz ),\n\
-\t\t\t\t\t\t   new THREE.Vector3( ncx, ncy, ncz ),\n\
-\t\t\t\t\t\t   new THREE.Vector3( ndx, ndy, ndz )],\n\
-\t\t\t\t\t\t  null,\n\
-\t\t\t\t\t\t  mi ) );\n\
-\n\
-\t};\n\
-\n\
-\tfunction uv3 ( where, u1, v1, u2, v2, u3, v3 ) {\n\
-\n\
-\t\twhere.push( [\n\
-\t\t\tnew THREE.Vector2( u1, v1 ),\n\
-\t\t\tnew THREE.Vector2( u2, v2 ),\n\
-\t\t\tnew THREE.Vector2( u3, v3 )\n\
-\t\t] );\n\
-\n\
-\t};\n\
-\n\
-\tfunction uv4 ( where, u1, v1, u2, v2, u3, v3, u4, v4 ) {\n\
-\n\
-\t\twhere.push( [\n\
-\t\t\tnew THREE.Vector2( u1, v1 ),\n\
-\t\t\tnew THREE.Vector2( u2, v2 ),\n\
-\t\t\tnew THREE.Vector2( u3, v3 ),\n\
-\t\t\tnew THREE.Vector2( u4, v4 )\n\
-\t\t] );\n\
-\t};\n\
-\n\
-\tModel.prototype = Object.create( THREE.Geometry.prototype );\n\
-\n\
-\tvar geometry = new Model( texturePath );\n\
-\tvar materials = this.initMaterials( jsonMaterials, texturePath );\n\
-\n\
-\tif ( this.needsTangents( materials ) ) geometry.computeTangents();\n\
-\n\
-\tcallback( geometry, materials );\n\
-\n\
-};\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
-THREE.ImageLoader = function () {\n\
+THREE.XHRLoader = function ( manager ) {\n\
 \n\
-\tTHREE.EventDispatcher.call( this );\n\
+\tthis.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;\n\
 \n\
-\tthis.crossOrigin = null;\n\
+};\n\
+\n\
+THREE.XHRLoader.prototype = {\n\
+\n\
+\tconstructor: THREE.XHRLoader,\n\
+\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
+\n\
+\t\tvar scope = this;\n\
+\t\tvar request = new XMLHttpRequest();\n\
+\n\
+\t\tif ( onLoad !== undefined ) {\n\
+\n\
+\t\t\trequest.addEventListener( 'load', function ( event ) {\n\
+\n\
+\t\t\t\tonLoad( event.target.responseText );\n\
+\t\t\t\tscope.manager.itemEnd( url );\n\
+\n\
+\t\t\t}, false );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( onProgress !== undefined ) {\n\
+\n\
+\t\t\trequest.addEventListener( 'progress', function ( event ) {\n\
+\n\
+\t\t\t\tonProgress( event );\n\
+\n\
+\t\t\t}, false );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( onError !== undefined ) {\n\
+\n\
+\t\t\trequest.addEventListener( 'error', function ( event ) {\n\
+\n\
+\t\t\t\tonError( event );\n\
+\n\
+\t\t\t}, false );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.crossOrigin !== undefined ) request.crossOrigin = this.crossOrigin;\n\
+\n\
+\t\trequest.open( 'GET', url, true );\n\
+\t\trequest.send( null );\n\
+\n\
+\t\tscope.manager.itemStart( url );\n\
+\n\
+\t},\n\
+\n\
+\tsetCrossOrigin: function ( value ) {\n\
+\n\
+\t\tthis.crossOrigin = value;\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
+\n\
+THREE.ImageLoader = function ( manager ) {\n\
+\n\
+\tthis.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;\n\
 \n\
 };\n\
 \n\
@@ -13149,31 +14296,58 @@ THREE.ImageLoader.prototype = {\n\
 \n\
 \tconstructor: THREE.ImageLoader,\n\
 \n\
-\tload: function ( url, image ) {\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
 \n\
 \t\tvar scope = this;\n\
+\t\tvar image = document.createElement( 'img' );\n\
 \n\
-\t\tif ( image === undefined ) image = new Image();\n\
+\t\tif ( onLoad !== undefined ) {\n\
 \n\
-\t\timage.addEventListener( 'load', function () {\n\
+\t\t\timage.addEventListener( 'load', function ( event ) {\n\
 \n\
-\t\t\tscope.dispatchEvent( { type: 'load', content: image } );\n\
+\t\t\t\tscope.manager.itemEnd( url );\n\
+\t\t\t\tonLoad( this );\n\
 \n\
-\t\t}, false );\n\
+\t\t\t}, false );\n\
 \n\
-\t\timage.addEventListener( 'error', function () {\n\
+\t\t}\n\
 \n\
-\t\t\tscope.dispatchEvent( { type: 'error', message: 'Couldn\\'t load URL [' + url + ']' } );\n\
+\t\tif ( onProgress !== undefined ) {\n\
 \n\
-\t\t}, false );\n\
+\t\t\timage.addEventListener( 'progress', function ( event ) {\n\
 \n\
-\t\tif ( scope.crossOrigin ) image.crossOrigin = scope.crossOrigin;\n\
+\t\t\t\tonProgress( event );\n\
+\n\
+\t\t\t}, false );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( onError !== undefined ) {\n\
+\n\
+\t\t\timage.addEventListener( 'error', function ( event ) {\n\
+\n\
+\t\t\t\tonError( event );\n\
+\n\
+\t\t\t}, false );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( this.crossOrigin !== undefined ) image.crossOrigin = this.crossOrigin;\n\
 \n\
 \t\timage.src = url;\n\
+\n\
+\t\tscope.manager.itemStart( url );\n\
+\n\
+\t},\n\
+\n\
+\tsetCrossOrigin: function ( value ) {\n\
+\n\
+\t\tthis.crossOrigin = value;\n\
 \n\
 \t}\n\
 \n\
 }\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -13208,8 +14382,6 @@ THREE.JSONLoader.prototype.loadAjaxJSON = function ( context, url, callback, tex
 \n\
 \tvar length = 0;\n\
 \n\
-\txhr.withCredentials = this.withCredentials;\n\
-\n\
 \txhr.onreadystatechange = function () {\n\
 \n\
 \t\tif ( xhr.readyState === xhr.DONE ) {\n\
@@ -13219,7 +14391,8 @@ THREE.JSONLoader.prototype.loadAjaxJSON = function ( context, url, callback, tex
 \t\t\t\tif ( xhr.responseText ) {\n\
 \n\
 \t\t\t\t\tvar json = JSON.parse( xhr.responseText );\n\
-\t\t\t\t\tcontext.createModel( json, callback, texturePath );\n\
+\t\t\t\t\tvar result = context.parse( json, texturePath );\n\
+\t\t\t\t\tcallback( result.geometry, result.materials );\n\
 \n\
 \t\t\t\t} else {\n\
 \n\
@@ -13255,18 +14428,23 @@ THREE.JSONLoader.prototype.loadAjaxJSON = function ( context, url, callback, tex
 \n\
 \t\t} else if ( xhr.readyState === xhr.HEADERS_RECEIVED ) {\n\
 \n\
-\t\t\tlength = xhr.getResponseHeader( \"Content-Length\" );\n\
+\t\t\tif ( callbackProgress !== undefined ) {\n\
+\n\
+\t\t\t\tlength = xhr.getResponseHeader( \"Content-Length\" );\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
 \t};\n\
 \n\
 \txhr.open( \"GET\", url, true );\n\
+\txhr.withCredentials = this.withCredentials;\n\
 \txhr.send( null );\n\
 \n\
 };\n\
 \n\
-THREE.JSONLoader.prototype.createModel = function ( json, callback, texturePath ) {\n\
+THREE.JSONLoader.prototype.parse = function ( json, texturePath ) {\n\
 \n\
 \tvar scope = this,\n\
 \tgeometry = new THREE.Geometry(),\n\
@@ -13279,6 +14457,7 @@ THREE.JSONLoader.prototype.createModel = function ( json, callback, texturePath 
 \n\
 \tgeometry.computeCentroids();\n\
 \tgeometry.computeFaceNormals();\n\
+\tgeometry.computeBoundingSphere();\n\
 \n\
 \tfunction parseModel( scale ) {\n\
 \n\
@@ -13290,20 +14469,20 @@ THREE.JSONLoader.prototype.createModel = function ( json, callback, texturePath 
 \n\
 \t\tvar i, j, fi,\n\
 \n\
-\t\toffset, zLength, nVertices,\n\
+\t\toffset, zLength,\n\
 \n\
 \t\tcolorIndex, normalIndex, uvIndex, materialIndex,\n\
 \n\
 \t\ttype,\n\
 \t\tisQuad,\n\
 \t\thasMaterial,\n\
-\t\thasFaceUv, hasFaceVertexUv,\n\
+\t\thasFaceVertexUv,\n\
 \t\thasFaceNormal, hasFaceVertexNormal,\n\
 \t\thasFaceColor, hasFaceVertexColor,\n\
 \n\
-\t\tvertex, face, color, normal,\n\
+\t\tvertex, face, faceA, faceB, color, hex, normal,\n\
 \n\
-\t\tuvLayer, uvs, u, v,\n\
+\t\tuvLayer, uv, u, v,\n\
 \n\
 \t\tfaces = json.faces,\n\
 \t\tvertices = json.vertices,\n\
@@ -13312,18 +14491,21 @@ THREE.JSONLoader.prototype.createModel = function ( json, callback, texturePath 
 \n\
 \t\tnUvLayers = 0;\n\
 \n\
-\t\t// disregard empty arrays\n\
+\t\tif ( json.uvs !== undefined ) {\n\
 \n\
-\t\tfor ( i = 0; i < json.uvs.length; i++ ) {\n\
+\t\t\t// disregard empty arrays\n\
 \n\
-\t\t\tif ( json.uvs[ i ].length ) nUvLayers ++;\n\
+\t\t\tfor ( i = 0; i < json.uvs.length; i++ ) {\n\
 \n\
-\t\t}\n\
+\t\t\t\tif ( json.uvs[ i ].length ) nUvLayers ++;\n\
 \n\
-\t\tfor ( i = 0; i < nUvLayers; i++ ) {\n\
+\t\t\t}\n\
 \n\
-\t\t\tgeometry.faceUvs[ i ] = [];\n\
-\t\t\tgeometry.faceVertexUvs[ i ] = [];\n\
+\t\t\tfor ( i = 0; i < nUvLayers; i++ ) {\n\
+\n\
+\t\t\t\tgeometry.faceVertexUvs[ i ] = [];\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
@@ -13350,150 +14532,228 @@ THREE.JSONLoader.prototype.createModel = function ( json, callback, texturePath 
 \t\t\ttype = faces[ offset ++ ];\n\
 \n\
 \n\
-\t\t\tisQuad          \t= isBitSet( type, 0 );\n\
+\t\t\tisQuad              = isBitSet( type, 0 );\n\
 \t\t\thasMaterial         = isBitSet( type, 1 );\n\
-\t\t\thasFaceUv           = isBitSet( type, 2 );\n\
 \t\t\thasFaceVertexUv     = isBitSet( type, 3 );\n\
 \t\t\thasFaceNormal       = isBitSet( type, 4 );\n\
 \t\t\thasFaceVertexNormal = isBitSet( type, 5 );\n\
 \t\t\thasFaceColor\t    = isBitSet( type, 6 );\n\
 \t\t\thasFaceVertexColor  = isBitSet( type, 7 );\n\
 \n\
-\t\t\t//console.log(\"type\", type, \"bits\", isQuad, hasMaterial, hasFaceUv, hasFaceVertexUv, hasFaceNormal, hasFaceVertexNormal, hasFaceColor, hasFaceVertexColor);\n\
+\t\t\t// console.log(\"type\", type, \"bits\", isQuad, hasMaterial, hasFaceVertexUv, hasFaceNormal, hasFaceVertexNormal, hasFaceColor, hasFaceVertexColor);\n\
 \n\
 \t\t\tif ( isQuad ) {\n\
 \n\
-\t\t\t\tface = new THREE.Face4();\n\
+\t\t\t\tfaceA = new THREE.Face3();\n\
+\t\t\t\tfaceA.a = faces[ offset ];\n\
+\t\t\t\tfaceA.b = faces[ offset + 1 ];\n\
+\t\t\t\tfaceA.c = faces[ offset + 3 ];\n\
 \n\
-\t\t\t\tface.a = faces[ offset ++ ];\n\
-\t\t\t\tface.b = faces[ offset ++ ];\n\
-\t\t\t\tface.c = faces[ offset ++ ];\n\
-\t\t\t\tface.d = faces[ offset ++ ];\n\
+\t\t\t\tfaceB = new THREE.Face3();\n\
+\t\t\t\tfaceB.a = faces[ offset + 1 ];\n\
+\t\t\t\tfaceB.b = faces[ offset + 2 ];\n\
+\t\t\t\tfaceB.c = faces[ offset + 3 ];\n\
 \n\
-\t\t\t\tnVertices = 4;\n\
+\t\t\t\toffset += 4;\n\
+\n\
+\t\t\t\tif ( hasMaterial ) {\n\
+\n\
+\t\t\t\t\tmaterialIndex = faces[ offset ++ ];\n\
+\t\t\t\t\tfaceA.materialIndex = materialIndex;\n\
+\t\t\t\t\tfaceB.materialIndex = materialIndex;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\t// to get face <=> uv index correspondence\n\
+\n\
+\t\t\t\tfi = geometry.faces.length;\n\
+\n\
+\t\t\t\tif ( hasFaceVertexUv ) {\n\
+\n\
+\t\t\t\t\tfor ( i = 0; i < nUvLayers; i++ ) {\n\
+\n\
+\t\t\t\t\t\tuvLayer = json.uvs[ i ];\n\
+\n\
+\t\t\t\t\t\tgeometry.faceVertexUvs[ i ][ fi ] = [];\n\
+\t\t\t\t\t\tgeometry.faceVertexUvs[ i ][ fi + 1 ] = []\n\
+\n\
+\t\t\t\t\t\tfor ( j = 0; j < 4; j ++ ) {\n\
+\n\
+\t\t\t\t\t\t\tuvIndex = faces[ offset ++ ];\n\
+\n\
+\t\t\t\t\t\t\tu = uvLayer[ uvIndex * 2 ];\n\
+\t\t\t\t\t\t\tv = uvLayer[ uvIndex * 2 + 1 ];\n\
+\n\
+\t\t\t\t\t\t\tuv = new THREE.Vector2( u, v );\n\
+\n\
+\t\t\t\t\t\t\tif ( j !== 2 ) geometry.faceVertexUvs[ i ][ fi ].push( uv );\n\
+\t\t\t\t\t\t\tif ( j !== 0 ) geometry.faceVertexUvs[ i ][ fi + 1 ].push( uv );\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( hasFaceNormal ) {\n\
+\n\
+\t\t\t\t\tnormalIndex = faces[ offset ++ ] * 3;\n\
+\n\
+\t\t\t\t\tfaceA.normal.set(\n\
+\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\tnormals[ normalIndex ]\n\
+\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\tfaceB.normal.copy( faceA.normal );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( hasFaceVertexNormal ) {\n\
+\n\
+\t\t\t\t\tfor ( i = 0; i < 4; i++ ) {\n\
+\n\
+\t\t\t\t\t\tnormalIndex = faces[ offset ++ ] * 3;\n\
+\n\
+\t\t\t\t\t\tnormal = new THREE.Vector3(\n\
+\t\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\t\tnormals[ normalIndex ]\n\
+\t\t\t\t\t\t);\n\
+\n\
+\n\
+\t\t\t\t\t\tif ( i !== 2 ) faceA.vertexNormals.push( normal );\n\
+\t\t\t\t\t\tif ( i !== 0 ) faceB.vertexNormals.push( normal );\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\n\
+\t\t\t\tif ( hasFaceColor ) {\n\
+\n\
+\t\t\t\t\tcolorIndex = faces[ offset ++ ];\n\
+\t\t\t\t\thex = colors[ colorIndex ];\n\
+\n\
+\t\t\t\t\tfaceA.color.setHex( hex );\n\
+\t\t\t\t\tfaceB.color.setHex( hex );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\n\
+\t\t\t\tif ( hasFaceVertexColor ) {\n\
+\n\
+\t\t\t\t\tfor ( i = 0; i < 4; i++ ) {\n\
+\n\
+\t\t\t\t\t\tcolorIndex = faces[ offset ++ ];\n\
+\t\t\t\t\t\thex = colors[ colorIndex ];\n\
+\n\
+\t\t\t\t\t\tif ( i !== 2 ) faceA.vertexColors.push( new THREE.Color( hex ) );\n\
+\t\t\t\t\t\tif ( i !== 0 ) faceB.vertexColors.push( new THREE.Color( hex ) );\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tgeometry.faces.push( faceA );\n\
+\t\t\t\tgeometry.faces.push( faceB );\n\
 \n\
 \t\t\t} else {\n\
 \n\
 \t\t\t\tface = new THREE.Face3();\n\
-\n\
 \t\t\t\tface.a = faces[ offset ++ ];\n\
 \t\t\t\tface.b = faces[ offset ++ ];\n\
 \t\t\t\tface.c = faces[ offset ++ ];\n\
 \n\
-\t\t\t\tnVertices = 3;\n\
+\t\t\t\tif ( hasMaterial ) {\n\
 \n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( hasMaterial ) {\n\
-\n\
-\t\t\t\tmaterialIndex = faces[ offset ++ ];\n\
-\t\t\t\tface.materialIndex = materialIndex;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\t// to get face <=> uv index correspondence\n\
-\n\
-\t\t\tfi = geometry.faces.length;\n\
-\n\
-\t\t\tif ( hasFaceUv ) {\n\
-\n\
-\t\t\t\tfor ( i = 0; i < nUvLayers; i++ ) {\n\
-\n\
-\t\t\t\t\tuvLayer = json.uvs[ i ];\n\
-\n\
-\t\t\t\t\tuvIndex = faces[ offset ++ ];\n\
-\n\
-\t\t\t\t\tu = uvLayer[ uvIndex * 2 ];\n\
-\t\t\t\t\tv = uvLayer[ uvIndex * 2 + 1 ];\n\
-\n\
-\t\t\t\t\tgeometry.faceUvs[ i ][ fi ] = new THREE.Vector2( u, v );\n\
+\t\t\t\t\tmaterialIndex = faces[ offset ++ ];\n\
+\t\t\t\t\tface.materialIndex = materialIndex;\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t}\n\
+\t\t\t\t// to get face <=> uv index correspondence\n\
 \n\
-\t\t\tif ( hasFaceVertexUv ) {\n\
+\t\t\t\tfi = geometry.faces.length;\n\
 \n\
-\t\t\t\tfor ( i = 0; i < nUvLayers; i++ ) {\n\
+\t\t\t\tif ( hasFaceVertexUv ) {\n\
 \n\
-\t\t\t\t\tuvLayer = json.uvs[ i ];\n\
+\t\t\t\t\tfor ( i = 0; i < nUvLayers; i++ ) {\n\
 \n\
-\t\t\t\t\tuvs = [];\n\
+\t\t\t\t\t\tuvLayer = json.uvs[ i ];\n\
 \n\
-\t\t\t\t\tfor ( j = 0; j < nVertices; j ++ ) {\n\
+\t\t\t\t\t\tgeometry.faceVertexUvs[ i ][ fi ] = [];\n\
 \n\
-\t\t\t\t\t\tuvIndex = faces[ offset ++ ];\n\
+\t\t\t\t\t\tfor ( j = 0; j < 3; j ++ ) {\n\
 \n\
-\t\t\t\t\t\tu = uvLayer[ uvIndex * 2 ];\n\
-\t\t\t\t\t\tv = uvLayer[ uvIndex * 2 + 1 ];\n\
+\t\t\t\t\t\t\tuvIndex = faces[ offset ++ ];\n\
 \n\
-\t\t\t\t\t\tuvs[ j ] = new THREE.Vector2( u, v );\n\
+\t\t\t\t\t\t\tu = uvLayer[ uvIndex * 2 ];\n\
+\t\t\t\t\t\t\tv = uvLayer[ uvIndex * 2 + 1 ];\n\
+\n\
+\t\t\t\t\t\t\tuv = new THREE.Vector2( u, v );\n\
+\n\
+\t\t\t\t\t\t\tgeometry.faceVertexUvs[ i ][ fi ].push( uv );\n\
+\n\
+\t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
-\t\t\t\t\tgeometry.faceVertexUvs[ i ][ fi ] = uvs;\n\
-\n\
 \t\t\t\t}\n\
 \n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( hasFaceNormal ) {\n\
-\n\
-\t\t\t\tnormalIndex = faces[ offset ++ ] * 3;\n\
-\n\
-\t\t\t\tnormal = new THREE.Vector3();\n\
-\n\
-\t\t\t\tnormal.x = normals[ normalIndex ++ ];\n\
-\t\t\t\tnormal.y = normals[ normalIndex ++ ];\n\
-\t\t\t\tnormal.z = normals[ normalIndex ];\n\
-\n\
-\t\t\t\tface.normal = normal;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( hasFaceVertexNormal ) {\n\
-\n\
-\t\t\t\tfor ( i = 0; i < nVertices; i++ ) {\n\
+\t\t\t\tif ( hasFaceNormal ) {\n\
 \n\
 \t\t\t\t\tnormalIndex = faces[ offset ++ ] * 3;\n\
 \n\
-\t\t\t\t\tnormal = new THREE.Vector3();\n\
-\n\
-\t\t\t\t\tnormal.x = normals[ normalIndex ++ ];\n\
-\t\t\t\t\tnormal.y = normals[ normalIndex ++ ];\n\
-\t\t\t\t\tnormal.z = normals[ normalIndex ];\n\
-\n\
-\t\t\t\t\tface.vertexNormals.push( normal );\n\
+\t\t\t\t\tface.normal.set(\n\
+\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\tnormals[ normalIndex ]\n\
+\t\t\t\t\t);\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t}\n\
+\t\t\t\tif ( hasFaceVertexNormal ) {\n\
+\n\
+\t\t\t\t\tfor ( i = 0; i < 3; i++ ) {\n\
+\n\
+\t\t\t\t\t\tnormalIndex = faces[ offset ++ ] * 3;\n\
+\n\
+\t\t\t\t\t\tnormal = new THREE.Vector3(\n\
+\t\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\t\tnormals[ normalIndex ++ ],\n\
+\t\t\t\t\t\t\tnormals[ normalIndex ]\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tface.vertexNormals.push( normal );\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \n\
-\t\t\tif ( hasFaceColor ) {\n\
-\n\
-\t\t\t\tcolorIndex = faces[ offset ++ ];\n\
-\n\
-\t\t\t\tcolor = new THREE.Color( colors[ colorIndex ] );\n\
-\t\t\t\tface.color = color;\n\
-\n\
-\t\t\t}\n\
-\n\
-\n\
-\t\t\tif ( hasFaceVertexColor ) {\n\
-\n\
-\t\t\t\tfor ( i = 0; i < nVertices; i++ ) {\n\
+\t\t\t\tif ( hasFaceColor ) {\n\
 \n\
 \t\t\t\t\tcolorIndex = faces[ offset ++ ];\n\
-\n\
-\t\t\t\t\tcolor = new THREE.Color( colors[ colorIndex ] );\n\
-\t\t\t\t\tface.vertexColors.push( color );\n\
+\t\t\t\t\tface.color.setHex( colors[ colorIndex ] );\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t}\n\
 \n\
-\t\t\tgeometry.faces.push( face );\n\
+\t\t\t\tif ( hasFaceVertexColor ) {\n\
+\n\
+\t\t\t\t\tfor ( i = 0; i < 3; i++ ) {\n\
+\n\
+\t\t\t\t\t\tcolorIndex = faces[ offset ++ ];\n\
+\t\t\t\t\t\tface.vertexColors.push( new THREE.Color( colors[ colorIndex ] ) );\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tgeometry.faces.push( face );\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
@@ -13595,49 +14855,572 @@ THREE.JSONLoader.prototype.createModel = function ( json, callback, texturePath 
 \n\
 \t};\n\
 \n\
-\tvar materials = this.initMaterials( json.materials, texturePath );\n\
+\tif ( json.materials === undefined ) {\n\
 \n\
-\tif ( this.needsTangents( materials ) ) geometry.computeTangents();\n\
+\t\treturn { geometry: geometry };\n\
 \n\
-\tcallback( geometry, materials );\n\
+\t} else {\n\
+\n\
+\t\tvar materials = this.initMaterials( json.materials, texturePath );\n\
+\n\
+\t\tif ( this.needsTangents( materials ) ) {\n\
+\n\
+\t\t\tgeometry.computeTangents();\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn { geometry: geometry, materials: materials };\n\
+\n\
+\t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
-THREE.LoadingMonitor = function () {\n\
-\n\
-\tTHREE.EventDispatcher.call( this );\n\
+THREE.LoadingManager = function ( onLoad, onProgress, onError ) {\n\
 \n\
 \tvar scope = this;\n\
 \n\
-\tvar loaded = 0;\n\
-\tvar total = 0;\n\
+\tvar loaded = 0, total = 0;\n\
 \n\
-\tvar onLoad = function ( event ) {\n\
+\tthis.onLoad = onLoad;\n\
+\tthis.onProgress = onProgress;\n\
+\tthis.onError = onError;\n\
+\n\
+\tthis.itemStart = function ( url ) {\n\
+\n\
+\t\ttotal ++;\n\
+\n\
+\t};\n\
+\n\
+\tthis.itemEnd = function ( url ) {\n\
 \n\
 \t\tloaded ++;\n\
 \n\
-\t\tscope.dispatchEvent( { type: 'progress', loaded: loaded, total: total } );\n\
+\t\tif ( scope.onProgress !== undefined ) {\n\
 \n\
-\t\tif ( loaded === total ) {\n\
+\t\t\tscope.onProgress( url, loaded, total );\n\
 \n\
-\t\t\tscope.dispatchEvent( { type: 'load' } );\n\
+\t\t}\n\
+\n\
+\t\tif ( loaded === total && scope.onLoad !== undefined ) {\n\
+\n\
+\t\t\tscope.onLoad();\n\
 \n\
 \t\t}\n\
 \n\
 \t};\n\
 \n\
-\tthis.add = function ( loader ) {\n\
+};\n\
 \n\
-\t\ttotal ++;\n\
+THREE.DefaultLoadingManager = new THREE.LoadingManager();\n\
 \n\
-\t\tloader.addEventListener( 'load', onLoad, false );\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
 \n\
-\t};\n\
+THREE.BufferGeometryLoader = function ( manager ) {\n\
+\n\
+\tthis.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;\n\
 \n\
 };\n\
+\n\
+THREE.BufferGeometryLoader.prototype = {\n\
+\n\
+\tconstructor: THREE.BufferGeometryLoader,\n\
+\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
+\n\
+\t\tvar scope = this;\n\
+\n\
+\t\tvar loader = new THREE.XHRLoader();\n\
+\t\tloader.setCrossOrigin( this.crossOrigin );\n\
+\t\tloader.load( url, function ( text ) {\n\
+\n\
+\t\t\tonLoad( scope.parse( JSON.parse( text ) ) );\n\
+\n\
+\t\t} );\n\
+\n\
+\t},\n\
+\n\
+\tsetCrossOrigin: function ( value ) {\n\
+\n\
+\t\tthis.crossOrigin = value;\n\
+\n\
+\t},\n\
+\n\
+\tparse: function ( json ) {\n\
+\n\
+\t\tvar geometry = new THREE.BufferGeometry();\n\
+\n\
+\t\tvar attributes = json.attributes;\n\
+\t\tvar offsets = json.offsets;\n\
+\t\tvar boundingSphere = json.boundingSphere;\n\
+\n\
+\t\tfor ( var key in attributes ) {\n\
+\n\
+\t\t\tvar attribute = attributes[ key ];\n\
+\n\
+\t\t\tgeometry.attributes[ key ] = {\n\
+\t\t\t\titemSize: attribute.itemSize,\n\
+\t\t\t\tarray: new self[ attribute.type ]( attribute.array )\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( offsets !== undefined ) {\n\
+\n\
+\t\t\tgeometry.offsets = JSON.parse( JSON.stringify( offsets ) );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tif ( boundingSphere !== undefined ) {\n\
+\n\
+\t\t\tgeometry.boundingSphere = new THREE.Sphere(\n\
+\t\t\t\tnew THREE.Vector3().fromArray( boundingSphere.center !== undefined ? boundingSphere.center : [ 0, 0, 0 ] ),\n\
+\t\t\t\tboundingSphere.radius\n\
+\t\t\t);\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn geometry;\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
+\n\
+THREE.GeometryLoader = function ( manager ) {\n\
+\n\
+\tthis.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;\n\
+\n\
+};\n\
+\n\
+THREE.GeometryLoader.prototype = {\n\
+\n\
+\tconstructor: THREE.GeometryLoader,\n\
+\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
+\n\
+\t\tvar scope = this;\n\
+\n\
+\t\tvar loader = new THREE.XHRLoader();\n\
+\t\tloader.setCrossOrigin( this.crossOrigin );\n\
+\t\tloader.load( url, function ( text ) {\n\
+\n\
+\t\t\tonLoad( scope.parse( JSON.parse( text ) ) );\n\
+\n\
+\t\t} );\n\
+\n\
+\t},\n\
+\n\
+\tsetCrossOrigin: function ( value ) {\n\
+\n\
+\t\tthis.crossOrigin = value;\n\
+\n\
+\t},\n\
+\n\
+\tparse: function ( json ) {\n\
+\n\
+\t\t\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
+\n\
+THREE.MaterialLoader = function ( manager ) {\n\
+\n\
+\tthis.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;\n\
+\n\
+};\n\
+\n\
+THREE.MaterialLoader.prototype = {\n\
+\n\
+\tconstructor: THREE.MaterialLoader,\n\
+\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
+\n\
+\t\tvar scope = this;\n\
+\n\
+\t\tvar loader = new THREE.XHRLoader();\n\
+\t\tloader.setCrossOrigin( this.crossOrigin );\n\
+\t\tloader.load( url, function ( text ) {\n\
+\n\
+\t\t\tonLoad( scope.parse( JSON.parse( text ) ) );\n\
+\n\
+\t\t} );\n\
+\n\
+\t},\n\
+\n\
+\tsetCrossOrigin: function ( value ) {\n\
+\n\
+\t\tthis.crossOrigin = value;\n\
+\n\
+\t},\n\
+\n\
+\tparse: function ( json ) {\n\
+\n\
+\t\tvar material = new THREE[ json.type ];\n\
+\n\
+\t\tif ( json.color !== undefined ) material.color.setHex( json.color );\n\
+\t\tif ( json.ambient !== undefined ) material.ambient.setHex( json.ambient );\n\
+\t\tif ( json.emissive !== undefined ) material.emissive.setHex( json.emissive );\n\
+\t\tif ( json.specular !== undefined ) material.specular.setHex( json.specular );\n\
+\t\tif ( json.shininess !== undefined ) material.shininess = json.shininess;\n\
+\t\tif ( json.vertexColors !== undefined ) material.vertexColors = json.vertexColors;\n\
+\t\tif ( json.blending !== undefined ) material.blending = json.blending;\n\
+\t\tif ( json.opacity !== undefined ) material.opacity = json.opacity;\n\
+\t\tif ( json.transparent !== undefined ) material.transparent = json.transparent;\n\
+\t\tif ( json.wireframe !== undefined ) material.wireframe = json.wireframe;\n\
+\n\
+\t\tif ( json.materials !== undefined ) {\n\
+\n\
+\t\t\tfor ( var i = 0, l = json.materials.length; i < l; i ++ ) {\n\
+\n\
+\t\t\t\tmaterial.materials.push( this.parse( json.materials[ i ] ) );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn material;\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
+\n\
+THREE.ObjectLoader = function ( manager ) {\n\
+\n\
+\tthis.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;\n\
+\n\
+};\n\
+\n\
+THREE.ObjectLoader.prototype = {\n\
+\n\
+\tconstructor: THREE.ObjectLoader,\n\
+\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
+\n\
+\t\tvar scope = this;\n\
+\n\
+\t\tvar loader = new THREE.XHRLoader( scope.manager );\n\
+\t\tloader.setCrossOrigin( this.crossOrigin );\n\
+\t\tloader.load( url, function ( text ) {\n\
+\n\
+\t\t\tonLoad( scope.parse( JSON.parse( text ) ) );\n\
+\n\
+\t\t} );\n\
+\n\
+\t},\n\
+\n\
+\tsetCrossOrigin: function ( value ) {\n\
+\n\
+\t\tthis.crossOrigin = value;\n\
+\n\
+\t},\n\
+\n\
+\tparse: function ( json ) {\n\
+\n\
+\t\tvar geometries = this.parseGeometries( json.geometries );\n\
+\t\tvar materials = this.parseMaterials( json.materials );\n\
+\t\tvar object = this.parseObject( json.object, geometries, materials );\n\
+\n\
+\t\treturn object;\n\
+\n\
+\t},\n\
+\n\
+\tparseGeometries: function ( json ) {\n\
+\n\
+\t\tvar geometries = {};\n\
+\n\
+\t\tif ( json !== undefined ) {\n\
+\n\
+\t\t\tvar geometryLoader = new THREE.JSONLoader();\n\
+\t\t\tvar bufferGeometryLoader = new THREE.BufferGeometryLoader();\n\
+\n\
+\t\t\tfor ( var i = 0, l = json.length; i < l; i ++ ) {\n\
+\n\
+\t\t\t\tvar geometry;\n\
+\t\t\t\tvar data = json[ i ];\n\
+\n\
+\t\t\t\tswitch ( data.type ) {\n\
+\n\
+\t\t\t\t\tcase 'PlaneGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = new THREE.PlaneGeometry(\n\
+\t\t\t\t\t\t\tdata.width,\n\
+\t\t\t\t\t\t\tdata.height,\n\
+\t\t\t\t\t\t\tdata.widthSegments,\n\
+\t\t\t\t\t\t\tdata.heightSegments\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'CubeGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = new THREE.CubeGeometry(\n\
+\t\t\t\t\t\t\tdata.width,\n\
+\t\t\t\t\t\t\tdata.height,\n\
+\t\t\t\t\t\t\tdata.depth,\n\
+\t\t\t\t\t\t\tdata.widthSegments,\n\
+\t\t\t\t\t\t\tdata.heightSegments,\n\
+\t\t\t\t\t\t\tdata.depthSegments\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'CylinderGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = new THREE.CylinderGeometry(\n\
+\t\t\t\t\t\t\tdata.radiusTop,\n\
+\t\t\t\t\t\t\tdata.radiusBottom,\n\
+\t\t\t\t\t\t\tdata.height,\n\
+\t\t\t\t\t\t\tdata.radiusSegments,\n\
+\t\t\t\t\t\t\tdata.heightSegments,\n\
+\t\t\t\t\t\t\tdata.openEnded\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'SphereGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = new THREE.SphereGeometry(\n\
+\t\t\t\t\t\t\tdata.radius,\n\
+\t\t\t\t\t\t\tdata.widthSegments,\n\
+\t\t\t\t\t\t\tdata.heightSegments,\n\
+\t\t\t\t\t\t\tdata.phiStart,\n\
+\t\t\t\t\t\t\tdata.phiLength,\n\
+\t\t\t\t\t\t\tdata.thetaStart,\n\
+\t\t\t\t\t\t\tdata.thetaLength\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'IcosahedronGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = new THREE.IcosahedronGeometry(\n\
+\t\t\t\t\t\t\tdata.radius,\n\
+\t\t\t\t\t\t\tdata.detail\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'TorusGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = new THREE.TorusGeometry(\n\
+\t\t\t\t\t\t\tdata.radius,\n\
+\t\t\t\t\t\t\tdata.tube,\n\
+\t\t\t\t\t\t\tdata.radialSegments,\n\
+\t\t\t\t\t\t\tdata.tubularSegments,\n\
+\t\t\t\t\t\t\tdata.arc\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'TorusKnotGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = new THREE.TorusKnotGeometry(\n\
+\t\t\t\t\t\t\tdata.radius,\n\
+\t\t\t\t\t\t\tdata.tube,\n\
+\t\t\t\t\t\t\tdata.radialSegments,\n\
+\t\t\t\t\t\t\tdata.tubularSegments,\n\
+\t\t\t\t\t\t\tdata.p,\n\
+\t\t\t\t\t\t\tdata.q,\n\
+\t\t\t\t\t\t\tdata.heightScale\n\
+\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'BufferGeometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = bufferGeometryLoader.parse( data.data );\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t\tcase 'Geometry':\n\
+\n\
+\t\t\t\t\t\tgeometry = geometryLoader.parse( data.data ).geometry;\n\
+\n\
+\t\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tgeometry.uuid = data.uuid;\n\
+\n\
+\t\t\t\tif ( data.name !== undefined ) geometry.name = data.name;\n\
+\n\
+\t\t\t\tgeometries[ data.uuid ] = geometry;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn geometries;\n\
+\n\
+\t},\n\
+\n\
+\tparseMaterials: function ( json ) {\n\
+\n\
+\t\tvar materials = {};\n\
+\n\
+\t\tif ( json !== undefined ) {\n\
+\n\
+\t\t\tvar loader = new THREE.MaterialLoader();\n\
+\n\
+\t\t\tfor ( var i = 0, l = json.length; i < l; i ++ ) {\n\
+\n\
+\t\t\t\tvar data = json[ i ];\n\
+\t\t\t\tvar material = loader.parse( data );\n\
+\n\
+\t\t\t\tmaterial.uuid = data.uuid;\n\
+\n\
+\t\t\t\tif ( data.name !== undefined ) material.name = data.name;\n\
+\n\
+\t\t\t\tmaterials[ data.uuid ] = material;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\treturn materials;\n\
+\n\
+\t},\n\
+\n\
+\tparseObject: function () {\n\
+\n\
+\t\tvar matrix = new THREE.Matrix4();\n\
+\n\
+\t\treturn function ( data, geometries, materials ) {\n\
+\n\
+\t\t\tvar object;\n\
+\n\
+\t\t\tswitch ( data.type ) {\n\
+\n\
+\t\t\t\tcase 'Scene':\n\
+\n\
+\t\t\t\t\tobject = new THREE.Scene();\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'PerspectiveCamera':\n\
+\n\
+\t\t\t\t\tobject = new THREE.PerspectiveCamera( data.fov, data.aspect, data.near, data.far );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'OrthographicCamera':\n\
+\n\
+\t\t\t\t\tobject = new THREE.OrthographicCamera( data.left, data.right, data.top, data.bottom, data.near, data.far );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'AmbientLight':\n\
+\n\
+\t\t\t\t\tobject = new THREE.AmbientLight( data.color );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'DirectionalLight':\n\
+\n\
+\t\t\t\t\tobject = new THREE.DirectionalLight( data.color, data.intensity );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'PointLight':\n\
+\n\
+\t\t\t\t\tobject = new THREE.PointLight( data.color, data.intensity, data.distance );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'SpotLight':\n\
+\n\
+\t\t\t\t\tobject = new THREE.SpotLight( data.color, data.intensity, data.distance, data.angle, data.exponent );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'HemisphereLight':\n\
+\n\
+\t\t\t\t\tobject = new THREE.HemisphereLight( data.color, data.groundColor, data.intensity );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tcase 'Mesh':\n\
+\n\
+\t\t\t\t\tvar geometry = geometries[ data.geometry ];\n\
+\t\t\t\t\tvar material = materials[ data.material ];\n\
+\n\
+\t\t\t\t\tif ( geometry === undefined ) {\n\
+\n\
+\t\t\t\t\t\tconsole.error( 'THREE.ObjectLoader: Undefined geometry ' + data.geometry );\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\tif ( material === undefined ) {\n\
+\n\
+\t\t\t\t\t\tconsole.error( 'THREE.ObjectLoader: Undefined material ' + data.material );\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\tobject = new THREE.Mesh( geometry, material );\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\tdefault:\n\
+\n\
+\t\t\t\t\tobject = new THREE.Object3D();\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tobject.uuid = data.uuid;\n\
+\n\
+\t\t\tif ( data.name !== undefined ) object.name = data.name;\n\
+\t\t\tif ( data.matrix !== undefined ) {\n\
+\n\
+\t\t\t\tmatrix.fromArray( data.matrix );\n\
+\t\t\t\tmatrix.decompose( object.position, object.quaternion, object.scale );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tif ( data.position !== undefined ) object.position.fromArray( data.position );\n\
+\t\t\t\tif ( data.rotation !== undefined ) object.rotation.fromArray( data.rotation );\n\
+\t\t\t\tif ( data.scale !== undefined ) object.scale.fromArray( data.scale );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( data.visible !== undefined ) object.visible = data.visible;\n\
+\t\t\tif ( data.userData !== undefined ) object.userData = data.userData;\n\
+\n\
+\t\t\tif ( data.children !== undefined ) {\n\
+\n\
+\t\t\t\tfor ( var child in data.children ) {\n\
+\n\
+\t\t\t\t\tobject.add( this.parseObject( data.children[ child ], geometries, materials ) );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\treturn object;\n\
+\n\
+\t\t}\n\
+\n\
+\t}()\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -13651,1172 +15434,1227 @@ THREE.SceneLoader = function () {\n\
 \tthis.callbackSync = function () {};\n\
 \tthis.callbackProgress = function () {};\n\
 \n\
-\tthis.geometryHandlerMap = {};\n\
-\tthis.hierarchyHandlerMap = {};\n\
+\tthis.geometryHandlers = {};\n\
+\tthis.hierarchyHandlers = {};\n\
 \n\
 \tthis.addGeometryHandler( \"ascii\", THREE.JSONLoader );\n\
-\tthis.addGeometryHandler( \"binary\", THREE.BinaryLoader );\n\
 \n\
 };\n\
 \n\
-THREE.SceneLoader.prototype.constructor = THREE.SceneLoader;\n\
+THREE.SceneLoader.prototype = {\n\
 \n\
-THREE.SceneLoader.prototype.load = function ( url, callbackFinished ) {\n\
+\tconstructor: THREE.SceneLoader,\n\
 \n\
-\tvar scope = this;\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
 \n\
-\tvar xhr = new XMLHttpRequest();\n\
+\t\tvar scope = this;\n\
 \n\
-\txhr.onreadystatechange = function () {\n\
+\t\tvar loader = new THREE.XHRLoader( scope.manager );\n\
+\t\tloader.setCrossOrigin( this.crossOrigin );\n\
+\t\tloader.load( url, function ( text ) {\n\
 \n\
-\t\tif ( xhr.readyState === 4 ) {\n\
+\t\t\tscope.parse( JSON.parse( text ), onLoad, url );\n\
 \n\
-\t\t\tif ( xhr.status === 200 || xhr.status === 0 ) {\n\
+\t\t} );\n\
 \n\
-\t\t\t\tvar json = JSON.parse( xhr.responseText );\n\
-\t\t\t\tscope.parse( json, callbackFinished, url );\n\
+\t},\n\
 \n\
-\t\t\t} else {\n\
+\tsetCrossOrigin: function ( value ) {\n\
 \n\
-\t\t\t\tconsole.error( \"THREE.SceneLoader: Couldn't load [\" + url + \"] [\" + xhr.status + \"]\" );\n\
+\t\tthis.crossOrigin = value;\n\
+\n\
+\t},\n\
+\n\
+\taddGeometryHandler: function ( typeID, loaderClass ) {\n\
+\n\
+\t\tthis.geometryHandlers[ typeID ] = { \"loaderClass\": loaderClass };\n\
+\n\
+\t},\n\
+\n\
+\taddHierarchyHandler: function ( typeID, loaderClass ) {\n\
+\n\
+\t\tthis.hierarchyHandlers[ typeID ] = { \"loaderClass\": loaderClass };\n\
+\n\
+\t},\n\
+\n\
+\tparse: function ( json, callbackFinished, url ) {\n\
+\n\
+\t\tvar scope = this;\n\
+\n\
+\t\tvar urlBase = THREE.Loader.prototype.extractUrlBase( url );\n\
+\n\
+\t\tvar geometry, material, camera, fog,\n\
+\t\t\ttexture, images, color,\n\
+\t\t\tlight, hex, intensity,\n\
+\t\t\tcounter_models, counter_textures,\n\
+\t\t\ttotal_models, total_textures,\n\
+\t\t\tresult;\n\
+\n\
+\t\tvar target_array = [];\n\
+\n\
+\t\tvar data = json;\n\
+\n\
+\t\t// async geometry loaders\n\
+\n\
+\t\tfor ( var typeID in this.geometryHandlers ) {\n\
+\n\
+\t\t\tvar loaderClass = this.geometryHandlers[ typeID ][ \"loaderClass\" ];\n\
+\t\t\tthis.geometryHandlers[ typeID ][ \"loaderObject\" ] = new loaderClass();\n\
+\n\
+\t\t}\n\
+\n\
+\t\t// async hierachy loaders\n\
+\n\
+\t\tfor ( var typeID in this.hierarchyHandlers ) {\n\
+\n\
+\t\t\tvar loaderClass = this.hierarchyHandlers[ typeID ][ \"loaderClass\" ];\n\
+\t\t\tthis.hierarchyHandlers[ typeID ][ \"loaderObject\" ] = new loaderClass();\n\
+\n\
+\t\t}\n\
+\n\
+\t\tcounter_models = 0;\n\
+\t\tcounter_textures = 0;\n\
+\n\
+\t\tresult = {\n\
+\n\
+\t\t\tscene: new THREE.Scene(),\n\
+\t\t\tgeometries: {},\n\
+\t\t\tface_materials: {},\n\
+\t\t\tmaterials: {},\n\
+\t\t\ttextures: {},\n\
+\t\t\tobjects: {},\n\
+\t\t\tcameras: {},\n\
+\t\t\tlights: {},\n\
+\t\t\tfogs: {},\n\
+\t\t\tempties: {},\n\
+\t\t\tgroups: {}\n\
+\n\
+\t\t};\n\
+\n\
+\t\tif ( data.transform ) {\n\
+\n\
+\t\t\tvar position = data.transform.position,\n\
+\t\t\t\trotation = data.transform.rotation,\n\
+\t\t\t\tscale = data.transform.scale;\n\
+\n\
+\t\t\tif ( position ) {\n\
+\n\
+\t\t\t\tresult.scene.position.fromArray( position );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( rotation ) {\n\
+\n\
+\t\t\t\tresult.scene.rotation.fromArray( rotation );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( scale ) {\n\
+\n\
+\t\t\t\tresult.scene.scale.fromArray( scale );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( position || rotation || scale ) {\n\
+\n\
+\t\t\t\tresult.scene.updateMatrix();\n\
+\t\t\t\tresult.scene.updateMatrixWorld();\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t};\n\
+\t\tfunction get_url( source_url, url_type ) {\n\
 \n\
-\txhr.open( \"GET\", url, true );\n\
-\txhr.send( null );\n\
+\t\t\tif ( url_type == \"relativeToHTML\" ) {\n\
 \n\
-};\n\
+\t\t\t\treturn source_url;\n\
 \n\
-THREE.SceneLoader.prototype.addGeometryHandler = function ( typeID, loaderClass ) {\n\
+\t\t\t} else {\n\
 \n\
-\tthis.geometryHandlerMap[ typeID ] = { \"loaderClass\": loaderClass };\n\
+\t\t\t\treturn urlBase + \"/\" + source_url;\n\
 \n\
-};\n\
+\t\t\t}\n\
 \n\
-THREE.SceneLoader.prototype.addHierarchyHandler = function ( typeID, loaderClass ) {\n\
+\t\t};\n\
 \n\
-\tthis.hierarchyHandlerMap[ typeID ] = { \"loaderClass\": loaderClass };\n\
+\t\t// toplevel loader function, delegates to handle_children\n\
 \n\
-};\n\
+\t\tfunction handle_objects() {\n\
 \n\
-THREE.SceneLoader.prototype.parse = function ( json, callbackFinished, url ) {\n\
-\n\
-\tvar scope = this;\n\
-\n\
-\tvar urlBase = THREE.Loader.prototype.extractUrlBase( url );\n\
-\n\
-\tvar geometry, material, camera, fog,\n\
-\t\ttexture, images, color,\n\
-\t\tlight, hex, intensity,\n\
-\t\tcounter_models, counter_textures,\n\
-\t\ttotal_models, total_textures,\n\
-\t\tresult;\n\
-\n\
-\tvar target_array = [];\n\
-\n\
-\tvar data = json;\n\
-\n\
-\t// async geometry loaders\n\
-\n\
-\tfor ( var typeID in this.geometryHandlerMap ) {\n\
-\n\
-\t\tvar loaderClass = this.geometryHandlerMap[ typeID ][ \"loaderClass\" ];\n\
-\t\tthis.geometryHandlerMap[ typeID ][ \"loaderObject\" ] = new loaderClass();\n\
-\n\
-\t}\n\
-\n\
-\t// async hierachy loaders\n\
-\n\
-\tfor ( var typeID in this.hierarchyHandlerMap ) {\n\
-\n\
-\t\tvar loaderClass = this.hierarchyHandlerMap[ typeID ][ \"loaderClass\" ];\n\
-\t\tthis.hierarchyHandlerMap[ typeID ][ \"loaderObject\" ] = new loaderClass();\n\
-\n\
-\t}\n\
-\n\
-\tcounter_models = 0;\n\
-\tcounter_textures = 0;\n\
-\n\
-\tresult = {\n\
-\n\
-\t\tscene: new THREE.Scene(),\n\
-\t\tgeometries: {},\n\
-\t\tface_materials: {},\n\
-\t\tmaterials: {},\n\
-\t\ttextures: {},\n\
-\t\tobjects: {},\n\
-\t\tcameras: {},\n\
-\t\tlights: {},\n\
-\t\tfogs: {},\n\
-\t\tempties: {}\n\
-\n\
-\t};\n\
-\n\
-\tif ( data.transform ) {\n\
-\n\
-\t\tvar position = data.transform.position,\n\
-\t\t\trotation = data.transform.rotation,\n\
-\t\t\tscale = data.transform.scale;\n\
-\n\
-\t\tif ( position )\n\
-\t\t\tresult.scene.position.set( position[ 0 ], position[ 1 ], position [ 2 ] );\n\
-\n\
-\t\tif ( rotation )\n\
-\t\t\tresult.scene.rotation.set( rotation[ 0 ], rotation[ 1 ], rotation [ 2 ] );\n\
-\n\
-\t\tif ( scale )\n\
-\t\t\tresult.scene.scale.set( scale[ 0 ], scale[ 1 ], scale [ 2 ] );\n\
-\n\
-\t\tif ( position || rotation || scale ) {\n\
-\n\
-\t\t\tresult.scene.updateMatrix();\n\
-\t\t\tresult.scene.updateMatrixWorld();\n\
+\t\t\thandle_children( result.scene, data.objects );\n\
 \n\
 \t\t}\n\
 \n\
-\t}\n\
+\t\t// handle all the children from the loaded json and attach them to given parent\n\
 \n\
-\tfunction get_url( source_url, url_type ) {\n\
+\t\tfunction handle_children( parent, children ) {\n\
 \n\
-\t\tif ( url_type == \"relativeToHTML\" ) {\n\
+\t\t\tvar mat, dst, pos, rot, scl, quat;\n\
 \n\
-\t\t\treturn source_url;\n\
+\t\t\tfor ( var objID in children ) {\n\
 \n\
-\t\t} else {\n\
+\t\t\t\t// check by id if child has already been handled,\n\
+\t\t\t\t// if not, create new object\n\
 \n\
-\t\t\treturn urlBase + \"/\" + source_url;\n\
-\n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
-\t// toplevel loader function, delegates to handle_children\n\
-\n\
-\tfunction handle_objects() {\n\
-\n\
-\t\thandle_children( result.scene, data.objects );\n\
-\n\
-\t}\n\
-\n\
-\t// handle all the children from the loaded json and attach them to given parent\n\
-\n\
-\tfunction handle_children( parent, children ) {\n\
-\n\
-\t\tvar mat, dst, pos, rot, scl, quat;\n\
-\n\
-\t\tfor ( var objID in children ) {\n\
-\n\
-\t\t\t// check by id if child has already been handled,\n\
-\t\t\t// if not, create new object\n\
-\n\
-\t\t\tif ( result.objects[ objID ] === undefined ) {\n\
-\n\
+\t\t\t\tvar object = result.objects[ objID ];\n\
 \t\t\t\tvar objJSON = children[ objID ];\n\
 \n\
-\t\t\t\tvar object = null;\n\
+\t\t\t\tif ( object === undefined ) {\n\
 \n\
-\t\t\t\t// meshes\n\
+\t\t\t\t\t// meshes\n\
 \n\
-\t\t\t\tif ( objJSON.type && ( objJSON.type in scope.hierarchyHandlerMap ) ) {\n\
+\t\t\t\t\tif ( objJSON.type && ( objJSON.type in scope.hierarchyHandlers ) ) {\n\
 \n\
-\t\t\t\t\tif ( objJSON.loading === undefined ) {\n\
+\t\t\t\t\t\tif ( objJSON.loading === undefined ) {\n\
 \n\
-\t\t\t\t\t\tvar reservedTypes = { \"type\": 1, \"url\": 1, \"material\": 1,\n\
-\t\t\t\t\t\t\t\t\t\t\t  \"position\": 1, \"rotation\": 1, \"scale\" : 1,\n\
-\t\t\t\t\t\t\t\t\t\t\t  \"visible\": 1, \"children\": 1, \"properties\": 1,\n\
-\t\t\t\t\t\t\t\t\t\t\t  \"skin\": 1, \"morph\": 1, \"mirroredLoop\": 1, \"duration\": 1 };\n\
+\t\t\t\t\t\t\tvar reservedTypes = {\n\
+\t\t\t\t\t\t\t\t\"type\": 1, \"url\": 1, \"material\": 1,\n\
+\t\t\t\t\t\t\t\t\"position\": 1, \"rotation\": 1, \"scale\" : 1,\n\
+\t\t\t\t\t\t\t\t\"visible\": 1, \"children\": 1, \"userData\": 1,\n\
+\t\t\t\t\t\t\t\t\"skin\": 1, \"morph\": 1, \"mirroredLoop\": 1, \"duration\": 1\n\
+\t\t\t\t\t\t\t};\n\
 \n\
-\t\t\t\t\t\tvar loaderParameters = {};\n\
+\t\t\t\t\t\t\tvar loaderParameters = {};\n\
 \n\
-\t\t\t\t\t\tfor ( var parType in objJSON ) {\n\
+\t\t\t\t\t\t\tfor ( var parType in objJSON ) {\n\
 \n\
-\t\t\t\t\t\t\tif ( ! ( parType in reservedTypes ) ) {\n\
+\t\t\t\t\t\t\t\tif ( ! ( parType in reservedTypes ) ) {\n\
 \n\
-\t\t\t\t\t\t\t\tloaderParameters[ parType ] = objJSON[ parType ];\n\
+\t\t\t\t\t\t\t\t\tloaderParameters[ parType ] = objJSON[ parType ];\n\
+\n\
+\t\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\tmaterial = result.materials[ objJSON.material ];\n\
+\n\
+\t\t\t\t\t\t\tobjJSON.loading = true;\n\
+\n\
+\t\t\t\t\t\t\tvar loader = scope.hierarchyHandlers[ objJSON.type ][ \"loaderObject\" ];\n\
+\n\
+\t\t\t\t\t\t\t// ColladaLoader\n\
+\n\
+\t\t\t\t\t\t\tif ( loader.options ) {\n\
+\n\
+\t\t\t\t\t\t\t\tloader.load( get_url( objJSON.url, data.urlBaseType ), create_callback_hierachy( objID, parent, material, objJSON ) );\n\
+\n\
+\t\t\t\t\t\t\t// UTF8Loader\n\
+\t\t\t\t\t\t\t// OBJLoader\n\
+\n\
+\t\t\t\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t\t\t\tloader.load( get_url( objJSON.url, data.urlBaseType ), create_callback_hierachy( objID, parent, material, objJSON ), loaderParameters );\n\
 \n\
 \t\t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tmaterial = result.materials[ objJSON.material ];\n\
+\t\t\t\t\t} else if ( objJSON.geometry !== undefined ) {\n\
 \n\
-\t\t\t\t\t\tobjJSON.loading = true;\n\
+\t\t\t\t\t\tgeometry = result.geometries[ objJSON.geometry ];\n\
 \n\
-\t\t\t\t\t\tvar loader = scope.hierarchyHandlerMap[ objJSON.type ][ \"loaderObject\" ];\n\
+\t\t\t\t\t\t// geometry already loaded\n\
 \n\
-\t\t\t\t\t\t// ColladaLoader\n\
+\t\t\t\t\t\tif ( geometry ) {\n\
 \n\
-\t\t\t\t\t\tif ( loader.options ) {\n\
+\t\t\t\t\t\t\tvar needsTangents = false;\n\
 \n\
-\t\t\t\t\t\t\tloader.load( get_url( objJSON.url, data.urlBaseType ), create_callback_hierachy( objID, parent, material, objJSON ) );\n\
+\t\t\t\t\t\t\tmaterial = result.materials[ objJSON.material ];\n\
+\t\t\t\t\t\t\tneedsTangents = material instanceof THREE.ShaderMaterial;\n\
 \n\
-\t\t\t\t\t\t// UTF8Loader\n\
-\t\t\t\t\t\t// OBJLoader\n\
+\t\t\t\t\t\t\tpos = objJSON.position;\n\
+\t\t\t\t\t\t\trot = objJSON.rotation;\n\
+\t\t\t\t\t\t\tscl = objJSON.scale;\n\
+\t\t\t\t\t\t\tmat = objJSON.matrix;\n\
+\t\t\t\t\t\t\tquat = objJSON.quaternion;\n\
 \n\
-\t\t\t\t\t\t} else {\n\
+\t\t\t\t\t\t\t// use materials from the model file\n\
+\t\t\t\t\t\t\t// if there is no material specified in the object\n\
 \n\
-\t\t\t\t\t\t\tloader.load( get_url( objJSON.url, data.urlBaseType ), create_callback_hierachy( objID, parent, material, objJSON ), loaderParameters );\n\
+\t\t\t\t\t\t\tif ( ! objJSON.material ) {\n\
+\n\
+\t\t\t\t\t\t\t\tmaterial = new THREE.MeshFaceMaterial( result.face_materials[ objJSON.geometry ] );\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t// use materials from the model file\n\
+\t\t\t\t\t\t\t// if there is just empty face material\n\
+\t\t\t\t\t\t\t// (must create new material as each model has its own face material)\n\
+\n\
+\t\t\t\t\t\t\tif ( ( material instanceof THREE.MeshFaceMaterial ) && material.materials.length === 0 ) {\n\
+\n\
+\t\t\t\t\t\t\t\tmaterial = new THREE.MeshFaceMaterial( result.face_materials[ objJSON.geometry ] );\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\tif ( material instanceof THREE.MeshFaceMaterial ) {\n\
+\n\
+\t\t\t\t\t\t\t\tfor ( var i = 0; i < material.materials.length; i ++ ) {\n\
+\n\
+\t\t\t\t\t\t\t\t\tneedsTangents = needsTangents || ( material.materials[ i ] instanceof THREE.ShaderMaterial );\n\
+\n\
+\t\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\tif ( needsTangents ) {\n\
+\n\
+\t\t\t\t\t\t\t\tgeometry.computeTangents();\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\tif ( objJSON.skin ) {\n\
+\n\
+\t\t\t\t\t\t\t\tobject = new THREE.SkinnedMesh( geometry, material );\n\
+\n\
+\t\t\t\t\t\t\t} else if ( objJSON.morph ) {\n\
+\n\
+\t\t\t\t\t\t\t\tobject = new THREE.MorphAnimMesh( geometry, material );\n\
+\n\
+\t\t\t\t\t\t\t\tif ( objJSON.duration !== undefined ) {\n\
+\n\
+\t\t\t\t\t\t\t\t\tobject.duration = objJSON.duration;\n\
+\n\
+\t\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t\tif ( objJSON.time !== undefined ) {\n\
+\n\
+\t\t\t\t\t\t\t\t\tobject.time = objJSON.time;\n\
+\n\
+\t\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t\tif ( objJSON.mirroredLoop !== undefined ) {\n\
+\n\
+\t\t\t\t\t\t\t\t\tobject.mirroredLoop = objJSON.mirroredLoop;\n\
+\n\
+\t\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t\tif ( material.morphNormals ) {\n\
+\n\
+\t\t\t\t\t\t\t\t\tgeometry.computeMorphNormals();\n\
+\n\
+\t\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t\t\t\tobject = new THREE.Mesh( geometry, material );\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\tobject.name = objID;\n\
+\n\
+\t\t\t\t\t\t\tif ( mat ) {\n\
+\n\
+\t\t\t\t\t\t\t\tobject.matrixAutoUpdate = false;\n\
+\t\t\t\t\t\t\t\tobject.matrix.set(\n\
+\t\t\t\t\t\t\t\t\tmat[0],  mat[1],  mat[2],  mat[3],\n\
+\t\t\t\t\t\t\t\t\tmat[4],  mat[5],  mat[6],  mat[7],\n\
+\t\t\t\t\t\t\t\t\tmat[8],  mat[9],  mat[10], mat[11],\n\
+\t\t\t\t\t\t\t\t\tmat[12], mat[13], mat[14], mat[15]\n\
+\t\t\t\t\t\t\t\t);\n\
+\n\
+\t\t\t\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t\t\t\tobject.position.fromArray( pos );\n\
+\n\
+\t\t\t\t\t\t\t\tif ( quat ) {\n\
+\n\
+\t\t\t\t\t\t\t\t\tobject.quaternion.fromArray( quat );\n\
+\n\
+\t\t\t\t\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t\t\t\t\tobject.rotation.fromArray( rot );\n\
+\n\
+\t\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\t\tobject.scale.fromArray( scl );\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t\tobject.visible = objJSON.visible;\n\
+\t\t\t\t\t\t\tobject.castShadow = objJSON.castShadow;\n\
+\t\t\t\t\t\t\tobject.receiveShadow = objJSON.receiveShadow;\n\
+\n\
+\t\t\t\t\t\t\tparent.add( object );\n\
+\n\
+\t\t\t\t\t\t\tresult.objects[ objID ] = object;\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t}\n\
+\t\t\t\t\t// lights\n\
 \n\
-\t\t\t\t} else if ( objJSON.geometry !== undefined ) {\n\
+\t\t\t\t\t} else if ( objJSON.type === \"DirectionalLight\" || objJSON.type === \"PointLight\" || objJSON.type === \"AmbientLight\" ) {\n\
 \n\
-\t\t\t\t\tgeometry = result.geometries[ objJSON.geometry ];\n\
+\t\t\t\t\t\thex = ( objJSON.color !== undefined ) ? objJSON.color : 0xffffff;\n\
+\t\t\t\t\t\tintensity = ( objJSON.intensity !== undefined ) ? objJSON.intensity : 1;\n\
 \n\
-\t\t\t\t\t// geometry already loaded\n\
+\t\t\t\t\t\tif ( objJSON.type === \"DirectionalLight\" ) {\n\
 \n\
-\t\t\t\t\tif ( geometry ) {\n\
+\t\t\t\t\t\t\tpos = objJSON.direction;\n\
 \n\
-\t\t\t\t\t\tvar needsTangents = false;\n\
+\t\t\t\t\t\t\tlight = new THREE.DirectionalLight( hex, intensity );\n\
+\t\t\t\t\t\t\tlight.position.fromArray( pos );\n\
 \n\
-\t\t\t\t\t\tmaterial = result.materials[ objJSON.material ];\n\
-\t\t\t\t\t\tneedsTangents = material instanceof THREE.ShaderMaterial;\n\
+\t\t\t\t\t\t\tif ( objJSON.target ) {\n\
+\n\
+\t\t\t\t\t\t\t\ttarget_array.push( { \"object\": light, \"targetName\" : objJSON.target } );\n\
+\n\
+\t\t\t\t\t\t\t\t// kill existing default target\n\
+\t\t\t\t\t\t\t\t// otherwise it gets added to scene when parent gets added\n\
+\n\
+\t\t\t\t\t\t\t\tlight.target = null;\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t} else if ( objJSON.type === \"PointLight\" ) {\n\
+\n\
+\t\t\t\t\t\t\tpos = objJSON.position;\n\
+\t\t\t\t\t\t\tdst = objJSON.distance;\n\
+\n\
+\t\t\t\t\t\t\tlight = new THREE.PointLight( hex, intensity, dst );\n\
+\t\t\t\t\t\t\tlight.position.fromArray( pos );\n\
+\n\
+\t\t\t\t\t\t} else if ( objJSON.type === \"AmbientLight\" ) {\n\
+\n\
+\t\t\t\t\t\t\tlight = new THREE.AmbientLight( hex );\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\tparent.add( light );\n\
+\n\
+\t\t\t\t\t\tlight.name = objID;\n\
+\t\t\t\t\t\tresult.lights[ objID ] = light;\n\
+\t\t\t\t\t\tresult.objects[ objID ] = light;\n\
+\n\
+\t\t\t\t\t// cameras\n\
+\n\
+\t\t\t\t\t} else if ( objJSON.type === \"PerspectiveCamera\" || objJSON.type === \"OrthographicCamera\" ) {\n\
+\n\
+\t\t\t\t\t\tpos = objJSON.position;\n\
+\t\t\t\t\t\trot = objJSON.rotation;\n\
+\t\t\t\t\t\tquat = objJSON.quaternion;\n\
+\n\
+\t\t\t\t\t\tif ( objJSON.type === \"PerspectiveCamera\" ) {\n\
+\n\
+\t\t\t\t\t\t\tcamera = new THREE.PerspectiveCamera( objJSON.fov, objJSON.aspect, objJSON.near, objJSON.far );\n\
+\n\
+\t\t\t\t\t\t} else if ( objJSON.type === \"OrthographicCamera\" ) {\n\
+\n\
+\t\t\t\t\t\t\tcamera = new THREE.OrthographicCamera( objJSON.left, objJSON.right, objJSON.top, objJSON.bottom, objJSON.near, objJSON.far );\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\tcamera.name = objID;\n\
+\t\t\t\t\t\tcamera.position.fromArray( pos );\n\
+\n\
+\t\t\t\t\t\tif ( quat !== undefined ) {\n\
+\n\
+\t\t\t\t\t\t\tcamera.quaternion.fromArray( quat );\n\
+\n\
+\t\t\t\t\t\t} else if ( rot !== undefined ) {\n\
+\n\
+\t\t\t\t\t\t\tcamera.rotation.fromArray( rot );\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\tparent.add( camera );\n\
+\n\
+\t\t\t\t\t\tresult.cameras[ objID ] = camera;\n\
+\t\t\t\t\t\tresult.objects[ objID ] = camera;\n\
+\n\
+\t\t\t\t\t// pure Object3D\n\
+\n\
+\t\t\t\t\t} else {\n\
 \n\
 \t\t\t\t\t\tpos = objJSON.position;\n\
 \t\t\t\t\t\trot = objJSON.rotation;\n\
 \t\t\t\t\t\tscl = objJSON.scale;\n\
-\t\t\t\t\t\tmat = objJSON.matrix;\n\
 \t\t\t\t\t\tquat = objJSON.quaternion;\n\
 \n\
-\t\t\t\t\t\t// use materials from the model file\n\
-\t\t\t\t\t\t// if there is no material specified in the object\n\
-\n\
-\t\t\t\t\t\tif ( ! objJSON.material ) {\n\
-\n\
-\t\t\t\t\t\t\tmaterial = new THREE.MeshFaceMaterial( result.face_materials[ objJSON.geometry ] );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t// use materials from the model file\n\
-\t\t\t\t\t\t// if there is just empty face material\n\
-\t\t\t\t\t\t// (must create new material as each model has its own face material)\n\
-\n\
-\t\t\t\t\t\tif ( ( material instanceof THREE.MeshFaceMaterial ) && material.materials.length === 0 ) {\n\
-\n\
-\t\t\t\t\t\t\tmaterial = new THREE.MeshFaceMaterial( result.face_materials[ objJSON.geometry ] );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( material instanceof THREE.MeshFaceMaterial ) {\n\
-\n\
-\t\t\t\t\t\t\tfor ( var i = 0; i < material.materials.length; i ++ ) {\n\
-\n\
-\t\t\t\t\t\t\t\tneedsTangents = needsTangents || ( material.materials[ i ] instanceof THREE.ShaderMaterial );\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( needsTangents ) {\n\
-\n\
-\t\t\t\t\t\t\tgeometry.computeTangents();\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( objJSON.skin ) {\n\
-\n\
-\t\t\t\t\t\t\tobject = new THREE.SkinnedMesh( geometry, material );\n\
-\n\
-\t\t\t\t\t\t} else if ( objJSON.morph ) {\n\
-\n\
-\t\t\t\t\t\t\tobject = new THREE.MorphAnimMesh( geometry, material );\n\
-\n\
-\t\t\t\t\t\t\tif ( objJSON.duration !== undefined ) {\n\
-\n\
-\t\t\t\t\t\t\t\tobject.duration = objJSON.duration;\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t\tif ( objJSON.time !== undefined ) {\n\
-\n\
-\t\t\t\t\t\t\t\tobject.time = objJSON.time;\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t\tif ( objJSON.mirroredLoop !== undefined ) {\n\
-\n\
-\t\t\t\t\t\t\t\tobject.mirroredLoop = objJSON.mirroredLoop;\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t\tif ( material.morphNormals ) {\n\
-\n\
-\t\t\t\t\t\t\t\tgeometry.computeMorphNormals();\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\tobject = new THREE.Mesh( geometry, material );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
+\t\t\t\t\t\tobject = new THREE.Object3D();\n\
 \t\t\t\t\t\tobject.name = objID;\n\
+\t\t\t\t\t\tobject.position.fromArray( pos );\n\
 \n\
-\t\t\t\t\t\tif ( mat ) {\n\
+\t\t\t\t\t\tif ( quat ) {\n\
 \n\
-\t\t\t\t\t\t\tobject.matrixAutoUpdate = false;\n\
-\t\t\t\t\t\t\tobject.matrix.set(\n\
-\t\t\t\t\t\t\t\tmat[0],  mat[1],  mat[2],  mat[3],\n\
-\t\t\t\t\t\t\t\tmat[4],  mat[5],  mat[6],  mat[7],\n\
-\t\t\t\t\t\t\t\tmat[8],  mat[9],  mat[10], mat[11],\n\
-\t\t\t\t\t\t\t\tmat[12], mat[13], mat[14], mat[15]\n\
-\t\t\t\t\t\t\t);\n\
+\t\t\t\t\t\t\tobject.quaternion.fromArray( quat );\n\
 \n\
 \t\t\t\t\t\t} else {\n\
 \n\
-\t\t\t\t\t\t\tobject.position.set( pos[0], pos[1], pos[2] );\n\
-\n\
-\t\t\t\t\t\t\tif ( quat ) {\n\
-\n\
-\t\t\t\t\t\t\t\tobject.quaternion.set( quat[0], quat[1], quat[2], quat[3] );\n\
-\t\t\t\t\t\t\t\tobject.useQuaternion = true;\n\
-\n\
-\t\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\t\tobject.rotation.set( rot[0], rot[1], rot[2] );\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t\tobject.scale.set( scl[0], scl[1], scl[2] );\n\
+\t\t\t\t\t\t\tobject.rotation.fromArray( rot );\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tobject.visible = objJSON.visible;\n\
-\t\t\t\t\t\tobject.castShadow = objJSON.castShadow;\n\
-\t\t\t\t\t\tobject.receiveShadow = objJSON.receiveShadow;\n\
+\t\t\t\t\t\tobject.scale.fromArray( scl );\n\
+\t\t\t\t\t\tobject.visible = ( objJSON.visible !== undefined ) ? objJSON.visible : false;\n\
 \n\
 \t\t\t\t\t\tparent.add( object );\n\
 \n\
 \t\t\t\t\t\tresult.objects[ objID ] = object;\n\
+\t\t\t\t\t\tresult.empties[ objID ] = object;\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
-\t\t\t\t// lights\n\
+\t\t\t\t\tif ( object ) {\n\
 \n\
-\t\t\t\t} else if ( objJSON.type === \"DirectionalLight\" || objJSON.type === \"PointLight\" || objJSON.type === \"AmbientLight\" ) {\n\
+\t\t\t\t\t\tif ( objJSON.userData !== undefined ) {\n\
 \n\
-\t\t\t\t\thex = ( objJSON.color !== undefined ) ? objJSON.color : 0xffffff;\n\
-\t\t\t\t\tintensity = ( objJSON.intensity !== undefined ) ? objJSON.intensity : 1;\n\
+\t\t\t\t\t\t\tfor ( var key in objJSON.userData ) {\n\
 \n\
-\t\t\t\t\tif ( objJSON.type === \"DirectionalLight\" ) {\n\
+\t\t\t\t\t\t\t\tvar value = objJSON.userData[ key ];\n\
+\t\t\t\t\t\t\t\tobject.userData[ key ] = value;\n\
 \n\
-\t\t\t\t\t\tpos = objJSON.direction;\n\
-\n\
-\t\t\t\t\t\tlight = new THREE.DirectionalLight( hex, intensity );\n\
-\t\t\t\t\t\tlight.position.set( pos[0], pos[1], pos[2] );\n\
-\n\
-\t\t\t\t\t\tif ( objJSON.target ) {\n\
-\n\
-\t\t\t\t\t\t\ttarget_array.push( { \"object\": light, \"targetName\" : objJSON.target } );\n\
-\n\
-\t\t\t\t\t\t\t// kill existing default target\n\
-\t\t\t\t\t\t\t// otherwise it gets added to scene when parent gets added\n\
-\n\
-\t\t\t\t\t\t\tlight.target = null;\n\
+\t\t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t} else if ( objJSON.type === \"PointLight\" ) {\n\
+\t\t\t\t\t\tif ( objJSON.groups !== undefined ) {\n\
 \n\
-\t\t\t\t\t\tpos = objJSON.position;\n\
-\t\t\t\t\t\tdst = objJSON.distance;\n\
+\t\t\t\t\t\t\tfor ( var i = 0; i < objJSON.groups.length; i ++ ) {\n\
 \n\
-\t\t\t\t\t\tlight = new THREE.PointLight( hex, intensity, dst );\n\
-\t\t\t\t\t\tlight.position.set( pos[0], pos[1], pos[2] );\n\
+\t\t\t\t\t\t\t\tvar groupID = objJSON.groups[ i ];\n\
 \n\
-\t\t\t\t\t} else if ( objJSON.type === \"AmbientLight\" ) {\n\
+\t\t\t\t\t\t\t\tif ( result.groups[ groupID ] === undefined ) {\n\
 \n\
-\t\t\t\t\t\tlight = new THREE.AmbientLight( hex );\n\
+\t\t\t\t\t\t\t\t\tresult.groups[ groupID ] = [];\n\
 \n\
-\t\t\t\t\t}\n\
+\t\t\t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\tparent.add( light );\n\
+\t\t\t\t\t\t\t\tresult.groups[ groupID ].push( objID );\n\
 \n\
-\t\t\t\t\tlight.name = objID;\n\
-\t\t\t\t\tresult.lights[ objID ] = light;\n\
-\t\t\t\t\tresult.objects[ objID ] = light;\n\
-\n\
-\t\t\t\t// cameras\n\
-\n\
-\t\t\t\t} else if ( objJSON.type === \"PerspectiveCamera\" || objJSON.type === \"OrthographicCamera\" ) {\n\
-\n\
-\t\t\t\t\tif ( objJSON.type === \"PerspectiveCamera\" ) {\n\
-\n\
-\t\t\t\t\t\tcamera = new THREE.PerspectiveCamera( objJSON.fov, objJSON.aspect, objJSON.near, objJSON.far );\n\
-\n\
-\t\t\t\t\t} else if ( objJSON.type === \"OrthographicCamera\" ) {\n\
-\n\
-\t\t\t\t\t\tcamera = new THREE.OrthographicCamera( objJSON.left, objJSON.right, objJSON.top, objJSON.bottom, objJSON.near, objJSON.far );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\tpos = objJSON.position;\n\
-\t\t\t\t\tcamera.position.set( pos[0], pos[1], pos[2] );\n\
-\t\t\t\t\tparent.add( camera );\n\
-\n\
-\t\t\t\t\tcamera.name = objID;\n\
-\t\t\t\t\tresult.cameras[ objID ] = camera;\n\
-\t\t\t\t\tresult.objects[ objID ] = camera;\n\
-\n\
-\t\t\t\t// pure Object3D\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tpos = objJSON.position;\n\
-\t\t\t\t\trot = objJSON.rotation;\n\
-\t\t\t\t\tscl = objJSON.scale;\n\
-\t\t\t\t\tquat = objJSON.quaternion;\n\
-\n\
-\t\t\t\t\tobject = new THREE.Object3D();\n\
-\t\t\t\t\tobject.name = objID;\n\
-\t\t\t\t\tobject.position.set( pos[0], pos[1], pos[2] );\n\
-\n\
-\t\t\t\t\tif ( quat ) {\n\
-\n\
-\t\t\t\t\t\tobject.quaternion.set( quat[0], quat[1], quat[2], quat[3] );\n\
-\t\t\t\t\t\tobject.useQuaternion = true;\n\
-\n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\tobject.rotation.set( rot[0], rot[1], rot[2] );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\tobject.scale.set( scl[0], scl[1], scl[2] );\n\
-\t\t\t\t\tobject.visible = ( objJSON.visible !== undefined ) ? objJSON.visible : false;\n\
-\n\
-\t\t\t\t\tparent.add( object );\n\
-\n\
-\t\t\t\t\tresult.objects[ objID ] = object;\n\
-\t\t\t\t\tresult.empties[ objID ] = object;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tif ( object ) {\n\
-\n\
-\t\t\t\t\tif ( objJSON.properties !== undefined )  {\n\
-\n\
-\t\t\t\t\t\tfor ( var key in objJSON.properties ) {\n\
-\n\
-\t\t\t\t\t\t\tvar value = objJSON.properties[ key ];\n\
-\t\t\t\t\t\t\tobject.properties[ key ] = value;\n\
+\t\t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
-\t\t\t\t\tif ( objJSON.children !== undefined ) {\n\
+\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\thandle_children( object, objJSON.children );\n\
+\t\t\t\tif ( object !== undefined && objJSON.children !== undefined ) {\n\
 \n\
-\t\t\t\t\t}\n\
+\t\t\t\t\thandle_children( object, objJSON.children );\n\
 \n\
 \t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t}\n\
+\t\t};\n\
 \n\
-\t};\n\
-\n\
-\tfunction handle_mesh( geo, mat, id ) {\n\
-\n\
-\t\tresult.geometries[ id ] = geo;\n\
-\t\tresult.face_materials[ id ] = mat;\n\
-\t\thandle_objects();\n\
-\n\
-\t};\n\
-\n\
-\tfunction handle_hierarchy( node, id, parent, material, obj ) {\n\
-\n\
-\t\tvar p = obj.position;\n\
-\t\tvar r = obj.rotation;\n\
-\t\tvar q = obj.quaternion;\n\
-\t\tvar s = obj.scale;\n\
-\n\
-\t\tnode.position.set( p[0], p[1], p[2] );\n\
-\n\
-\t\tif ( q ) {\n\
-\n\
-\t\t\tnode.quaternion.set( q[0], q[1], q[2], q[3] );\n\
-\t\t\tnode.useQuaternion = true;\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tnode.rotation.set( r[0], r[1], r[2] );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tnode.scale.set( s[0], s[1], s[2] );\n\
-\n\
-\t\t// override children materials\n\
-\t\t// if object material was specified in JSON explicitly\n\
-\n\
-\t\tif ( material ) {\n\
-\n\
-\t\t\tnode.traverse( function ( child )  {\n\
-\n\
-\t\t\t\tchild.material = material;\n\
-\n\
-\t\t\t} );\n\
-\n\
-\t\t}\n\
-\n\
-\t\t// override children visibility\n\
-\t\t// with root node visibility as specified in JSON\n\
-\n\
-\t\tvar visible = ( obj.visible !== undefined ) ? obj.visible : true;\n\
-\n\
-\t\tnode.traverse( function ( child )  {\n\
-\n\
-\t\t\tchild.visible = visible;\n\
-\n\
-\t\t} );\n\
-\n\
-\t\tparent.add( node );\n\
-\n\
-\t\tnode.name = id;\n\
-\n\
-\t\tresult.objects[ id ] = node;\n\
-\t\thandle_objects();\n\
-\n\
-\t};\n\
-\n\
-\tfunction create_callback_geometry( id ) {\n\
-\n\
-\t\treturn function( geo, mat ) {\n\
-\n\
-\t\t\thandle_mesh( geo, mat, id );\n\
-\n\
-\t\t\tcounter_models -= 1;\n\
-\n\
-\t\t\tscope.onLoadComplete();\n\
-\n\
-\t\t\tasync_callback_gate();\n\
-\n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
-\tfunction create_callback_hierachy( id, parent, material, obj ) {\n\
-\n\
-\t\treturn function( event ) {\n\
-\n\
-\t\t\tvar result;\n\
-\n\
-\t\t\t// loaders which use EventDispatcher\n\
-\n\
-\t\t\tif ( event.content ) {\n\
-\n\
-\t\t\t\tresult = event.content;\n\
-\n\
-\t\t\t// ColladaLoader\n\
-\n\
-\t\t\t} else if ( event.dae ) {\n\
-\n\
-\t\t\t\tresult = event.scene;\n\
-\n\
-\n\
-\t\t\t// UTF8Loader\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tresult = event;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\thandle_hierarchy( result, id, parent, material, obj );\n\
-\n\
-\t\t\tcounter_models -= 1;\n\
-\n\
-\t\t\tscope.onLoadComplete();\n\
-\n\
-\t\t\tasync_callback_gate();\n\
-\n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
-\tfunction create_callback_embed( id ) {\n\
-\n\
-\t\treturn function( geo, mat ) {\n\
+\t\tfunction handle_mesh( geo, mat, id ) {\n\
 \n\
 \t\t\tresult.geometries[ id ] = geo;\n\
 \t\t\tresult.face_materials[ id ] = mat;\n\
-\n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
-\tfunction async_callback_gate() {\n\
-\n\
-\t\tvar progress = {\n\
-\n\
-\t\t\ttotalModels : total_models,\n\
-\t\t\ttotalTextures : total_textures,\n\
-\t\t\tloadedModels : total_models - counter_models,\n\
-\t\t\tloadedTextures : total_textures - counter_textures\n\
+\t\t\thandle_objects();\n\
 \n\
 \t\t};\n\
 \n\
-\t\tscope.callbackProgress( progress, result );\n\
+\t\tfunction handle_hierarchy( node, id, parent, material, obj ) {\n\
 \n\
-\t\tscope.onLoadProgress();\n\
+\t\t\tvar p = obj.position;\n\
+\t\t\tvar r = obj.rotation;\n\
+\t\t\tvar q = obj.quaternion;\n\
+\t\t\tvar s = obj.scale;\n\
 \n\
-\t\tif ( counter_models === 0 && counter_textures === 0 ) {\n\
+\t\t\tnode.position.fromArray( p );\n\
 \n\
-\t\t\tfinalize();\n\
-\t\t\tcallbackFinished( result );\n\
+\t\t\tif ( q ) {\n\
 \n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
-\tfunction finalize() {\n\
-\n\
-\t\t// take care of targets which could be asynchronously loaded objects\n\
-\n\
-\t\tfor ( var i = 0; i < target_array.length; i ++ ) {\n\
-\n\
-\t\t\tvar ta = target_array[ i ];\n\
-\n\
-\t\t\tvar target = result.objects[ ta.targetName ];\n\
-\n\
-\t\t\tif ( target ) {\n\
-\n\
-\t\t\t\tta.object.target = target;\n\
+\t\t\t\tnode.quaternion.fromArray( q );\n\
 \n\
 \t\t\t} else {\n\
 \n\
-\t\t\t\t// if there was error and target of specified name doesn't exist in the scene file\n\
-\t\t\t\t// create instead dummy target\n\
-\t\t\t\t// (target must be added to scene explicitly as parent is already added)\n\
-\n\
-\t\t\t\tta.object.target = new THREE.Object3D();\n\
-\t\t\t\tresult.scene.add( ta.object.target );\n\
+\t\t\t\tnode.rotation.fromArray( r );\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tta.object.target.properties.targetInverse = ta.object;\n\
+\t\t\tnode.scale.fromArray( s );\n\
 \n\
-\t\t}\n\
+\t\t\t// override children materials\n\
+\t\t\t// if object material was specified in JSON explicitly\n\
 \n\
-\t};\n\
+\t\t\tif ( material ) {\n\
 \n\
-\tvar callbackTexture = function ( count ) {\n\
+\t\t\t\tnode.traverse( function ( child ) {\n\
 \n\
-\t\tcounter_textures -= count;\n\
-\t\tasync_callback_gate();\n\
+\t\t\t\t\tchild.material = material;\n\
 \n\
-\t\tscope.onLoadComplete();\n\
+\t\t\t\t} );\n\
 \n\
-\t};\n\
+\t\t\t}\n\
 \n\
-\t// must use this instead of just directly calling callbackTexture\n\
-\t// because of closure in the calling context loop\n\
+\t\t\t// override children visibility\n\
+\t\t\t// with root node visibility as specified in JSON\n\
 \n\
-\tvar generateTextureCallback = function ( count ) {\n\
+\t\t\tvar visible = ( obj.visible !== undefined ) ? obj.visible : true;\n\
 \n\
-\t\treturn function() {\n\
+\t\t\tnode.traverse( function ( child ) {\n\
 \n\
-\t\t\tcallbackTexture( count );\n\
+\t\t\t\tchild.visible = visible;\n\
+\n\
+\t\t\t} );\n\
+\n\
+\t\t\tparent.add( node );\n\
+\n\
+\t\t\tnode.name = id;\n\
+\n\
+\t\t\tresult.objects[ id ] = node;\n\
+\t\t\thandle_objects();\n\
 \n\
 \t\t};\n\
 \n\
-\t};\n\
+\t\tfunction create_callback_geometry( id ) {\n\
 \n\
-\t// first go synchronous elements\n\
+\t\t\treturn function ( geo, mat ) {\n\
 \n\
-\t// fogs\n\
+\t\t\t\tgeo.name = id;\n\
 \n\
-\tvar fogID, fogJSON;\n\
+\t\t\t\thandle_mesh( geo, mat, id );\n\
 \n\
-\tfor ( fogID in data.fogs ) {\n\
+\t\t\t\tcounter_models -= 1;\n\
 \n\
-\t\tfogJSON = data.fogs[ fogID ];\n\
+\t\t\t\tscope.onLoadComplete();\n\
 \n\
-\t\tif ( fogJSON.type === \"linear\" ) {\n\
+\t\t\t\tasync_callback_gate();\n\
 \n\
-\t\t\tfog = new THREE.Fog( 0x000000, fogJSON.near, fogJSON.far );\n\
+\t\t\t}\n\
 \n\
-\t\t} else if ( fogJSON.type === \"exp2\" ) {\n\
+\t\t};\n\
 \n\
-\t\t\tfog = new THREE.FogExp2( 0x000000, fogJSON.density );\n\
+\t\tfunction create_callback_hierachy( id, parent, material, obj ) {\n\
 \n\
-\t\t}\n\
+\t\t\treturn function ( event ) {\n\
 \n\
-\t\tcolor = fogJSON.color;\n\
-\t\tfog.color.setRGB( color[0], color[1], color[2] );\n\
+\t\t\t\tvar result;\n\
 \n\
-\t\tresult.fogs[ fogID ] = fog;\n\
+\t\t\t\t// loaders which use EventDispatcher\n\
 \n\
-\t}\n\
+\t\t\t\tif ( event.content ) {\n\
 \n\
-\t// now come potentially asynchronous elements\n\
+\t\t\t\t\tresult = event.content;\n\
 \n\
-\t// geometries\n\
+\t\t\t\t// ColladaLoader\n\
 \n\
-\t// count how many geometries will be loaded asynchronously\n\
+\t\t\t\t} else if ( event.dae ) {\n\
 \n\
-\tvar geoID, geoJSON;\n\
+\t\t\t\t\tresult = event.scene;\n\
 \n\
-\tfor ( geoID in data.geometries ) {\n\
 \n\
-\t\tgeoJSON = data.geometries[ geoID ];\n\
+\t\t\t\t// UTF8Loader\n\
 \n\
-\t\tif ( geoJSON.type in this.geometryHandlerMap ) {\n\
+\t\t\t\t} else {\n\
 \n\
-\t\t\tcounter_models += 1;\n\
+\t\t\t\t\tresult = event;\n\
 \n\
-\t\t\tscope.onLoadStart();\n\
+\t\t\t\t}\n\
 \n\
-\t\t}\n\
+\t\t\t\thandle_hierarchy( result, id, parent, material, obj );\n\
 \n\
-\t}\n\
+\t\t\t\tcounter_models -= 1;\n\
 \n\
-\t// count how many hierarchies will be loaded asynchronously\n\
+\t\t\t\tscope.onLoadComplete();\n\
 \n\
-\tvar objID, objJSON;\n\
+\t\t\t\tasync_callback_gate();\n\
 \n\
-\tfor ( objID in data.objects ) {\n\
+\t\t\t}\n\
 \n\
-\t\tobjJSON = data.objects[ objID ];\n\
+\t\t};\n\
 \n\
-\t\tif ( objJSON.type && ( objJSON.type in this.hierarchyHandlerMap ) ) {\n\
+\t\tfunction create_callback_embed( id ) {\n\
 \n\
-\t\t\tcounter_models += 1;\n\
+\t\t\treturn function ( geo, mat ) {\n\
 \n\
-\t\t\tscope.onLoadStart();\n\
+\t\t\t\tgeo.name = id;\n\
 \n\
-\t\t}\n\
+\t\t\t\tresult.geometries[ id ] = geo;\n\
+\t\t\t\tresult.face_materials[ id ] = mat;\n\
 \n\
-\t}\n\
+\t\t\t}\n\
 \n\
-\ttotal_models = counter_models;\n\
+\t\t};\n\
 \n\
-\tfor ( geoID in data.geometries ) {\n\
+\t\tfunction async_callback_gate() {\n\
 \n\
-\t\tgeoJSON = data.geometries[ geoID ];\n\
+\t\t\tvar progress = {\n\
 \n\
-\t\tif ( geoJSON.type === \"cube\" ) {\n\
+\t\t\t\ttotalModels : total_models,\n\
+\t\t\t\ttotalTextures : total_textures,\n\
+\t\t\t\tloadedModels : total_models - counter_models,\n\
+\t\t\t\tloadedTextures : total_textures - counter_textures\n\
 \n\
-\t\t\tgeometry = new THREE.CubeGeometry( geoJSON.width, geoJSON.height, geoJSON.depth, geoJSON.widthSegments, geoJSON.heightSegments, geoJSON.depthSegments );\n\
-\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\t\t\t};\n\
 \n\
-\t\t} else if ( geoJSON.type === \"plane\" ) {\n\
+\t\t\tscope.callbackProgress( progress, result );\n\
 \n\
-\t\t\tgeometry = new THREE.PlaneGeometry( geoJSON.width, geoJSON.height, geoJSON.widthSegments, geoJSON.heightSegments );\n\
-\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\t\t\tscope.onLoadProgress();\n\
 \n\
-\t\t} else if ( geoJSON.type === \"sphere\" ) {\n\
+\t\t\tif ( counter_models === 0 && counter_textures === 0 ) {\n\
 \n\
-\t\t\tgeometry = new THREE.SphereGeometry( geoJSON.radius, geoJSON.widthSegments, geoJSON.heightSegments );\n\
-\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\t\t\t\tfinalize();\n\
+\t\t\t\tcallbackFinished( result );\n\
 \n\
-\t\t} else if ( geoJSON.type === \"cylinder\" ) {\n\
+\t\t\t}\n\
 \n\
-\t\t\tgeometry = new THREE.CylinderGeometry( geoJSON.topRad, geoJSON.botRad, geoJSON.height, geoJSON.radSegs, geoJSON.heightSegs );\n\
-\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\t\t};\n\
 \n\
-\t\t} else if ( geoJSON.type === \"torus\" ) {\n\
+\t\tfunction finalize() {\n\
 \n\
-\t\t\tgeometry = new THREE.TorusGeometry( geoJSON.radius, geoJSON.tube, geoJSON.segmentsR, geoJSON.segmentsT );\n\
-\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\t\t\t// take care of targets which could be asynchronously loaded objects\n\
 \n\
-\t\t} else if ( geoJSON.type === \"icosahedron\" ) {\n\
+\t\t\tfor ( var i = 0; i < target_array.length; i ++ ) {\n\
 \n\
-\t\t\tgeometry = new THREE.IcosahedronGeometry( geoJSON.radius, geoJSON.subdivisions );\n\
-\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\t\t\t\tvar ta = target_array[ i ];\n\
 \n\
-\t\t} else if ( geoJSON.type in this.geometryHandlerMap ) {\n\
+\t\t\t\tvar target = result.objects[ ta.targetName ];\n\
 \n\
-\t\t\tvar loaderParameters = {};\n\
+\t\t\t\tif ( target ) {\n\
 \n\
-\t\t\tfor ( var parType in geoJSON ) {\n\
+\t\t\t\t\tta.object.target = target;\n\
 \n\
-\t\t\t\tif ( parType !== \"type\" && parType !== \"url\" ) {\n\
+\t\t\t\t} else {\n\
 \n\
-\t\t\t\t\tloaderParameters[ parType ] = geoJSON[ parType ];\n\
+\t\t\t\t\t// if there was error and target of specified name doesn't exist in the scene file\n\
+\t\t\t\t\t// create instead dummy target\n\
+\t\t\t\t\t// (target must be added to scene explicitly as parent is already added)\n\
+\n\
+\t\t\t\t\tta.object.target = new THREE.Object3D();\n\
+\t\t\t\t\tresult.scene.add( ta.object.target );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tta.object.target.userData.targetInverse = ta.object;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t};\n\
+\n\
+\t\tvar callbackTexture = function ( count ) {\n\
+\n\
+\t\t\tcounter_textures -= count;\n\
+\t\t\tasync_callback_gate();\n\
+\n\
+\t\t\tscope.onLoadComplete();\n\
+\n\
+\t\t};\n\
+\n\
+\t\t// must use this instead of just directly calling callbackTexture\n\
+\t\t// because of closure in the calling context loop\n\
+\n\
+\t\tvar generateTextureCallback = function ( count ) {\n\
+\n\
+\t\t\treturn function () {\n\
+\n\
+\t\t\t\tcallbackTexture( count );\n\
+\n\
+\t\t\t};\n\
+\n\
+\t\t};\n\
+\n\
+\t\tfunction traverse_json_hierarchy( objJSON, callback ) {\n\
+\n\
+\t\t\tcallback( objJSON );\n\
+\n\
+\t\t\tif ( objJSON.children !== undefined ) {\n\
+\n\
+\t\t\t\tfor ( var objChildID in objJSON.children ) {\n\
+\n\
+\t\t\t\t\ttraverse_json_hierarchy( objJSON.children[ objChildID ], callback );\n\
 \n\
 \t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tvar loader = this.geometryHandlerMap[ geoJSON.type ][ \"loaderObject\" ];\n\
-\t\t\tloader.load( get_url( geoJSON.url, data.urlBaseType ), create_callback_geometry( geoID ), loaderParameters );\n\
+\t\t};\n\
 \n\
-\t\t} else if ( geoJSON.type === \"embedded\" ) {\n\
+\t\t// first go synchronous elements\n\
 \n\
-\t\t\tvar modelJson = data.embeds[ geoJSON.id ],\n\
-\t\t\t\ttexture_path = \"\";\n\
+\t\t// fogs\n\
 \n\
-\t\t\t// pass metadata along to jsonLoader so it knows the format version\n\
+\t\tvar fogID, fogJSON;\n\
 \n\
-\t\t\tmodelJson.metadata = data.metadata;\n\
+\t\tfor ( fogID in data.fogs ) {\n\
 \n\
-\t\t\tif ( modelJson ) {\n\
+\t\t\tfogJSON = data.fogs[ fogID ];\n\
 \n\
-\t\t\t\tvar jsonLoader = this.geometryHandlerMap[ \"ascii\" ][ \"loaderObject\" ];\n\
-\t\t\t\tjsonLoader.createModel( modelJson, create_callback_embed( geoID ), texture_path );\n\
+\t\t\tif ( fogJSON.type === \"linear\" ) {\n\
+\n\
+\t\t\t\tfog = new THREE.Fog( 0x000000, fogJSON.near, fogJSON.far );\n\
+\n\
+\t\t\t} else if ( fogJSON.type === \"exp2\" ) {\n\
+\n\
+\t\t\t\tfog = new THREE.FogExp2( 0x000000, fogJSON.density );\n\
 \n\
 \t\t\t}\n\
 \n\
+\t\t\tcolor = fogJSON.color;\n\
+\t\t\tfog.color.setRGB( color[0], color[1], color[2] );\n\
+\n\
+\t\t\tresult.fogs[ fogID ] = fog;\n\
+\n\
 \t\t}\n\
 \n\
-\t}\n\
+\t\t// now come potentially asynchronous elements\n\
 \n\
-\t// textures\n\
+\t\t// geometries\n\
 \n\
-\t// count how many textures will be loaded asynchronously\n\
+\t\t// count how many geometries will be loaded asynchronously\n\
 \n\
-\tvar textureID, textureJSON;\n\
+\t\tvar geoID, geoJSON;\n\
 \n\
-\tfor ( textureID in data.textures ) {\n\
+\t\tfor ( geoID in data.geometries ) {\n\
 \n\
-\t\ttextureJSON = data.textures[ textureID ];\n\
+\t\t\tgeoJSON = data.geometries[ geoID ];\n\
 \n\
-\t\tif ( textureJSON.url instanceof Array ) {\n\
+\t\t\tif ( geoJSON.type in this.geometryHandlers ) {\n\
 \n\
-\t\t\tcounter_textures += textureJSON.url.length;\n\
-\n\
-\t\t\tfor( var n = 0; n < textureJSON.url.length; n ++ ) {\n\
+\t\t\t\tcounter_models += 1;\n\
 \n\
 \t\t\t\tscope.onLoadStart();\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t} else {\n\
-\n\
-\t\t\tcounter_textures += 1;\n\
-\n\
-\t\t\tscope.onLoadStart();\n\
-\n\
 \t\t}\n\
 \n\
-\t}\n\
+\t\t// count how many hierarchies will be loaded asynchronously\n\
 \n\
-\ttotal_textures = counter_textures;\n\
+\t\tfor ( var objID in data.objects ) {\n\
 \n\
-\tfor ( textureID in data.textures ) {\n\
+\t\t\ttraverse_json_hierarchy( data.objects[ objID ], function ( objJSON ) {\n\
 \n\
-\t\ttextureJSON = data.textures[ textureID ];\n\
+\t\t\t\tif ( objJSON.type && ( objJSON.type in scope.hierarchyHandlers ) ) {\n\
 \n\
-\t\tif ( textureJSON.mapping !== undefined && THREE[ textureJSON.mapping ] !== undefined  ) {\n\
+\t\t\t\t\tcounter_models += 1;\n\
 \n\
-\t\t\ttextureJSON.mapping = new THREE[ textureJSON.mapping ]();\n\
+\t\t\t\t\tscope.onLoadStart();\n\
 \n\
-\t\t}\n\
-\n\
-\t\tif ( textureJSON.url instanceof Array ) {\n\
-\n\
-\t\t\tvar count = textureJSON.url.length;\n\
-\t\t\tvar url_array = [];\n\
-\n\
-\t\t\tfor( var i = 0; i < count; i ++ ) {\n\
-\n\
-\t\t\t\turl_array[ i ] = get_url( textureJSON.url[ i ], data.urlBaseType );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tvar isCompressed = url_array[ 0 ].endsWith( \".dds\" );\n\
-\n\
-\t\t\tif ( isCompressed ) {\n\
-\n\
-\t\t\t\ttexture = THREE.ImageUtils.loadCompressedTextureCube( url_array, textureJSON.mapping, generateTextureCallback( count ) );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\ttexture = THREE.ImageUtils.loadTextureCube( url_array, textureJSON.mapping, generateTextureCallback( count ) );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tvar isCompressed = textureJSON.url.toLowerCase().endsWith( \".dds\" );\n\
-\t\t\tvar fullUrl = get_url( textureJSON.url, data.urlBaseType );\n\
-\t\t\tvar textureCallback = generateTextureCallback( 1 );\n\
-\n\
-\t\t\tif ( isCompressed ) {\n\
-\n\
-\t\t\t\ttexture = THREE.ImageUtils.loadCompressedTexture( fullUrl, textureJSON.mapping, textureCallback );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\ttexture = THREE.ImageUtils.loadTexture( fullUrl, textureJSON.mapping, textureCallback );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( THREE[ textureJSON.minFilter ] !== undefined )\n\
-\t\t\t\ttexture.minFilter = THREE[ textureJSON.minFilter ];\n\
-\n\
-\t\t\tif ( THREE[ textureJSON.magFilter ] !== undefined )\n\
-\t\t\t\ttexture.magFilter = THREE[ textureJSON.magFilter ];\n\
-\n\
-\t\t\tif ( textureJSON.anisotropy ) texture.anisotropy = textureJSON.anisotropy;\n\
-\n\
-\t\t\tif ( textureJSON.repeat ) {\n\
-\n\
-\t\t\t\ttexture.repeat.set( textureJSON.repeat[ 0 ], textureJSON.repeat[ 1 ] );\n\
-\n\
-\t\t\t\tif ( textureJSON.repeat[ 0 ] !== 1 ) texture.wrapS = THREE.RepeatWrapping;\n\
-\t\t\t\tif ( textureJSON.repeat[ 1 ] !== 1 ) texture.wrapT = THREE.RepeatWrapping;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( textureJSON.offset ) {\n\
-\n\
-\t\t\t\ttexture.offset.set( textureJSON.offset[ 0 ], textureJSON.offset[ 1 ] );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\t// handle wrap after repeat so that default repeat can be overriden\n\
-\n\
-\t\t\tif ( textureJSON.wrap ) {\n\
-\n\
-\t\t\t\tvar wrapMap = {\n\
-\t\t\t\t\"repeat\" \t: THREE.RepeatWrapping,\n\
-\t\t\t\t\"mirror\"\t: THREE.MirroredRepeatWrapping\n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\tif ( wrapMap[ textureJSON.wrap[ 0 ] ] !== undefined ) texture.wrapS = wrapMap[ textureJSON.wrap[ 0 ] ];\n\
-\t\t\t\tif ( wrapMap[ textureJSON.wrap[ 1 ] ] !== undefined ) texture.wrapT = wrapMap[ textureJSON.wrap[ 1 ] ];\n\
+\t\t\t});\n\
+\n\
+\t\t}\n\
+\n\
+\t\ttotal_models = counter_models;\n\
+\n\
+\t\tfor ( geoID in data.geometries ) {\n\
+\n\
+\t\t\tgeoJSON = data.geometries[ geoID ];\n\
+\n\
+\t\t\tif ( geoJSON.type === \"cube\" ) {\n\
+\n\
+\t\t\t\tgeometry = new THREE.CubeGeometry( geoJSON.width, geoJSON.height, geoJSON.depth, geoJSON.widthSegments, geoJSON.heightSegments, geoJSON.depthSegments );\n\
+\t\t\t\tgeometry.name = geoID;\n\
+\t\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\n\
+\t\t\t} else if ( geoJSON.type === \"plane\" ) {\n\
+\n\
+\t\t\t\tgeometry = new THREE.PlaneGeometry( geoJSON.width, geoJSON.height, geoJSON.widthSegments, geoJSON.heightSegments );\n\
+\t\t\t\tgeometry.name = geoID;\n\
+\t\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\n\
+\t\t\t} else if ( geoJSON.type === \"sphere\" ) {\n\
+\n\
+\t\t\t\tgeometry = new THREE.SphereGeometry( geoJSON.radius, geoJSON.widthSegments, geoJSON.heightSegments );\n\
+\t\t\t\tgeometry.name = geoID;\n\
+\t\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\n\
+\t\t\t} else if ( geoJSON.type === \"cylinder\" ) {\n\
+\n\
+\t\t\t\tgeometry = new THREE.CylinderGeometry( geoJSON.topRad, geoJSON.botRad, geoJSON.height, geoJSON.radSegs, geoJSON.heightSegs );\n\
+\t\t\t\tgeometry.name = geoID;\n\
+\t\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\n\
+\t\t\t} else if ( geoJSON.type === \"torus\" ) {\n\
+\n\
+\t\t\t\tgeometry = new THREE.TorusGeometry( geoJSON.radius, geoJSON.tube, geoJSON.segmentsR, geoJSON.segmentsT );\n\
+\t\t\t\tgeometry.name = geoID;\n\
+\t\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\n\
+\t\t\t} else if ( geoJSON.type === \"icosahedron\" ) {\n\
+\n\
+\t\t\t\tgeometry = new THREE.IcosahedronGeometry( geoJSON.radius, geoJSON.subdivisions );\n\
+\t\t\t\tgeometry.name = geoID;\n\
+\t\t\t\tresult.geometries[ geoID ] = geometry;\n\
+\n\
+\t\t\t} else if ( geoJSON.type in this.geometryHandlers ) {\n\
+\n\
+\t\t\t\tvar loaderParameters = {};\n\
+\n\
+\t\t\t\tfor ( var parType in geoJSON ) {\n\
+\n\
+\t\t\t\t\tif ( parType !== \"type\" && parType !== \"url\" ) {\n\
+\n\
+\t\t\t\t\t\tloaderParameters[ parType ] = geoJSON[ parType ];\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tvar loader = this.geometryHandlers[ geoJSON.type ][ \"loaderObject\" ];\n\
+\t\t\t\tloader.load( get_url( geoJSON.url, data.urlBaseType ), create_callback_geometry( geoID ), loaderParameters );\n\
+\n\
+\t\t\t} else if ( geoJSON.type === \"embedded\" ) {\n\
+\n\
+\t\t\t\tvar modelJson = data.embeds[ geoJSON.id ],\n\
+\t\t\t\t\ttexture_path = \"\";\n\
+\n\
+\t\t\t\t// pass metadata along to jsonLoader so it knows the format version\n\
+\n\
+\t\t\t\tmodelJson.metadata = data.metadata;\n\
+\n\
+\t\t\t\tif ( modelJson ) {\n\
+\n\
+\t\t\t\t\tvar jsonLoader = this.geometryHandlers[ \"ascii\" ][ \"loaderObject\" ];\n\
+\t\t\t\t\tvar model = jsonLoader.parse( modelJson, texture_path );\n\
+\t\t\t\t\tcreate_callback_embed( geoID )( model.geometry, model.materials );\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t\tresult.textures[ textureID ] = texture;\n\
+\t\t// textures\n\
 \n\
-\t}\n\
+\t\t// count how many textures will be loaded asynchronously\n\
 \n\
-\t// materials\n\
+\t\tvar textureID, textureJSON;\n\
 \n\
-\tvar matID, matJSON;\n\
-\tvar parID;\n\
+\t\tfor ( textureID in data.textures ) {\n\
 \n\
-\tfor ( matID in data.materials ) {\n\
+\t\t\ttextureJSON = data.textures[ textureID ];\n\
 \n\
-\t\tmatJSON = data.materials[ matID ];\n\
+\t\t\tif ( textureJSON.url instanceof Array ) {\n\
 \n\
-\t\tfor ( parID in matJSON.parameters ) {\n\
+\t\t\t\tcounter_textures += textureJSON.url.length;\n\
 \n\
-\t\t\tif ( parID === \"envMap\" || parID === \"map\" || parID === \"lightMap\" || parID === \"bumpMap\" ) {\n\
+\t\t\t\tfor( var n = 0; n < textureJSON.url.length; n ++ ) {\n\
 \n\
-\t\t\t\tmatJSON.parameters[ parID ] = result.textures[ matJSON.parameters[ parID ] ];\n\
+\t\t\t\t\tscope.onLoadStart();\n\
 \n\
-\t\t\t} else if ( parID === \"shading\" ) {\n\
+\t\t\t\t}\n\
 \n\
-\t\t\t\tmatJSON.parameters[ parID ] = ( matJSON.parameters[ parID ] === \"flat\" ) ? THREE.FlatShading : THREE.SmoothShading;\n\
+\t\t\t} else {\n\
 \n\
-\t\t\t} else if ( parID === \"side\" ) {\n\
+\t\t\t\tcounter_textures += 1;\n\
 \n\
-\t\t\t\tif ( matJSON.parameters[ parID ] == \"double\" ) {\n\
+\t\t\t\tscope.onLoadStart();\n\
 \n\
-\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.DoubleSide;\n\
+\t\t\t}\n\
 \n\
-\t\t\t\t} else if ( matJSON.parameters[ parID ] == \"back\" ) {\n\
+\t\t}\n\
 \n\
-\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.BackSide;\n\
+\t\ttotal_textures = counter_textures;\n\
+\n\
+\t\tfor ( textureID in data.textures ) {\n\
+\n\
+\t\t\ttextureJSON = data.textures[ textureID ];\n\
+\n\
+\t\t\tif ( textureJSON.mapping !== undefined && THREE[ textureJSON.mapping ] !== undefined ) {\n\
+\n\
+\t\t\t\ttextureJSON.mapping = new THREE[ textureJSON.mapping ]();\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( textureJSON.url instanceof Array ) {\n\
+\n\
+\t\t\t\tvar count = textureJSON.url.length;\n\
+\t\t\t\tvar url_array = [];\n\
+\n\
+\t\t\t\tfor( var i = 0; i < count; i ++ ) {\n\
+\n\
+\t\t\t\t\turl_array[ i ] = get_url( textureJSON.url[ i ], data.urlBaseType );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tvar isCompressed = /\\.dds$/i.test( url_array[ 0 ] );\n\
+\n\
+\t\t\t\tif ( isCompressed ) {\n\
+\n\
+\t\t\t\t\ttexture = THREE.ImageUtils.loadCompressedTextureCube( url_array, textureJSON.mapping, generateTextureCallback( count ) );\n\
 \n\
 \t\t\t\t} else {\n\
 \n\
-\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.FrontSide;\n\
+\t\t\t\t\ttexture = THREE.ImageUtils.loadTextureCube( url_array, textureJSON.mapping, generateTextureCallback( count ) );\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t} else if ( parID === \"blending\" ) {\n\
+\t\t\t} else {\n\
 \n\
-\t\t\t\tmatJSON.parameters[ parID ] = matJSON.parameters[ parID ] in THREE ? THREE[ matJSON.parameters[ parID ] ] : THREE.NormalBlending;\n\
+\t\t\t\tvar isCompressed = /\\.dds$/i.test( textureJSON.url );\n\
+\t\t\t\tvar fullUrl = get_url( textureJSON.url, data.urlBaseType );\n\
+\t\t\t\tvar textureCallback = generateTextureCallback( 1 );\n\
 \n\
-\t\t\t} else if ( parID === \"combine\" ) {\n\
+\t\t\t\tif ( isCompressed ) {\n\
 \n\
-\t\t\t\tmatJSON.parameters[ parID ] = matJSON.parameters[ parID ] in THREE ? THREE[ matJSON.parameters[ parID ] ] : THREE.MultiplyOperation;\n\
+\t\t\t\t\ttexture = THREE.ImageUtils.loadCompressedTexture( fullUrl, textureJSON.mapping, textureCallback );\n\
 \n\
-\t\t\t} else if ( parID === \"vertexColors\" ) {\n\
+\t\t\t\t} else {\n\
 \n\
-\t\t\t\tif ( matJSON.parameters[ parID ] == \"face\" ) {\n\
-\n\
-\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.FaceColors;\n\
-\n\
-\t\t\t\t// default to vertex colors if \"vertexColors\" is anything else face colors or 0 / null / false\n\
-\n\
-\t\t\t\t} else if ( matJSON.parameters[ parID ] )   {\n\
-\n\
-\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.VertexColors;\n\
+\t\t\t\t\ttexture = THREE.ImageUtils.loadTexture( fullUrl, textureJSON.mapping, textureCallback );\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t} else if ( parID === \"wrapRGB\" ) {\n\
+\t\t\t\tif ( THREE[ textureJSON.minFilter ] !== undefined )\n\
+\t\t\t\t\ttexture.minFilter = THREE[ textureJSON.minFilter ];\n\
 \n\
-\t\t\t\tvar v3 = matJSON.parameters[ parID ];\n\
-\t\t\t\tmatJSON.parameters[ parID ] = new THREE.Vector3( v3[ 0 ], v3[ 1 ], v3[ 2 ] );\n\
+\t\t\t\tif ( THREE[ textureJSON.magFilter ] !== undefined )\n\
+\t\t\t\t\ttexture.magFilter = THREE[ textureJSON.magFilter ];\n\
+\n\
+\t\t\t\tif ( textureJSON.anisotropy ) texture.anisotropy = textureJSON.anisotropy;\n\
+\n\
+\t\t\t\tif ( textureJSON.repeat ) {\n\
+\n\
+\t\t\t\t\ttexture.repeat.set( textureJSON.repeat[ 0 ], textureJSON.repeat[ 1 ] );\n\
+\n\
+\t\t\t\t\tif ( textureJSON.repeat[ 0 ] !== 1 ) texture.wrapS = THREE.RepeatWrapping;\n\
+\t\t\t\t\tif ( textureJSON.repeat[ 1 ] !== 1 ) texture.wrapT = THREE.RepeatWrapping;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( textureJSON.offset ) {\n\
+\n\
+\t\t\t\t\ttexture.offset.set( textureJSON.offset[ 0 ], textureJSON.offset[ 1 ] );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\t// handle wrap after repeat so that default repeat can be overriden\n\
+\n\
+\t\t\t\tif ( textureJSON.wrap ) {\n\
+\n\
+\t\t\t\t\tvar wrapMap = {\n\
+\t\t\t\t\t\t\"repeat\": THREE.RepeatWrapping,\n\
+\t\t\t\t\t\t\"mirror\": THREE.MirroredRepeatWrapping\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\tif ( wrapMap[ textureJSON.wrap[ 0 ] ] !== undefined ) texture.wrapS = wrapMap[ textureJSON.wrap[ 0 ] ];\n\
+\t\t\t\t\tif ( wrapMap[ textureJSON.wrap[ 1 ] ] !== undefined ) texture.wrapT = wrapMap[ textureJSON.wrap[ 1 ] ];\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tresult.textures[ textureID ] = texture;\n\
+\n\
+\t\t}\n\
+\n\
+\t\t// materials\n\
+\n\
+\t\tvar matID, matJSON;\n\
+\t\tvar parID;\n\
+\n\
+\t\tfor ( matID in data.materials ) {\n\
+\n\
+\t\t\tmatJSON = data.materials[ matID ];\n\
+\n\
+\t\t\tfor ( parID in matJSON.parameters ) {\n\
+\n\
+\t\t\t\tif ( parID === \"envMap\" || parID === \"map\" || parID === \"lightMap\" || parID === \"bumpMap\" ) {\n\
+\n\
+\t\t\t\t\tmatJSON.parameters[ parID ] = result.textures[ matJSON.parameters[ parID ] ];\n\
+\n\
+\t\t\t\t} else if ( parID === \"shading\" ) {\n\
+\n\
+\t\t\t\t\tmatJSON.parameters[ parID ] = ( matJSON.parameters[ parID ] === \"flat\" ) ? THREE.FlatShading : THREE.SmoothShading;\n\
+\n\
+\t\t\t\t} else if ( parID === \"side\" ) {\n\
+\n\
+\t\t\t\t\tif ( matJSON.parameters[ parID ] == \"double\" ) {\n\
+\n\
+\t\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.DoubleSide;\n\
+\n\
+\t\t\t\t\t} else if ( matJSON.parameters[ parID ] == \"back\" ) {\n\
+\n\
+\t\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.BackSide;\n\
+\n\
+\t\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.FrontSide;\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t} else if ( parID === \"blending\" ) {\n\
+\n\
+\t\t\t\t\tmatJSON.parameters[ parID ] = matJSON.parameters[ parID ] in THREE ? THREE[ matJSON.parameters[ parID ] ] : THREE.NormalBlending;\n\
+\n\
+\t\t\t\t} else if ( parID === \"combine\" ) {\n\
+\n\
+\t\t\t\t\tmatJSON.parameters[ parID ] = matJSON.parameters[ parID ] in THREE ? THREE[ matJSON.parameters[ parID ] ] : THREE.MultiplyOperation;\n\
+\n\
+\t\t\t\t} else if ( parID === \"vertexColors\" ) {\n\
+\n\
+\t\t\t\t\tif ( matJSON.parameters[ parID ] == \"face\" ) {\n\
+\n\
+\t\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.FaceColors;\n\
+\n\
+\t\t\t\t\t// default to vertex colors if \"vertexColors\" is anything else face colors or 0 / null / false\n\
+\n\
+\t\t\t\t\t} else if ( matJSON.parameters[ parID ] ) {\n\
+\n\
+\t\t\t\t\t\tmatJSON.parameters[ parID ] = THREE.VertexColors;\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t} else if ( parID === \"wrapRGB\" ) {\n\
+\n\
+\t\t\t\t\tvar v3 = matJSON.parameters[ parID ];\n\
+\t\t\t\t\tmatJSON.parameters[ parID ] = new THREE.Vector3( v3[ 0 ], v3[ 1 ], v3[ 2 ] );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( matJSON.parameters.opacity !== undefined && matJSON.parameters.opacity < 1.0 ) {\n\
+\n\
+\t\t\t\tmatJSON.parameters.transparent = true;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( matJSON.parameters.normalMap ) {\n\
+\n\
+\t\t\t\tvar shader = THREE.ShaderLib[ \"normalmap\" ];\n\
+\t\t\t\tvar uniforms = THREE.UniformsUtils.clone( shader.uniforms );\n\
+\n\
+\t\t\t\tvar diffuse = matJSON.parameters.color;\n\
+\t\t\t\tvar specular = matJSON.parameters.specular;\n\
+\t\t\t\tvar ambient = matJSON.parameters.ambient;\n\
+\t\t\t\tvar shininess = matJSON.parameters.shininess;\n\
+\n\
+\t\t\t\tuniforms[ \"tNormal\" ].value = result.textures[ matJSON.parameters.normalMap ];\n\
+\n\
+\t\t\t\tif ( matJSON.parameters.normalScale ) {\n\
+\n\
+\t\t\t\t\tuniforms[ \"uNormalScale\" ].value.set( matJSON.parameters.normalScale[ 0 ], matJSON.parameters.normalScale[ 1 ] );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( matJSON.parameters.map ) {\n\
+\n\
+\t\t\t\t\tuniforms[ \"tDiffuse\" ].value = matJSON.parameters.map;\n\
+\t\t\t\t\tuniforms[ \"enableDiffuse\" ].value = true;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( matJSON.parameters.envMap ) {\n\
+\n\
+\t\t\t\t\tuniforms[ \"tCube\" ].value = matJSON.parameters.envMap;\n\
+\t\t\t\t\tuniforms[ \"enableReflection\" ].value = true;\n\
+\t\t\t\t\tuniforms[ \"uReflectivity\" ].value = matJSON.parameters.reflectivity;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( matJSON.parameters.lightMap ) {\n\
+\n\
+\t\t\t\t\tuniforms[ \"tAO\" ].value = matJSON.parameters.lightMap;\n\
+\t\t\t\t\tuniforms[ \"enableAO\" ].value = true;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( matJSON.parameters.specularMap ) {\n\
+\n\
+\t\t\t\t\tuniforms[ \"tSpecular\" ].value = result.textures[ matJSON.parameters.specularMap ];\n\
+\t\t\t\t\tuniforms[ \"enableSpecular\" ].value = true;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tif ( matJSON.parameters.displacementMap ) {\n\
+\n\
+\t\t\t\t\tuniforms[ \"tDisplacement\" ].value = result.textures[ matJSON.parameters.displacementMap ];\n\
+\t\t\t\t\tuniforms[ \"enableDisplacement\" ].value = true;\n\
+\n\
+\t\t\t\t\tuniforms[ \"uDisplacementBias\" ].value = matJSON.parameters.displacementBias;\n\
+\t\t\t\t\tuniforms[ \"uDisplacementScale\" ].value = matJSON.parameters.displacementScale;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tuniforms[ \"uDiffuseColor\" ].value.setHex( diffuse );\n\
+\t\t\t\tuniforms[ \"uSpecularColor\" ].value.setHex( specular );\n\
+\t\t\t\tuniforms[ \"uAmbientColor\" ].value.setHex( ambient );\n\
+\n\
+\t\t\t\tuniforms[ \"uShininess\" ].value = shininess;\n\
+\n\
+\t\t\t\tif ( matJSON.parameters.opacity ) {\n\
+\n\
+\t\t\t\t\tuniforms[ \"uOpacity\" ].value = matJSON.parameters.opacity;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tvar parameters = { fragmentShader: shader.fragmentShader, vertexShader: shader.vertexShader, uniforms: uniforms, lights: true, fog: true };\n\
+\n\
+\t\t\t\tmaterial = new THREE.ShaderMaterial( parameters );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tmaterial = new THREE[ matJSON.type ]( matJSON.parameters );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tmaterial.name = matID;\n\
+\n\
+\t\t\tresult.materials[ matID ] = material;\n\
+\n\
+\t\t}\n\
+\n\
+\t\t// second pass through all materials to initialize MeshFaceMaterials\n\
+\t\t// that could be referring to other materials out of order\n\
+\n\
+\t\tfor ( matID in data.materials ) {\n\
+\n\
+\t\t\tmatJSON = data.materials[ matID ];\n\
+\n\
+\t\t\tif ( matJSON.parameters.materials ) {\n\
+\n\
+\t\t\t\tvar materialArray = [];\n\
+\n\
+\t\t\t\tfor ( var i = 0; i < matJSON.parameters.materials.length; i ++ ) {\n\
+\n\
+\t\t\t\t\tvar label = matJSON.parameters.materials[ i ];\n\
+\t\t\t\t\tmaterialArray.push( result.materials[ label ] );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tresult.materials[ matID ].materials = materialArray;\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t\tif ( matJSON.parameters.opacity !== undefined && matJSON.parameters.opacity < 1.0 ) {\n\
+\t\t// objects ( synchronous init of procedural primitives )\n\
 \n\
-\t\t\tmatJSON.parameters.transparent = true;\n\
+\t\thandle_objects();\n\
 \n\
-\t\t}\n\
+\t\t// defaults\n\
 \n\
-\t\tif ( matJSON.parameters.normalMap ) {\n\
+\t\tif ( result.cameras && data.defaults.camera ) {\n\
 \n\
-\t\t\tvar shader = THREE.ShaderUtils.lib[ \"normal\" ];\n\
-\t\t\tvar uniforms = THREE.UniformsUtils.clone( shader.uniforms );\n\
-\n\
-\t\t\tvar diffuse = matJSON.parameters.color;\n\
-\t\t\tvar specular = matJSON.parameters.specular;\n\
-\t\t\tvar ambient = matJSON.parameters.ambient;\n\
-\t\t\tvar shininess = matJSON.parameters.shininess;\n\
-\n\
-\t\t\tuniforms[ \"tNormal\" ].value = result.textures[ matJSON.parameters.normalMap ];\n\
-\n\
-\t\t\tif ( matJSON.parameters.normalScale ) {\n\
-\n\
-\t\t\t\tuniforms[ \"uNormalScale\" ].value.set( matJSON.parameters.normalScale[ 0 ], matJSON.parameters.normalScale[ 1 ] );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( matJSON.parameters.map ) {\n\
-\n\
-\t\t\t\tuniforms[ \"tDiffuse\" ].value = matJSON.parameters.map;\n\
-\t\t\t\tuniforms[ \"enableDiffuse\" ].value = true;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( matJSON.parameters.envMap ) {\n\
-\n\
-\t\t\t\tuniforms[ \"tCube\" ].value = matJSON.parameters.envMap;\n\
-\t\t\t\tuniforms[ \"enableReflection\" ].value = true;\n\
-\t\t\t\tuniforms[ \"uReflectivity\" ].value = matJSON.parameters.reflectivity;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( matJSON.parameters.lightMap ) {\n\
-\n\
-\t\t\t\tuniforms[ \"tAO\" ].value = matJSON.parameters.lightMap;\n\
-\t\t\t\tuniforms[ \"enableAO\" ].value = true;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( matJSON.parameters.specularMap ) {\n\
-\n\
-\t\t\t\tuniforms[ \"tSpecular\" ].value = result.textures[ matJSON.parameters.specularMap ];\n\
-\t\t\t\tuniforms[ \"enableSpecular\" ].value = true;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tif ( matJSON.parameters.displacementMap ) {\n\
-\n\
-\t\t\t\tuniforms[ \"tDisplacement\" ].value = result.textures[ matJSON.parameters.displacementMap ];\n\
-\t\t\t\tuniforms[ \"enableDisplacement\" ].value = true;\n\
-\n\
-\t\t\t\tuniforms[ \"uDisplacementBias\" ].value = matJSON.parameters.displacementBias;\n\
-\t\t\t\tuniforms[ \"uDisplacementScale\" ].value = matJSON.parameters.displacementScale;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tuniforms[ \"uDiffuseColor\" ].value.setHex( diffuse );\n\
-\t\t\tuniforms[ \"uSpecularColor\" ].value.setHex( specular );\n\
-\t\t\tuniforms[ \"uAmbientColor\" ].value.setHex( ambient );\n\
-\n\
-\t\t\tuniforms[ \"uShininess\" ].value = shininess;\n\
-\n\
-\t\t\tif ( matJSON.parameters.opacity ) {\n\
-\n\
-\t\t\t\tuniforms[ \"uOpacity\" ].value = matJSON.parameters.opacity;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tvar parameters = { fragmentShader: shader.fragmentShader, vertexShader: shader.vertexShader, uniforms: uniforms, lights: true, fog: true };\n\
-\n\
-\t\t\tmaterial = new THREE.ShaderMaterial( parameters );\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tmaterial = new THREE[ matJSON.type ]( matJSON.parameters );\n\
+\t\t\tresult.currentCamera = result.cameras[ data.defaults.camera ];\n\
 \n\
 \t\t}\n\
 \n\
-\t\tresult.materials[ matID ] = material;\n\
+\t\tif ( result.fogs && data.defaults.fog ) {\n\
 \n\
-\t}\n\
-\n\
-\t// second pass through all materials to initialize MeshFaceMaterials\n\
-\t// that could be referring to other materials out of order\n\
-\n\
-\tfor ( matID in data.materials ) {\n\
-\n\
-\t\tmatJSON = data.materials[ matID ];\n\
-\n\
-\t\tif ( matJSON.parameters.materials ) {\n\
-\n\
-\t\t\tvar materialArray = [];\n\
-\n\
-\t\t\tfor ( var i = 0; i < matJSON.parameters.materials.length; i ++ ) {\n\
-\n\
-\t\t\t\tvar label = matJSON.parameters.materials[ i ];\n\
-\t\t\t\tmaterialArray.push( result.materials[ label ] );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tresult.materials[ matID ].materials = materialArray;\n\
+\t\t\tresult.scene.fog = result.fogs[ data.defaults.fog ];\n\
 \n\
 \t\t}\n\
 \n\
-\t}\n\
+\t\t// synchronous callback\n\
 \n\
-\t// objects ( synchronous init of procedural primitives )\n\
+\t\tscope.callbackSync( result );\n\
 \n\
-\thandle_objects();\n\
+\t\t// just in case there are no async elements\n\
 \n\
-\t// defaults\n\
-\n\
-\tif ( result.cameras && data.defaults.camera ) {\n\
-\n\
-\t\tresult.currentCamera = result.cameras[ data.defaults.camera ];\n\
+\t\tasync_callback_gate();\n\
 \n\
 \t}\n\
 \n\
-\tif ( result.fogs && data.defaults.fog ) {\n\
+}\n\
 \n\
-\t\tresult.scene.fog = result.fogs[ data.defaults.fog ];\n\
-\n\
-\t}\n\
-\n\
-\tcolor = data.defaults.bgcolor;\n\
-\tresult.bgColor = new THREE.Color();\n\
-\tresult.bgColor.setRGB( color[0], color[1], color[2] );\n\
-\n\
-\tresult.bgColorAlpha = data.defaults.bgalpha;\n\
-\n\
-\t// synchronous callback\n\
-\n\
-\tscope.callbackSync( result );\n\
-\n\
-\t// just in case there are no async elements\n\
-\n\
-\tasync_callback_gate();\n\
-\n\
-};\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
-THREE.TextureLoader = function () {\n\
+THREE.TextureLoader = function ( manager ) {\n\
 \n\
-\tTHREE.EventDispatcher.call( this );\n\
-\n\
-\tthis.crossOrigin = null;\n\
+\tthis.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;\n\
 \n\
 };\n\
 \n\
@@ -14824,34 +16662,35 @@ THREE.TextureLoader.prototype = {\n\
 \n\
 \tconstructor: THREE.TextureLoader,\n\
 \n\
-\tload: function ( url ) {\n\
+\tload: function ( url, onLoad, onProgress, onError ) {\n\
 \n\
 \t\tvar scope = this;\n\
 \n\
-\t\tvar image = new Image();\n\
-\n\
-\t\timage.addEventListener( 'load', function () {\n\
+\t\tvar loader = new THREE.ImageLoader( scope.manager );\n\
+\t\tloader.setCrossOrigin( this.crossOrigin );\n\
+\t\tloader.load( url, function ( image ) {\n\
 \n\
 \t\t\tvar texture = new THREE.Texture( image );\n\
 \t\t\ttexture.needsUpdate = true;\n\
 \n\
-\t\t\tscope.dispatchEvent( { type: 'load', content: texture } );\n\
+\t\t\tif ( onLoad !== undefined ) {\n\
 \n\
-\t\t}, false );\n\
+\t\t\t\tonLoad( texture );\n\
 \n\
-\t\timage.addEventListener( 'error', function () {\n\
+\t\t\t}\n\
 \n\
-\t\t\tscope.dispatchEvent( { type: 'error', message: 'Couldn\\'t load URL [' + url + ']' } );\n\
+\t\t} );\n\
 \n\
-\t\t}, false );\n\
+\t},\n\
 \n\
-\t\tif ( scope.crossOrigin ) image.crossOrigin = scope.crossOrigin;\n\
+\tsetCrossOrigin: function ( value ) {\n\
 \n\
-\t\timage.src = url;\n\
+\t\tthis.crossOrigin = value;\n\
 \n\
 \t}\n\
 \n\
-}\n\
+};\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -14859,9 +16698,8 @@ THREE.TextureLoader.prototype = {\n\
 \n\
 THREE.Material = function () {\n\
 \n\
-\tTHREE.EventDispatcher.call( this );\n\
-\n\
 \tthis.id = THREE.MaterialIdCount ++;\n\
+\tthis.uuid = THREE.Math.generateUUID();\n\
 \n\
 \tthis.name = '';\n\
 \n\
@@ -14885,7 +16723,7 @@ THREE.Material = function () {\n\
 \n\
 \tthis.alphaTest = 0;\n\
 \n\
-\tthis.overdraw = false; // Boolean for fixing antialiasing gaps in CanvasRenderer\n\
+\tthis.overdraw = 0; // Overdrawn pixels (typically between 0 and 1) for fixing antialiasing gaps in CanvasRenderer\n\
 \n\
 \tthis.visible = true;\n\
 \n\
@@ -14893,90 +16731,100 @@ THREE.Material = function () {\n\
 \n\
 };\n\
 \n\
-THREE.Material.prototype.setValues = function ( values ) {\n\
+THREE.Material.prototype = {\n\
 \n\
-\tif ( values === undefined ) return;\n\
+\tconstructor: THREE.Material,\n\
 \n\
-\tfor ( var key in values ) {\n\
+\tsetValues: function ( values ) {\n\
 \n\
-\t\tvar newValue = values[ key ];\n\
+\t\tif ( values === undefined ) return;\n\
 \n\
-\t\tif ( newValue === undefined ) {\n\
+\t\tfor ( var key in values ) {\n\
 \n\
-\t\t\tconsole.warn( 'THREE.Material: \\'' + key + '\\' parameter is undefined.' );\n\
-\t\t\tcontinue;\n\
+\t\t\tvar newValue = values[ key ];\n\
 \n\
-\t\t}\n\
+\t\t\tif ( newValue === undefined ) {\n\
 \n\
-\t\tif ( key in this ) {\n\
+\t\t\t\tconsole.warn( 'THREE.Material: \\'' + key + '\\' parameter is undefined.' );\n\
+\t\t\t\tcontinue;\n\
 \n\
-\t\t\tvar currentValue = this[ key ];\n\
+\t\t\t}\n\
 \n\
-\t\t\tif ( currentValue instanceof THREE.Color && newValue instanceof THREE.Color ) {\n\
+\t\t\tif ( key in this ) {\n\
 \n\
-\t\t\t\tcurrentValue.copy( newValue );\n\
+\t\t\t\tvar currentValue = this[ key ];\n\
 \n\
-\t\t\t} else if ( currentValue instanceof THREE.Color ) {\n\
+\t\t\t\tif ( currentValue instanceof THREE.Color ) {\n\
 \n\
-\t\t\t\tcurrentValue.set( newValue );\n\
+\t\t\t\t\tcurrentValue.set( newValue );\n\
 \n\
-\t\t\t} else if ( currentValue instanceof THREE.Vector3 && newValue instanceof THREE.Vector3 ) {\n\
+\t\t\t\t} else if ( currentValue instanceof THREE.Vector3 && newValue instanceof THREE.Vector3 ) {\n\
 \n\
-\t\t\t\tcurrentValue.copy( newValue );\n\
+\t\t\t\t\tcurrentValue.copy( newValue );\n\
 \n\
-\t\t\t} else {\n\
+\t\t\t\t} else if ( key == 'overdraw') {\n\
 \n\
-\t\t\t\tthis[ key ] = newValue;\n\
+\t\t\t\t\t// ensure overdraw is backwards-compatable with legacy boolean type\n\
+\t\t\t\t\tthis[ key ] = Number(newValue);\n\
+\n\
+\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\tthis[ key ] = newValue;\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
+\t},\n\
+\n\
+\tclone: function ( material ) {\n\
+\n\
+\t\tif ( material === undefined ) material = new THREE.Material();\n\
+\n\
+\t\tmaterial.name = this.name;\n\
+\n\
+\t\tmaterial.side = this.side;\n\
+\n\
+\t\tmaterial.opacity = this.opacity;\n\
+\t\tmaterial.transparent = this.transparent;\n\
+\n\
+\t\tmaterial.blending = this.blending;\n\
+\n\
+\t\tmaterial.blendSrc = this.blendSrc;\n\
+\t\tmaterial.blendDst = this.blendDst;\n\
+\t\tmaterial.blendEquation = this.blendEquation;\n\
+\n\
+\t\tmaterial.depthTest = this.depthTest;\n\
+\t\tmaterial.depthWrite = this.depthWrite;\n\
+\n\
+\t\tmaterial.polygonOffset = this.polygonOffset;\n\
+\t\tmaterial.polygonOffsetFactor = this.polygonOffsetFactor;\n\
+\t\tmaterial.polygonOffsetUnits = this.polygonOffsetUnits;\n\
+\n\
+\t\tmaterial.alphaTest = this.alphaTest;\n\
+\n\
+\t\tmaterial.overdraw = this.overdraw;\n\
+\n\
+\t\tmaterial.visible = this.visible;\n\
+\n\
+\t\treturn material;\n\
+\n\
+\t},\n\
+\n\
+\tdispose: function () {\n\
+\n\
+\t\tthis.dispatchEvent( { type: 'dispose' } );\n\
+\n\
 \t}\n\
 \n\
 };\n\
 \n\
-THREE.Material.prototype.clone = function ( material ) {\n\
-\n\
-\tif ( material === undefined ) material = new THREE.Material();\n\
-\n\
-\tmaterial.name = this.name;\n\
-\n\
-\tmaterial.side = this.side;\n\
-\n\
-\tmaterial.opacity = this.opacity;\n\
-\tmaterial.transparent = this.transparent;\n\
-\n\
-\tmaterial.blending = this.blending;\n\
-\n\
-\tmaterial.blendSrc = this.blendSrc;\n\
-\tmaterial.blendDst = this.blendDst;\n\
-\tmaterial.blendEquation = this.blendEquation;\n\
-\n\
-\tmaterial.depthTest = this.depthTest;\n\
-\tmaterial.depthWrite = this.depthWrite;\n\
-\n\
-\tmaterial.polygonOffset = this.polygonOffset;\n\
-\tmaterial.polygonOffsetFactor = this.polygonOffsetFactor;\n\
-\tmaterial.polygonOffsetUnits = this.polygonOffsetUnits;\n\
-\n\
-\tmaterial.alphaTest = this.alphaTest;\n\
-\n\
-\tmaterial.overdraw = this.overdraw;\n\
-\n\
-\tmaterial.visible = this.visible;\n\
-\n\
-\treturn material;\n\
-\n\
-};\n\
-\n\
-THREE.Material.prototype.dispose = function () {\n\
-\n\
-\tthis.dispatchEvent( { type: 'dispose' } );\n\
-\n\
-};\n\
+THREE.EventDispatcher.prototype.apply( THREE.Material.prototype );\n\
 \n\
 THREE.MaterialIdCount = 0;\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -15038,6 +16886,7 @@ THREE.LineBasicMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  *\n\
@@ -15104,6 +16953,7 @@ THREE.LineDashedMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -15212,6 +17062,7 @@ THREE.MeshBasicMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -15336,6 +17187,7 @@ THREE.MeshLambertMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -15490,6 +17342,7 @@ THREE.MeshPhongMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -15521,7 +17374,7 @@ THREE.MeshDepthMaterial.prototype = Object.create( THREE.Material.prototype );\n
 \n\
 THREE.MeshDepthMaterial.prototype.clone = function () {\n\
 \n\
-\tvar material = new THREE.LineBasicMaterial();\n\
+\tvar material = new THREE.MeshDepthMaterial();\n\
 \n\
 \tTHREE.Material.prototype.clone.call( this, material );\n\
 \n\
@@ -15531,6 +17384,7 @@ THREE.MeshDepthMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  *\n\
@@ -15556,6 +17410,8 @@ THREE.MeshNormalMaterial = function ( parameters ) {\n\
 \tthis.wireframe = false;\n\
 \tthis.wireframeLinewidth = 1;\n\
 \n\
+\tthis.morphTargets = false;\n\
+\n\
 \tthis.setValues( parameters );\n\
 \n\
 };\n\
@@ -15576,6 +17432,7 @@ THREE.MeshNormalMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -15591,6 +17448,7 @@ THREE.MeshFaceMaterial.prototype.clone = function () {\n\
 \treturn new THREE.MeshFaceMaterial( this.materials.slice( 0 ) );\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -15653,6 +17511,7 @@ THREE.ParticleBasicMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  *\n\
@@ -15689,21 +17548,7 @@ THREE.ParticleCanvasMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
-/**\n\
- * @author mrdoob / http://mrdoob.com/\n\
- */\n\
 \n\
-THREE.ParticleDOMMaterial = function ( element ) {\n\
-\n\
-\tthis.element = element;\n\
-\n\
-};\n\
-\n\
-THREE.ParticleDOMMaterial.prototype.clone = function(){\n\
-\n\
-\treturn new THREE.ParticleDOMMaterial( this.element );\n\
-\n\
-};\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  *\n\
@@ -15747,6 +17592,8 @@ THREE.ShaderMaterial = function ( parameters ) {\n\
 \n\
 \tthis.shading = THREE.SmoothShading;\n\
 \n\
+\tthis.linewidth = 1;\n\
+\n\
 \tthis.wireframe = false;\n\
 \tthis.wireframeLinewidth = 1;\n\
 \n\
@@ -15760,6 +17607,18 @@ THREE.ShaderMaterial = function ( parameters ) {\n\
 \n\
 \tthis.morphTargets = false; // set to use morph targets\n\
 \tthis.morphNormals = false; // set to use morph normals\n\
+\n\
+\t// When rendered geometry doesn't include these attributes but the material does,\n\
+\t// use these default values in WebGL. This avoids errors when buffer data is missing.\n\
+\tthis.defaultAttributeValues = {\n\
+\t\t\"color\" : [ 1, 1, 1],\n\
+\t\t\"uv\" : [ 0, 0 ],\n\
+\t\t\"uv2\" : [ 0, 0 ]\n\
+\t};\n\
+\n\
+\t// By default, bind position to attribute index 0. In WebGL, attribute 0\n\
+\t// should always be used to avoid potentially expensive emulation.\n\
+\tthis.index0AttributeName = \"position\";\n\
 \n\
 \tthis.setValues( parameters );\n\
 \n\
@@ -15800,6 +17659,7 @@ THREE.ShaderMaterial.prototype.clone = function () {\n\
 \treturn material;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  *\n\
@@ -15895,6 +17755,7 @@ THREE.SpriteAlignment.centerRight = new THREE.Vector2( -1, 0 );\n\
 THREE.SpriteAlignment.bottomLeft = new THREE.Vector2( 1, 1 );\n\
 THREE.SpriteAlignment.bottomCenter = new THREE.Vector2( 0, 1 );\n\
 THREE.SpriteAlignment.bottomRight = new THREE.Vector2( -1, 1 );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -15903,9 +17764,8 @@ THREE.SpriteAlignment.bottomRight = new THREE.Vector2( -1, 1 );\n\
 \n\
 THREE.Texture = function ( image, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy ) {\n\
 \n\
-\tTHREE.EventDispatcher.call( this );\n\
-\n\
 \tthis.id = THREE.TextureIdCount ++;\n\
+\tthis.uuid = THREE.Math.generateUUID();\n\
 \n\
 \tthis.name = '';\n\
 \n\
@@ -15982,7 +17842,10 @@ THREE.Texture.prototype = {\n\
 \n\
 };\n\
 \n\
+THREE.EventDispatcher.prototype.apply( THREE.Texture.prototype );\n\
+\n\
 THREE.TextureIdCount = 0;\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -16009,6 +17872,7 @@ THREE.CompressedTexture.prototype.clone = function () {\n\
 \treturn texture;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -16032,6 +17896,7 @@ THREE.DataTexture.prototype.clone = function () {\n\
 \treturn texture;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -16055,6 +17920,7 @@ THREE.Particle.prototype.clone = function ( object ) {\n\
 \treturn object;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -16063,23 +17929,10 @@ THREE.ParticleSystem = function ( geometry, material ) {\n\
 \n\
 \tTHREE.Object3D.call( this );\n\
 \n\
-\tthis.geometry = geometry;\n\
-\tthis.material = ( material !== undefined ) ? material : new THREE.ParticleBasicMaterial( { color: Math.random() * 0xffffff } );\n\
+\tthis.geometry = geometry !== undefined ? geometry : new THREE.Geometry();\n\
+\tthis.material = material !== undefined ? material : new THREE.ParticleBasicMaterial( { color: Math.random() * 0xffffff } );\n\
 \n\
 \tthis.sortParticles = false;\n\
-\n\
-\tif ( this.geometry ) {\n\
-\n\
-\t\t// calc bound radius\n\
-\n\
-\t\tif( this.geometry.boundingSphere === null ) {\n\
-\n\
-\t\t\tthis.geometry.computeBoundingSphere();\n\
-\n\
-\t\t}\n\
-\n\
-\t}\n\
-\n\
 \tthis.frustumCulled = false;\n\
 \n\
 };\n\
@@ -16089,6 +17942,7 @@ THREE.ParticleSystem.prototype = Object.create( THREE.Object3D.prototype );\n\
 THREE.ParticleSystem.prototype.clone = function ( object ) {\n\
 \n\
 \tif ( object === undefined ) object = new THREE.ParticleSystem( this.geometry, this.material );\n\
+\n\
 \tobject.sortParticles = this.sortParticles;\n\
 \n\
 \tTHREE.Object3D.prototype.clone.call( this, object );\n\
@@ -16096,6 +17950,7 @@ THREE.ParticleSystem.prototype.clone = function ( object ) {\n\
 \treturn object;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -16104,19 +17959,10 @@ THREE.Line = function ( geometry, material, type ) {\n\
 \n\
 \tTHREE.Object3D.call( this );\n\
 \n\
-\tthis.geometry = geometry;\n\
-\tthis.material = ( material !== undefined ) ? material : new THREE.LineBasicMaterial( { color: Math.random() * 0xffffff } );\n\
+\tthis.geometry = geometry !== undefined ? geometry : new THREE.Geometry();\n\
+\tthis.material = material !== undefined ? material : new THREE.LineBasicMaterial( { color: Math.random() * 0xffffff } );\n\
+\n\
 \tthis.type = ( type !== undefined ) ? type : THREE.LineStrip;\n\
-\n\
-\tif ( this.geometry ) {\n\
-\n\
-\t\tif ( ! this.geometry.boundingSphere ) {\n\
-\n\
-\t\t\tthis.geometry.computeBoundingSphere();\n\
-\n\
-\t\t}\n\
-\n\
-\t}\n\
 \n\
 };\n\
 \n\
@@ -16134,52 +17980,46 @@ THREE.Line.prototype.clone = function ( object ) {\n\
 \treturn object;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
  * @author mikael emtinger / http://gomo.se/\n\
+ * @author jonobr1 / http://jonobr1.com/\n\
  */\n\
 \n\
 THREE.Mesh = function ( geometry, material ) {\n\
 \n\
 \tTHREE.Object3D.call( this );\n\
 \n\
-\tthis.geometry = geometry;\n\
-\tthis.material = ( material !== undefined ) ? material : new THREE.MeshBasicMaterial( { color: Math.random() * 0xffffff, wireframe: true } );\n\
+\tthis.geometry = geometry !== undefined ? geometry : new THREE.Geometry();\n\
+\tthis.material = material !== undefined ? material : new THREE.MeshBasicMaterial( { color: Math.random() * 0xffffff } );\n\
 \n\
-\tif ( this.geometry ) {\n\
+\tthis.updateMorphTargets();\n\
 \n\
-\t\t// calc bound radius\n\
+};\n\
 \n\
-\t\tif ( this.geometry.boundingSphere === null ) {\n\
+THREE.Mesh.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
-\t\t\tthis.geometry.computeBoundingSphere();\n\
+THREE.Mesh.prototype.updateMorphTargets = function () {\n\
 \n\
-\t\t}\n\
+\tif ( this.geometry.morphTargets.length > 0 ) {\n\
 \n\
-\t\t// setup morph targets\n\
+\t\tthis.morphTargetBase = -1;\n\
+\t\tthis.morphTargetForcedOrder = [];\n\
+\t\tthis.morphTargetInfluences = [];\n\
+\t\tthis.morphTargetDictionary = {};\n\
 \n\
-\t\tif ( this.geometry.morphTargets.length ) {\n\
+\t\tfor ( var m = 0, ml = this.geometry.morphTargets.length; m < ml; m ++ ) {\n\
 \n\
-\t\t\tthis.morphTargetBase = -1;\n\
-\t\t\tthis.morphTargetForcedOrder = [];\n\
-\t\t\tthis.morphTargetInfluences = [];\n\
-\t\t\tthis.morphTargetDictionary = {};\n\
-\n\
-\t\t\tfor( var m = 0; m < this.geometry.morphTargets.length; m ++ ) {\n\
-\n\
-\t\t\t\tthis.morphTargetInfluences.push( 0 );\n\
-\t\t\t\tthis.morphTargetDictionary[ this.geometry.morphTargets[ m ].name ] = m;\n\
-\n\
-\t\t\t}\n\
+\t\t\tthis.morphTargetInfluences.push( 0 );\n\
+\t\t\tthis.morphTargetDictionary[ this.geometry.morphTargets[ m ].name ] = m;\n\
 \n\
 \t\t}\n\
 \n\
 \t}\n\
 \n\
-}\n\
-\n\
-THREE.Mesh.prototype = Object.create( THREE.Object3D.prototype );\n\
+};\n\
 \n\
 THREE.Mesh.prototype.getMorphTargetIndexByName = function ( name ) {\n\
 \n\
@@ -16204,6 +18044,7 @@ THREE.Mesh.prototype.clone = function ( object ) {\n\
 \treturn object;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -16220,7 +18061,7 @@ THREE.Bone = function( belongsToSkin ) {\n\
 \n\
 THREE.Bone.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
-THREE.Bone.prototype.update = function( parentSkinMatrix, forceUpdate ) {\n\
+THREE.Bone.prototype.update = function ( parentSkinMatrix, forceUpdate ) {\n\
 \n\
 \t// update local\n\
 \n\
@@ -16236,7 +18077,7 @@ THREE.Bone.prototype.update = function( parentSkinMatrix, forceUpdate ) {\n\
 \n\
 \t\tif( parentSkinMatrix ) {\n\
 \n\
-\t\t\tthis.skinMatrix.multiply( parentSkinMatrix, this.matrix );\n\
+\t\t\tthis.skinMatrix.multiplyMatrices( parentSkinMatrix, this.matrix );\n\
 \n\
 \t\t} else {\n\
 \n\
@@ -16260,6 +18101,7 @@ THREE.Bone.prototype.update = function( parentSkinMatrix, forceUpdate ) {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 \n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
@@ -16298,8 +18140,7 @@ THREE.SkinnedMesh = function ( geometry, material, useVertexTexture ) {\n\
 \t\t\tbone.name = gbone.name;\n\
 \t\t\tbone.position.set( p[0], p[1], p[2] );\n\
 \t\t\tbone.quaternion.set( q[0], q[1], q[2], q[3] );\n\
-\t\t\tbone.useQuaternion = true;\n\
-\n\
+\t\t\n\
 \t\t\tif ( s !== undefined ) {\n\
 \n\
 \t\t\t\tbone.scale.set( s[0], s[1], s[2] );\n\
@@ -16391,111 +18232,128 @@ THREE.SkinnedMesh.prototype.addBone = function( bone ) {\n\
 \n\
 };\n\
 \n\
-THREE.SkinnedMesh.prototype.updateMatrixWorld = function ( force ) {\n\
+THREE.SkinnedMesh.prototype.updateMatrixWorld = function () {\n\
 \n\
-\tthis.matrixAutoUpdate && this.updateMatrix();\n\
+\tvar offsetMatrix = new THREE.Matrix4();\n\
 \n\
-\t// update matrixWorld\n\
+\treturn function ( force ) {\n\
 \n\
-\tif ( this.matrixWorldNeedsUpdate || force ) {\n\
+\t\tthis.matrixAutoUpdate && this.updateMatrix();\n\
 \n\
-\t\tif ( this.parent ) {\n\
+\t\t// update matrixWorld\n\
 \n\
-\t\t\tthis.matrixWorld.multiply( this.parent.matrixWorld, this.matrix );\n\
+\t\tif ( this.matrixWorldNeedsUpdate || force ) {\n\
 \n\
-\t\t} else {\n\
+\t\t\tif ( this.parent ) {\n\
 \n\
-\t\t\tthis.matrixWorld.copy( this.matrix );\n\
+\t\t\t\tthis.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );\n\
 \n\
-\t\t}\n\
+\t\t\t} else {\n\
 \n\
-\t\tthis.matrixWorldNeedsUpdate = false;\n\
+\t\t\t\tthis.matrixWorld.copy( this.matrix );\n\
 \n\
-\t\tforce = true;\n\
+\t\t\t}\n\
 \n\
-\t}\n\
+\t\t\tthis.matrixWorldNeedsUpdate = false;\n\
 \n\
-\t// update children\n\
-\n\
-\tfor ( var i = 0, l = this.children.length; i < l; i ++ ) {\n\
-\n\
-\t\tvar child = this.children[ i ];\n\
-\n\
-\t\tif ( child instanceof THREE.Bone ) {\n\
-\n\
-\t\t\tchild.update( this.identityMatrix, false );\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tchild.updateMatrixWorld( true );\n\
+\t\t\tforce = true;\n\
 \n\
 \t\t}\n\
 \n\
-\t}\n\
+\t\t// update children\n\
 \n\
-\t// make a snapshot of the bones' rest position\n\
+\t\tfor ( var i = 0, l = this.children.length; i < l; i ++ ) {\n\
 \n\
-\tif ( this.boneInverses == undefined ) {\n\
+\t\t\tvar child = this.children[ i ];\n\
 \n\
-\t\tthis.boneInverses = [];\n\
+\t\t\tif ( child instanceof THREE.Bone ) {\n\
+\n\
+\t\t\t\tchild.update( this.identityMatrix, false );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tchild.updateMatrixWorld( true );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\t// make a snapshot of the bones' rest position\n\
+\n\
+\t\tif ( this.boneInverses == undefined ) {\n\
+\n\
+\t\t\tthis.boneInverses = [];\n\
+\n\
+\t\t\tfor ( var b = 0, bl = this.bones.length; b < bl; b ++ ) {\n\
+\n\
+\t\t\t\tvar inverse = new THREE.Matrix4();\n\
+\n\
+\t\t\t\tinverse.getInverse( this.bones[ b ].skinMatrix );\n\
+\n\
+\t\t\t\tthis.boneInverses.push( inverse );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\t// flatten bone matrices to array\n\
 \n\
 \t\tfor ( var b = 0, bl = this.bones.length; b < bl; b ++ ) {\n\
 \n\
-\t\t\tvar inverse = new THREE.Matrix4();\n\
+\t\t\t// compute the offset between the current and the original transform;\n\
 \n\
-\t\t\tinverse.getInverse( this.bones[ b ].skinMatrix );\n\
+\t\t\t// TODO: we could get rid of this multiplication step if the skinMatrix\n\
+\t\t\t// was already representing the offset; however, this requires some\n\
+\t\t\t// major changes to the animation system\n\
 \n\
-\t\t\tthis.boneInverses.push( inverse );\n\
+\t\t\toffsetMatrix.multiplyMatrices( this.bones[ b ].skinMatrix, this.boneInverses[ b ] );\n\
+\t\t\toffsetMatrix.flattenToArrayOffset( this.boneMatrices, b * 16 );\n\
 \n\
 \t\t}\n\
 \n\
-\t}\n\
+\t\tif ( this.useVertexTexture ) {\n\
 \n\
-\t// flatten bone matrices to array\n\
+\t\t\tthis.boneTexture.needsUpdate = true;\n\
 \n\
-\tfor ( var b = 0, bl = this.bones.length; b < bl; b ++ ) {\n\
+\t\t}\n\
 \n\
-\t\t// compute the offset between the current and the original transform;\n\
+\t};\n\
 \n\
-\t\t//TODO: we could get rid of this multiplication step if the skinMatrix\n\
-\t\t// was already representing the offset; however, this requires some\n\
-\t\t// major changes to the animation system\n\
+}();\n\
 \n\
-\t\tTHREE.SkinnedMesh.offsetMatrix.multiply( this.bones[ b ].skinMatrix, this.boneInverses[ b ] );\n\
-\n\
-\t\tTHREE.SkinnedMesh.offsetMatrix.flattenToArrayOffset( this.boneMatrices, b * 16 );\n\
-\n\
-\t}\n\
-\n\
-\tif ( this.useVertexTexture ) {\n\
-\n\
-\t\tthis.boneTexture.needsUpdate = true;\n\
-\n\
-\t}\n\
-\n\
-};\n\
-\n\
-THREE.SkinnedMesh.prototype.pose = function() {\n\
+THREE.SkinnedMesh.prototype.pose = function () {\n\
 \n\
 \tthis.updateMatrixWorld( true );\n\
 \n\
-\tfor ( var i = 0; i < this.geometry.skinIndices.length; i ++ ) {\n\
+\tthis.normalizeSkinWeights();\n\
 \n\
-\t\t// normalize weights\n\
+};\n\
 \n\
-\t\tvar sw = this.geometry.skinWeights[ i ];\n\
+THREE.SkinnedMesh.prototype.normalizeSkinWeights = function () {\n\
 \n\
-\t\tvar scale = 1.0 / sw.lengthManhattan();\n\
+\tif ( this.geometry instanceof THREE.Geometry ) {\n\
 \n\
-\t\tif ( scale !== Infinity ) {\n\
+\t\tfor ( var i = 0; i < this.geometry.skinIndices.length; i ++ ) {\n\
 \n\
-\t\t\tsw.multiplyScalar( scale );\n\
+\t\t\tvar sw = this.geometry.skinWeights[ i ];\n\
 \n\
-\t\t} else {\n\
+\t\t\tvar scale = 1.0 / sw.lengthManhattan();\n\
 \n\
-\t\t\tsw.set( 1 ); // this will be normalized by the shader anyway\n\
+\t\t\tif ( scale !== Infinity ) {\n\
+\n\
+\t\t\t\tsw.multiplyScalar( scale );\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tsw.set( 1 ); // this will be normalized by the shader anyway\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t}\n\
+\n\
+\t} else {\n\
+\n\
+\t\t// skinning weights assumed to be normalized for THREE.BufferGeometry\n\
 \n\
 \t}\n\
 \n\
@@ -16503,7 +18361,11 @@ THREE.SkinnedMesh.prototype.pose = function() {\n\
 \n\
 THREE.SkinnedMesh.prototype.clone = function ( object ) {\n\
 \n\
-\tif ( object === undefined ) object = new THREE.SkinnedMesh( this.geometry, this.material, this.useVertexTexture );\n\
+\tif ( object === undefined ) {\n\
+\n\
+\t\tobject = new THREE.SkinnedMesh( this.geometry, this.material, this.useVertexTexture );\n\
+\n\
+\t}\n\
 \n\
 \tTHREE.Mesh.prototype.clone.call( this, object );\n\
 \n\
@@ -16511,7 +18373,6 @@ THREE.SkinnedMesh.prototype.clone = function ( object ) {\n\
 \n\
 };\n\
 \n\
-THREE.SkinnedMesh.offsetMatrix = new THREE.Matrix4();\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -16708,6 +18569,7 @@ THREE.MorphAnimMesh.prototype.clone = function ( object ) {\n\
 \treturn object;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -16732,6 +18594,7 @@ THREE.Ribbon.prototype.clone = function ( object ) {\n\
 \treturn object;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -16742,26 +18605,22 @@ THREE.LOD = function () {\n\
 \n\
 \tTHREE.Object3D.call( this );\n\
 \n\
-\tthis.LODs = [];\n\
+\tthis.objects = [];\n\
 \n\
 };\n\
 \n\
 \n\
 THREE.LOD.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
-THREE.LOD.prototype.addLevel = function ( object3D, visibleAtDistance ) {\n\
+THREE.LOD.prototype.addLevel = function ( object, distance ) {\n\
 \n\
-\tif ( visibleAtDistance === undefined ) {\n\
+\tif ( distance === undefined ) distance = 0;\n\
 \n\
-\t\tvisibleAtDistance = 0;\n\
+\tdistance = Math.abs( distance );\n\
 \n\
-\t}\n\
+\tfor ( var l = 0; l < this.objects.length; l ++ ) {\n\
 \n\
-\tvisibleAtDistance = Math.abs( visibleAtDistance );\n\
-\n\
-\tfor ( var l = 0; l < this.LODs.length; l ++ ) {\n\
-\n\
-\t\tif ( visibleAtDistance < this.LODs[ l ].visibleAtDistance ) {\n\
+\t\tif ( distance < this.objects[ l ].distance ) {\n\
 \n\
 \t\t\tbreak;\n\
 \n\
@@ -16769,52 +18628,76 @@ THREE.LOD.prototype.addLevel = function ( object3D, visibleAtDistance ) {\n\
 \n\
 \t}\n\
 \n\
-\tthis.LODs.splice( l, 0, { visibleAtDistance: visibleAtDistance, object3D: object3D } );\n\
-\tthis.add( object3D );\n\
+\tthis.objects.splice( l, 0, { distance: distance, object: object } );\n\
+\tthis.add( object );\n\
 \n\
 };\n\
 \n\
-THREE.LOD.prototype.update = function ( camera ) {\n\
+THREE.LOD.prototype.getObjectForDistance = function ( distance ) {\n\
 \n\
-\tif ( this.LODs.length > 1 ) {\n\
+\tfor ( var i = 1, l = this.objects.length; i < l; i ++ ) {\n\
 \n\
-\t\tcamera.matrixWorldInverse.getInverse( camera.matrixWorld );\n\
+\t\tif ( distance < this.objects[ i ].distance ) {\n\
 \n\
-\t\tvar inverse  = camera.matrixWorldInverse;\n\
-\t\tvar distance = -( inverse.elements[2] * this.matrixWorld.elements[12] + inverse.elements[6] * this.matrixWorld.elements[13] + inverse.elements[10] * this.matrixWorld.elements[14] + inverse.elements[14] );\n\
-\n\
-\t\tthis.LODs[ 0 ].object3D.visible = true;\n\
-\n\
-\t\tfor ( var l = 1; l < this.LODs.length; l ++ ) {\n\
-\n\
-\t\t\tif( distance >= this.LODs[ l ].visibleAtDistance ) {\n\
-\n\
-\t\t\t\tthis.LODs[ l - 1 ].object3D.visible = false;\n\
-\t\t\t\tthis.LODs[ l     ].object3D.visible = true;\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tbreak;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t\tfor( ; l < this.LODs.length; l ++ ) {\n\
-\n\
-\t\t\tthis.LODs[ l ].object3D.visible = false;\n\
+\t\t\tbreak;\n\
 \n\
 \t\t}\n\
 \n\
 \t}\n\
 \n\
+\treturn this.objects[ i - 1 ].object;\n\
+\n\
 };\n\
+\n\
+THREE.LOD.prototype.update = function () {\n\
+\n\
+\tvar v1 = new THREE.Vector3();\n\
+\tvar v2 = new THREE.Vector3();\n\
+\n\
+\treturn function ( camera ) {\n\
+\n\
+\t\tif ( this.objects.length > 1 ) {\n\
+\n\
+\t\t\tv1.getPositionFromMatrix( camera.matrixWorld );\n\
+\t\t\tv2.getPositionFromMatrix( this.matrixWorld );\n\
+\n\
+\t\t\tvar distance = v1.distanceTo( v2 );\n\
+\n\
+\t\t\tthis.objects[ 0 ].object.visible = true;\n\
+\n\
+\t\t\tfor ( var i = 1, l = this.objects.length; i < l; i ++ ) {\n\
+\n\
+\t\t\t\tif ( distance >= this.objects[ i ].distance ) {\n\
+\n\
+\t\t\t\t\tthis.objects[ i - 1 ].object.visible = false;\n\
+\t\t\t\t\tthis.objects[ i     ].object.visible = true;\n\
+\n\
+\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\tbreak;\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tfor( ; i < l; i ++ ) {\n\
+\n\
+\t\t\t\tthis.objects[ i ].object.visible = false;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t};\n\
+\n\
+}();\n\
 \n\
 THREE.LOD.prototype.clone = function () {\n\
 \n\
 \t// TODO\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -16839,16 +18722,9 @@ THREE.Sprite.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
 THREE.Sprite.prototype.updateMatrix = function () {\n\
 \n\
-\tthis.matrix.setPosition( this.position );\n\
-\n\
-\tthis.rotation3d.set( 0, 0, this.rotation );\n\
-\tthis.matrix.setRotationFromEuler( this.rotation3d );\n\
-\n\
-\tif ( this.scale.x !== 1 || this.scale.y !== 1 ) {\n\
-\n\
-\t\tthis.matrix.scale( this.scale );\n\
-\n\
-\t}\n\
+\tthis.rotation3d.set( 0, 0, this.rotation, this.rotation3d.order );\n\
+\tthis.quaternion.setFromEuler( this.rotation3d );\n\
+\tthis.matrix.compose( this.position, this.quaternion, this.scale );\n\
 \n\
 \tthis.matrixWorldNeedsUpdate = true;\n\
 \n\
@@ -16864,6 +18740,7 @@ THREE.Sprite.prototype.clone = function ( object ) {\n\
 \n\
 };\n\
 \n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -16875,6 +18752,7 @@ THREE.Scene = function () {\n\
 \tthis.fog = null;\n\
 \tthis.overrideMaterial = null;\n\
 \n\
+\tthis.autoUpdate = true; // checked by the renderer\n\
 \tthis.matrixAutoUpdate = false;\n\
 \n\
 \tthis.__objects = [];\n\
@@ -16974,6 +18852,23 @@ THREE.Scene.prototype.__removeObject = function ( object ) {\n\
 \t}\n\
 \n\
 };\n\
+\n\
+THREE.Scene.prototype.clone = function ( object ) {\n\
+\n\
+\tif ( object === undefined ) object = new THREE.Scene();\n\
+\n\
+\tTHREE.Object3D.prototype.clone.call(this, object);\n\
+\n\
+\tif ( this.fog !== null ) object.fog = this.fog.clone();\n\
+\tif ( this.overrideMaterial !== null ) object.overrideMaterial = this.overrideMaterial.clone();\n\
+\n\
+\tobject.autoUpdate = this.autoUpdate;\n\
+\tobject.matrixAutoUpdate = this.matrixAutoUpdate;\n\
+\n\
+\treturn object;\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -16995,6 +18890,7 @@ THREE.Fog.prototype.clone = function () {\n\
 \treturn new THREE.Fog( this.color.getHex(), this.near, this.far );\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -17003,6 +18899,7 @@ THREE.Fog.prototype.clone = function () {\n\
 THREE.FogExp2 = function ( hex, density ) {\n\
 \n\
 \tthis.name = '';\n\
+\n\
 \tthis.color = new THREE.Color( hex );\n\
 \tthis.density = ( density !== undefined ) ? density : 0.00025;\n\
 \n\
@@ -17013,6 +18910,7 @@ THREE.FogExp2.prototype.clone = function () {\n\
 \treturn new THREE.FogExp2( this.color.getHex(), this.density );\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -17020,6 +18918,8 @@ THREE.FogExp2.prototype.clone = function () {\n\
 THREE.CanvasRenderer = function ( parameters ) {\n\
 \n\
 \tconsole.log( 'THREE.CanvasRenderer', THREE.REVISION );\n\
+\n\
+\tvar smoothstep = THREE.Math.smoothstep;\n\
 \n\
 \tparameters = parameters || {};\n\
 \n\
@@ -17035,7 +18935,7 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t_context = _canvas.getContext( '2d' ),\n\
 \n\
 \t_clearColor = new THREE.Color( 0x000000 ),\n\
-\t_clearOpacity = 0,\n\
+\t_clearAlpha = 0,\n\
 \n\
 \t_contextGlobalAlpha = 1,\n\
 \t_contextGlobalCompositeOperation = 0,\n\
@@ -17044,6 +18944,10 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t_contextLineWidth = null,\n\
 \t_contextLineCap = null,\n\
 \t_contextLineJoin = null,\n\
+\t_contextDashSize = null,\n\
+\t_contextGapSize = 0,\n\
+\n\
+\t_camera,\n\
 \n\
 \t_v1, _v2, _v3, _v4,\n\
 \t_v5 = new THREE.RenderableVertex(),\n\
@@ -17061,6 +18965,8 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t_diffuseColor = new THREE.Color(),\n\
 \t_emissiveColor = new THREE.Color(),\n\
 \n\
+\t_lightColor = new THREE.Color(),\n\
+\n\
 \t_patterns = {}, _imagedatas = {},\n\
 \n\
 \t_near, _far,\n\
@@ -17072,12 +18978,10 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t_clearBox = new THREE.Box2(),\n\
 \t_elemBox = new THREE.Box2(),\n\
 \n\
-\t_enableLighting = false,\n\
 \t_ambientLight = new THREE.Color(),\n\
 \t_directionalLights = new THREE.Color(),\n\
 \t_pointLights = new THREE.Color(),\n\
 \n\
-\t_pi2 = Math.PI * 2,\n\
 \t_vector3 = new THREE.Vector3(), // Needed for PointLight\n\
 \n\
 \t_pixelMap, _pixelMapContext, _pixelMapImage, _pixelMapData,\n\
@@ -17102,6 +19006,26 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \n\
 \t_gradientMapQuality --; // Fix UVs\n\
 \n\
+\t// dash+gap fallbacks for Firefox and everything else\n\
+\n\
+\tif ( _context.setLineDash === undefined ) {\n\
+\n\
+\t\tif ( _context.mozDash !== undefined ) {\n\
+\n\
+\t\t\t_context.setLineDash = function ( values ) {\n\
+\n\
+\t\t\t\t_context.mozDash = values[ 0 ] !== null ? values : null;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\t_context.setLineDash = function () {}\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
 \tthis.domElement = _canvas;\n\
 \n\
 \tthis.devicePixelRatio = parameters.devicePixelRatio !== undefined\n\
@@ -17125,7 +19049,12 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \n\
 \t}\n\
 \n\
-\tthis.setSize = function ( width, height ) {\n\
+\t// WebGLRenderer compatibility\n\
+\n\
+\tthis.supportsVertexTextures = function () {};\n\
+\tthis.setFaceCulling = function () {};\n\
+\n\
+\tthis.setSize = function ( width, height, updateStyle ) {\n\
 \n\
 \t\t_canvasWidth = width * this.devicePixelRatio;\n\
 \t\t_canvasHeight = height * this.devicePixelRatio;\n\
@@ -17136,13 +19065,22 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t\t_canvas.width = _canvasWidth;\n\
 \t\t_canvas.height = _canvasHeight;\n\
 \n\
-\t\t_canvas.style.width = width + 'px';\n\
-\t\t_canvas.style.height = height + 'px';\n\
+\t\tif ( this.devicePixelRatio !== 1 && updateStyle !== false ) {\n\
 \n\
-\t\t_clipBox.min.set( - _canvasWidthHalf, - _canvasHeightHalf );\n\
-\t\t_clipBox.max.set( _canvasWidthHalf, _canvasHeightHalf );\n\
-\t\t_clearBox.min.set( - _canvasWidthHalf, - _canvasHeightHalf );\n\
-\t\t_clearBox.max.set( _canvasWidthHalf, _canvasHeightHalf );\n\
+\t\t\t_canvas.style.width = width + 'px';\n\
+\t\t\t_canvas.style.height = height + 'px';\n\
+\n\
+\t\t}\n\
+\n\
+\t\t_clipBox.set(\n\
+\t\t\tnew THREE.Vector2( - _canvasWidthHalf, - _canvasHeightHalf ),\n\
+\t\t\tnew THREE.Vector2( _canvasWidthHalf, _canvasHeightHalf )\n\
+\t\t);\n\
+\n\
+\t\t_clearBox.set(\n\
+\t\t\tnew THREE.Vector2( - _canvasWidthHalf, - _canvasHeightHalf ),\n\
+\t\t\tnew THREE.Vector2( _canvasWidthHalf, _canvasHeightHalf )\n\
+\t\t);\n\
 \n\
 \t\t_contextGlobalAlpha = 1;\n\
 \t\t_contextGlobalCompositeOperation = 0;\n\
@@ -17154,27 +19092,26 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tthis.setClearColor = function ( color, opacity ) {\n\
+\tthis.setClearColor = function ( color, alpha ) {\n\
 \n\
-\t\t_clearColor.copy( color );\n\
-\t\t_clearOpacity = opacity !== undefined ? opacity : 1;\n\
+\t\t_clearColor.set( color );\n\
+\t\t_clearAlpha = alpha !== undefined ? alpha : 1;\n\
 \n\
-\t\t_clearBox.min.set( - _canvasWidthHalf, - _canvasHeightHalf );\n\
-\t\t_clearBox.max.set( _canvasWidthHalf, _canvasHeightHalf );\n\
-\n\
-\t};\n\
-\n\
-\tthis.setClearColorHex = function ( hex, opacity ) {\n\
-\n\
-\t\t_clearColor.setHex( hex );\n\
-\t\t_clearOpacity = opacity !== undefined ? opacity : 1;\n\
-\n\
-\t\t_clearBox.min.set( - _canvasWidthHalf, - _canvasHeightHalf );\n\
-\t\t_clearBox.max.set( _canvasWidthHalf, _canvasHeightHalf );\n\
+\t\t_clearBox.set(\n\
+\t\t\tnew THREE.Vector2( - _canvasWidthHalf, - _canvasHeightHalf ),\n\
+\t\t\tnew THREE.Vector2( _canvasWidthHalf, _canvasHeightHalf )\n\
+\t\t);\n\
 \n\
 \t};\n\
 \n\
-\tthis.getMaxAnisotropy  = function () {\n\
+\tthis.setClearColorHex = function ( hex, alpha ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: .setClearColorHex() is being removed. Use .setClearColor() instead.' );\n\
+\t\tthis.setClearColor( hex, alpha );\n\
+\n\
+\t};\n\
+\n\
+\tthis.getMaxAnisotropy = function () {\n\
 \n\
 \t\treturn 0;\n\
 \n\
@@ -17189,20 +19126,30 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t\t\t_clearBox.intersect( _clipBox );\n\
 \t\t\t_clearBox.expandByScalar( 2 );\n\
 \n\
-\t\t\tif ( _clearOpacity < 1 ) {\n\
+\t\t\tif ( _clearAlpha < 1 ) {\n\
 \n\
-\t\t\t\t_context.clearRect( _clearBox.min.x | 0, _clearBox.min.y | 0, ( _clearBox.max.x - _clearBox.min.x ) | 0, ( _clearBox.max.y - _clearBox.min.y ) | 0 );\n\
+\t\t\t\t_context.clearRect(\n\
+\t\t\t\t\t_clearBox.min.x | 0,\n\
+\t\t\t\t\t_clearBox.min.y | 0,\n\
+\t\t\t\t\t( _clearBox.max.x - _clearBox.min.x ) | 0,\n\
+\t\t\t\t\t( _clearBox.max.y - _clearBox.min.y ) | 0\n\
+\t\t\t\t);\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tif ( _clearOpacity > 0 ) {\n\
+\t\t\tif ( _clearAlpha > 0 ) {\n\
 \n\
 \t\t\t\tsetBlending( THREE.NormalBlending );\n\
 \t\t\t\tsetOpacity( 1 );\n\
 \n\
-\t\t\t\tsetFillStyle( 'rgba(' + Math.floor( _clearColor.r * 255 ) + ',' + Math.floor( _clearColor.g * 255 ) + ',' + Math.floor( _clearColor.b * 255 ) + ',' + _clearOpacity + ')' );\n\
+\t\t\t\tsetFillStyle( 'rgba(' + Math.floor( _clearColor.r * 255 ) + ',' + Math.floor( _clearColor.g * 255 ) + ',' + Math.floor( _clearColor.b * 255 ) + ',' + _clearAlpha + ')' );\n\
 \n\
-\t\t\t\t_context.fillRect( _clearBox.min.x | 0, _clearBox.min.y | 0, ( _clearBox.max.x - _clearBox.min.x ) | 0, ( _clearBox.max.y - _clearBox.min.y ) | 0 );\n\
+\t\t\t\t_context.fillRect(\n\
+\t\t\t\t\t_clearBox.min.x | 0,\n\
+\t\t\t\t\t_clearBox.min.y | 0,\n\
+\t\t\t\t\t( _clearBox.max.x - _clearBox.min.x ) | 0,\n\
+\t\t\t\t\t( _clearBox.max.y - _clearBox.min.y ) | 0\n\
+\t\t\t\t);\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -17222,11 +19169,7 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \n\
 \t\t}\n\
 \n\
-\t\tif ( this.autoClear === true ) {\n\
-\n\
-\t\t\tthis.clear();\n\
-\n\
-\t\t}\n\
+\t\tif ( this.autoClear === true ) this.clear();\n\
 \n\
 \t\t_context.setTransform( 1, 0, 0, - 1, _canvasWidthHalf, _canvasHeightHalf );\n\
 \n\
@@ -17236,19 +19179,14 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t\t_renderData = _projector.projectScene( scene, camera, this.sortObjects, this.sortElements );\n\
 \t\t_elements = _renderData.elements;\n\
 \t\t_lights = _renderData.lights;\n\
+\t\t_camera = camera;\n\
 \n\
 \t\t/* DEBUG\n\
-\t\t_context.fillStyle = 'rgba( 0, 255, 255, 0.5 )';\n\
+\t\tsetFillStyle( 'rgba( 0, 255, 255, 0.5 )' );\n\
 \t\t_context.fillRect( _clipBox.min.x, _clipBox.min.y, _clipBox.max.x - _clipBox.min.x, _clipBox.max.y - _clipBox.min.y );\n\
 \t\t*/\n\
 \n\
-\t\t_enableLighting = _lights.length > 0;\n\
-\n\
-\t\tif ( _enableLighting === true ) {\n\
-\n\
-\t\t\t calculateLights();\n\
-\n\
-\t\t}\n\
+\t\tcalculateLights();\n\
 \n\
 \t\tfor ( var e = 0, el = _elements.length; e < el; e++ ) {\n\
 \n\
@@ -17265,7 +19203,7 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t\t\t\t_v1 = element;\n\
 \t\t\t\t_v1.x *= _canvasWidthHalf; _v1.y *= _canvasHeightHalf;\n\
 \n\
-\t\t\t\trenderParticle( _v1, element, material, scene );\n\
+\t\t\t\trenderParticle( _v1, element, material );\n\
 \n\
 \t\t\t} else if ( element instanceof THREE.RenderableLine ) {\n\
 \n\
@@ -17274,76 +19212,54 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t\t\t\t_v1.positionScreen.x *= _canvasWidthHalf; _v1.positionScreen.y *= _canvasHeightHalf;\n\
 \t\t\t\t_v2.positionScreen.x *= _canvasWidthHalf; _v2.positionScreen.y *= _canvasHeightHalf;\n\
 \n\
-\t\t\t\t_elemBox.setFromPoints( [ _v1.positionScreen, _v2.positionScreen ] );\n\
+\t\t\t\t_elemBox.setFromPoints( [\n\
+\t\t\t\t\t_v1.positionScreen,\n\
+\t\t\t\t\t_v2.positionScreen\n\
+\t\t\t\t] );\n\
 \n\
 \t\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === true ) {\n\
 \n\
-\t\t\t\t\trenderLine( _v1, _v2, element, material, scene );\n\
+\t\t\t\t\trenderLine( _v1, _v2, element, material );\n\
 \n\
 \t\t\t\t}\n\
-\n\
 \n\
 \t\t\t} else if ( element instanceof THREE.RenderableFace3 ) {\n\
 \n\
 \t\t\t\t_v1 = element.v1; _v2 = element.v2; _v3 = element.v3;\n\
 \n\
-\t\t\t\t_v1.positionScreen.x *= _canvasWidthHalf; _v1.positionScreen.y *= _canvasHeightHalf;\n\
-\t\t\t\t_v2.positionScreen.x *= _canvasWidthHalf; _v2.positionScreen.y *= _canvasHeightHalf;\n\
-\t\t\t\t_v3.positionScreen.x *= _canvasWidthHalf; _v3.positionScreen.y *= _canvasHeightHalf;\n\
-\n\
-\t\t\t\tif ( material.overdraw === true ) {\n\
-\n\
-\t\t\t\t\texpand( _v1.positionScreen, _v2.positionScreen );\n\
-\t\t\t\t\texpand( _v2.positionScreen, _v3.positionScreen );\n\
-\t\t\t\t\texpand( _v3.positionScreen, _v1.positionScreen );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\t_elemBox.setFromPoints( [ _v1.positionScreen, _v2.positionScreen, _v3.positionScreen ] );\n\
-\n\
-\t\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === true ) {\n\
-\n\
-\t\t\t\t\trenderFace3( _v1, _v2, _v3, 0, 1, 2, element, material, scene );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t} else if ( element instanceof THREE.RenderableFace4 ) {\n\
-\n\
-\t\t\t\t_v1 = element.v1; _v2 = element.v2; _v3 = element.v3; _v4 = element.v4;\n\
+\t\t\t\tif ( _v1.positionScreen.z < -1 || _v1.positionScreen.z > 1 ) continue;\n\
+\t\t\t\tif ( _v2.positionScreen.z < -1 || _v2.positionScreen.z > 1 ) continue;\n\
+\t\t\t\tif ( _v3.positionScreen.z < -1 || _v3.positionScreen.z > 1 ) continue;\n\
 \n\
 \t\t\t\t_v1.positionScreen.x *= _canvasWidthHalf; _v1.positionScreen.y *= _canvasHeightHalf;\n\
 \t\t\t\t_v2.positionScreen.x *= _canvasWidthHalf; _v2.positionScreen.y *= _canvasHeightHalf;\n\
 \t\t\t\t_v3.positionScreen.x *= _canvasWidthHalf; _v3.positionScreen.y *= _canvasHeightHalf;\n\
-\t\t\t\t_v4.positionScreen.x *= _canvasWidthHalf; _v4.positionScreen.y *= _canvasHeightHalf;\n\
 \n\
-\t\t\t\t_v5.positionScreen.copy( _v2.positionScreen );\n\
-\t\t\t\t_v6.positionScreen.copy( _v4.positionScreen );\n\
+\t\t\t\tif ( material.overdraw > 0 ) {\n\
 \n\
-\t\t\t\tif ( material.overdraw === true ) {\n\
-\n\
-\t\t\t\t\texpand( _v1.positionScreen, _v2.positionScreen );\n\
-\t\t\t\t\texpand( _v2.positionScreen, _v4.positionScreen );\n\
-\t\t\t\t\texpand( _v4.positionScreen, _v1.positionScreen );\n\
-\n\
-\t\t\t\t\texpand( _v3.positionScreen, _v5.positionScreen );\n\
-\t\t\t\t\texpand( _v3.positionScreen, _v6.positionScreen );\n\
+\t\t\t\t\texpand( _v1.positionScreen, _v2.positionScreen, material.overdraw );\n\
+\t\t\t\t\texpand( _v2.positionScreen, _v3.positionScreen, material.overdraw );\n\
+\t\t\t\t\texpand( _v3.positionScreen, _v1.positionScreen, material.overdraw );\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\t_elemBox.setFromPoints( [ _v1.positionScreen, _v2.positionScreen, _v3.positionScreen, _v4.positionScreen ] );\n\
+\t\t\t\t_elemBox.setFromPoints( [\n\
+\t\t\t\t\t_v1.positionScreen,\n\
+\t\t\t\t\t_v2.positionScreen,\n\
+\t\t\t\t\t_v3.positionScreen\n\
+\t\t\t\t] );\n\
 \n\
 \t\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === true ) {\n\
 \n\
-\t\t\t\t\trenderFace4( _v1, _v2, _v3, _v4, _v5, _v6, element, material, scene );\n\
+\t\t\t\t\trenderFace3( _v1, _v2, _v3, 0, 1, 2, element, material );\n\
 \n\
 \t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
-\n\
 \t\t\t/* DEBUG\n\
-\t\t\t_context.lineWidth = 1;\n\
-\t\t\t_context.strokeStyle = 'rgba( 0, 255, 0, 0.5 )';\n\
+\t\t\tsetLineWidth( 1 );\n\
+\t\t\tsetStrokeStyle( 'rgba( 0, 255, 0, 0.5 )' );\n\
 \t\t\t_context.strokeRect( _elemBox.min.x, _elemBox.min.y, _elemBox.max.x - _elemBox.min.x, _elemBox.max.y - _elemBox.min.y );\n\
 \t\t\t*/\n\
 \n\
@@ -17352,398 +19268,332 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \t\t}\n\
 \n\
 \t\t/* DEBUG\n\
-\t\t_context.lineWidth = 1;\n\
-\t\t_context.strokeStyle = 'rgba( 255, 0, 0, 0.5 )';\n\
+\t\tsetLineWidth( 1 );\n\
+\t\tsetStrokeStyle( 'rgba( 255, 0, 0, 0.5 )' );\n\
 \t\t_context.strokeRect( _clearBox.min.x, _clearBox.min.y, _clearBox.max.x - _clearBox.min.x, _clearBox.max.y - _clearBox.min.y );\n\
 \t\t*/\n\
 \n\
 \t\t_context.setTransform( 1, 0, 0, 1, 0, 0 );\n\
 \n\
-\t\t//\n\
+\t};\n\
 \n\
-\t\tfunction calculateLights() {\n\
+\t//\n\
 \n\
-\t\t\t_ambientLight.setRGB( 0, 0, 0 );\n\
-\t\t\t_directionalLights.setRGB( 0, 0, 0 );\n\
-\t\t\t_pointLights.setRGB( 0, 0, 0 );\n\
+\tfunction calculateLights() {\n\
 \n\
-\t\t\tfor ( var l = 0, ll = _lights.length; l < ll; l ++ ) {\n\
+\t\t_ambientLight.setRGB( 0, 0, 0 );\n\
+\t\t_directionalLights.setRGB( 0, 0, 0 );\n\
+\t\t_pointLights.setRGB( 0, 0, 0 );\n\
 \n\
-\t\t\t\tvar light = _lights[ l ];\n\
-\t\t\t\tvar lightColor = light.color;\n\
+\t\tfor ( var l = 0, ll = _lights.length; l < ll; l ++ ) {\n\
 \n\
-\t\t\t\tif ( light instanceof THREE.AmbientLight ) {\n\
+\t\t\tvar light = _lights[ l ];\n\
+\t\t\tvar lightColor = light.color;\n\
 \n\
-\t\t\t\t\t_ambientLight.r += lightColor.r;\n\
-\t\t\t\t\t_ambientLight.g += lightColor.g;\n\
-\t\t\t\t\t_ambientLight.b += lightColor.b;\n\
+\t\t\tif ( light instanceof THREE.AmbientLight ) {\n\
 \n\
-\t\t\t\t} else if ( light instanceof THREE.DirectionalLight ) {\n\
+\t\t\t\t_ambientLight.add( lightColor );\n\
 \n\
-\t\t\t\t\t// for particles\n\
+\t\t\t} else if ( light instanceof THREE.DirectionalLight ) {\n\
 \n\
-\t\t\t\t\t_directionalLights.r += lightColor.r;\n\
-\t\t\t\t\t_directionalLights.g += lightColor.g;\n\
-\t\t\t\t\t_directionalLights.b += lightColor.b;\n\
+\t\t\t\t// for particles\n\
 \n\
-\t\t\t\t} else if ( light instanceof THREE.PointLight ) {\n\
+\t\t\t\t_directionalLights.add( lightColor );\n\
 \n\
-\t\t\t\t\t// for particles\n\
+\t\t\t} else if ( light instanceof THREE.PointLight ) {\n\
 \n\
-\t\t\t\t\t_pointLights.r += lightColor.r;\n\
-\t\t\t\t\t_pointLights.g += lightColor.g;\n\
-\t\t\t\t\t_pointLights.b += lightColor.b;\n\
+\t\t\t\t// for particles\n\
 \n\
-\t\t\t\t}\n\
+\t\t\t\t_pointLights.add( lightColor );\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t\tfunction calculateLight( position, normal, color ) {\n\
+\t}\n\
 \n\
-\t\t\tfor ( var l = 0, ll = _lights.length; l < ll; l ++ ) {\n\
+\tfunction calculateLight( position, normal, color ) {\n\
 \n\
-\t\t\t\tvar light = _lights[ l ];\n\
-\t\t\t\tvar lightColor = light.color;\n\
+\t\tfor ( var l = 0, ll = _lights.length; l < ll; l ++ ) {\n\
 \n\
-\t\t\t\tif ( light instanceof THREE.DirectionalLight ) {\n\
+\t\t\tvar light = _lights[ l ];\n\
 \n\
-\t\t\t\t\tvar lightPosition = light.matrixWorld.getPosition().normalize();\n\
+\t\t\t_lightColor.copy( light.color );\n\
 \n\
-\t\t\t\t\tvar amount = normal.dot( lightPosition );\n\
+\t\t\tif ( light instanceof THREE.DirectionalLight ) {\n\
 \n\
-\t\t\t\t\tif ( amount <= 0 ) continue;\n\
+\t\t\t\tvar lightPosition = _vector3.getPositionFromMatrix( light.matrixWorld ).normalize();\n\
 \n\
-\t\t\t\t\tamount *= light.intensity;\n\
+\t\t\t\tvar amount = normal.dot( lightPosition );\n\
 \n\
-\t\t\t\t\tcolor.r += lightColor.r * amount;\n\
-\t\t\t\t\tcolor.g += lightColor.g * amount;\n\
-\t\t\t\t\tcolor.b += lightColor.b * amount;\n\
+\t\t\t\tif ( amount <= 0 ) continue;\n\
 \n\
-\t\t\t\t} else if ( light instanceof THREE.PointLight ) {\n\
+\t\t\t\tamount *= light.intensity;\n\
 \n\
-\t\t\t\t\tvar lightPosition = light.matrixWorld.getPosition();\n\
+\t\t\t\tcolor.add( _lightColor.multiplyScalar( amount ) );\n\
 \n\
-\t\t\t\t\tvar amount = normal.dot( _vector3.sub( lightPosition, position ).normalize() );\n\
+\t\t\t} else if ( light instanceof THREE.PointLight ) {\n\
 \n\
-\t\t\t\t\tif ( amount <= 0 ) continue;\n\
+\t\t\t\tvar lightPosition = _vector3.getPositionFromMatrix( light.matrixWorld );\n\
 \n\
-\t\t\t\t\tamount *= light.distance == 0 ? 1 : 1 - Math.min( position.distanceTo( lightPosition ) / light.distance, 1 );\n\
+\t\t\t\tvar amount = normal.dot( _vector3.subVectors( lightPosition, position ).normalize() );\n\
 \n\
-\t\t\t\t\tif ( amount == 0 ) continue;\n\
+\t\t\t\tif ( amount <= 0 ) continue;\n\
 \n\
-\t\t\t\t\tamount *= light.intensity;\n\
+\t\t\t\tamount *= light.distance == 0 ? 1 : 1 - Math.min( position.distanceTo( lightPosition ) / light.distance, 1 );\n\
 \n\
-\t\t\t\t\tcolor.r += lightColor.r * amount;\n\
-\t\t\t\t\tcolor.g += lightColor.g * amount;\n\
-\t\t\t\t\tcolor.b += lightColor.b * amount;\n\
+\t\t\t\tif ( amount == 0 ) continue;\n\
 \n\
-\t\t\t\t}\n\
+\t\t\t\tamount *= light.intensity;\n\
+\n\
+\t\t\t\tcolor.add( _lightColor.multiplyScalar( amount ) );\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t\tfunction renderParticle( v1, element, material, scene ) {\n\
+\t}\n\
 \n\
-\t\t\tsetOpacity( material.opacity );\n\
-\t\t\tsetBlending( material.blending );\n\
+\tfunction renderParticle( v1, element, material ) {\n\
 \n\
-\t\t\tvar width, height, scaleX, scaleY,\n\
-\t\t\tbitmap, bitmapWidth, bitmapHeight;\n\
+\t\tsetOpacity( material.opacity );\n\
+\t\tsetBlending( material.blending );\n\
 \n\
-\t\t\tif ( material instanceof THREE.ParticleBasicMaterial ) {\n\
+\t\tvar width, height, scaleX, scaleY,\n\
+\t\tbitmap, bitmapWidth, bitmapHeight;\n\
 \n\
-\t\t\t\tif ( material.map === null ) {\n\
+\t\tif ( material instanceof THREE.ParticleBasicMaterial ) {\n\
 \n\
-\t\t\t\t\tscaleX = element.object.scale.x;\n\
-\t\t\t\t\tscaleY = element.object.scale.y;\n\
+\t\t\tif ( material.map === null ) {\n\
 \n\
-\t\t\t\t\t// TODO: Be able to disable this\n\
+\t\t\t\tscaleX = element.object.scale.x;\n\
+\t\t\t\tscaleY = element.object.scale.y;\n\
 \n\
-\t\t\t\t\tscaleX *= element.scale.x * _canvasWidthHalf;\n\
-\t\t\t\t\tscaleY *= element.scale.y * _canvasHeightHalf;\n\
+\t\t\t\t// TODO: Be able to disable this\n\
 \n\
-\t\t\t\t\t_elemBox.min.set( v1.x - scaleX, v1.y - scaleY );\n\
-\t\t\t\t\t_elemBox.max.set( v1.x + scaleX, v1.y + scaleY );\n\
+\t\t\t\tscaleX *= element.scale.x * _canvasWidthHalf;\n\
+\t\t\t\tscaleY *= element.scale.y * _canvasHeightHalf;\n\
 \n\
-\t\t\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === false ) {\n\
+\t\t\t\t_elemBox.min.set( v1.x - scaleX, v1.y - scaleY );\n\
+\t\t\t\t_elemBox.max.set( v1.x + scaleX, v1.y + scaleY );\n\
 \n\
-\t\t\t\t\t\treturn;\n\
+\t\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === false ) {\n\
 \n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\tsetFillStyle( material.color.getStyle() );\n\
-\n\
-\t\t\t\t\t_context.save();\n\
-\t\t\t\t\t_context.translate( v1.x, v1.y );\n\
-\t\t\t\t\t_context.rotate( - element.rotation );\n\
-\t\t\t\t\t_context.scale( scaleX, scaleY );\n\
-\t\t\t\t\t_context.fillRect( -1, -1, 2, 2 );\n\
-\t\t\t\t\t_context.restore();\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tbitmap = material.map.image;\n\
-\t\t\t\t\tbitmapWidth = bitmap.width >> 1;\n\
-\t\t\t\t\tbitmapHeight = bitmap.height >> 1;\n\
-\n\
-\t\t\t\t\tscaleX = element.scale.x * _canvasWidthHalf;\n\
-\t\t\t\t\tscaleY = element.scale.y * _canvasHeightHalf;\n\
-\n\
-\t\t\t\t\twidth = scaleX * bitmapWidth;\n\
-\t\t\t\t\theight = scaleY * bitmapHeight;\n\
-\n\
-\t\t\t\t\t// TODO: Rotations break this...\n\
-\n\
-\t\t\t\t\t_elemBox.min.set( v1.x - width, v1.y - height );\n\
-\t\t\t\t\t_elemBox.max.set( v1.x + width, v1.y + height );\n\
-\n\
-\t\t\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === false ) {\n\
-\n\
-\t\t\t\t\t\treturn;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t_context.save();\n\
-\t\t\t\t\t_context.translate( v1.x, v1.y );\n\
-\t\t\t\t\t_context.rotate( - element.rotation );\n\
-\t\t\t\t\t_context.scale( scaleX, - scaleY );\n\
-\n\
-\t\t\t\t\t_context.translate( - bitmapWidth, - bitmapHeight );\n\
-\t\t\t\t\t_context.drawImage( bitmap, 0, 0 );\n\
-\t\t\t\t\t_context.restore();\n\
+\t\t\t\t\t_elemBox.makeEmpty();\n\
+\t\t\t\t\treturn;\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\t/* DEBUG\n\
-\t\t\t\tsetStrokeStyle( 'rgb(255,255,0)' );\n\
-\t\t\t\t_context.beginPath();\n\
-\t\t\t\t_context.moveTo( v1.x - 10, v1.y );\n\
-\t\t\t\t_context.lineTo( v1.x + 10, v1.y );\n\
-\t\t\t\t_context.moveTo( v1.x, v1.y - 10 );\n\
-\t\t\t\t_context.lineTo( v1.x, v1.y + 10 );\n\
-\t\t\t\t_context.stroke();\n\
-\t\t\t\t*/\n\
+\t\t\t\tsetFillStyle( material.color.getStyle() );\n\
 \n\
-\t\t\t} else if ( material instanceof THREE.ParticleCanvasMaterial ) {\n\
+\t\t\t\t_context.save();\n\
+\t\t\t\t_context.translate( v1.x, v1.y );\n\
+\t\t\t\t_context.rotate( - element.rotation );\n\
+\t\t\t\t_context.scale( scaleX, scaleY );\n\
+\t\t\t\t_context.fillRect( -1, -1, 2, 2 );\n\
+\t\t\t\t_context.restore();\n\
 \n\
-\t\t\t\twidth = element.scale.x * _canvasWidthHalf;\n\
-\t\t\t\theight = element.scale.y * _canvasHeightHalf;\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tbitmap = material.map.image;\n\
+\t\t\t\tbitmapWidth = bitmap.width >> 1;\n\
+\t\t\t\tbitmapHeight = bitmap.height >> 1;\n\
+\n\
+\t\t\t\tscaleX = element.scale.x * _canvasWidthHalf;\n\
+\t\t\t\tscaleY = element.scale.y * _canvasHeightHalf;\n\
+\n\
+\t\t\t\twidth = scaleX * bitmapWidth;\n\
+\t\t\t\theight = scaleY * bitmapHeight;\n\
+\n\
+\t\t\t\t// TODO: Rotations break this...\n\
 \n\
 \t\t\t\t_elemBox.min.set( v1.x - width, v1.y - height );\n\
 \t\t\t\t_elemBox.max.set( v1.x + width, v1.y + height );\n\
 \n\
 \t\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === false ) {\n\
 \n\
+\t\t\t\t\t_elemBox.makeEmpty();\n\
 \t\t\t\t\treturn;\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\tsetStrokeStyle( material.color.getStyle() );\n\
-\t\t\t\tsetFillStyle( material.color.getStyle() );\n\
-\n\
 \t\t\t\t_context.save();\n\
 \t\t\t\t_context.translate( v1.x, v1.y );\n\
 \t\t\t\t_context.rotate( - element.rotation );\n\
-\t\t\t\t_context.scale( width, height );\n\
+\t\t\t\t_context.scale( scaleX, - scaleY );\n\
 \n\
-\t\t\t\tmaterial.program( _context );\n\
-\n\
+\t\t\t\t_context.translate( - bitmapWidth, - bitmapHeight );\n\
+\t\t\t\t_context.drawImage( bitmap, 0, 0 );\n\
 \t\t\t\t_context.restore();\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t}\n\
-\n\
-\t\tfunction renderLine( v1, v2, element, material, scene ) {\n\
-\n\
-\t\t\tsetOpacity( material.opacity );\n\
-\t\t\tsetBlending( material.blending );\n\
-\n\
+\t\t\t/* DEBUG\n\
+\t\t\tsetStrokeStyle( 'rgb(255,255,0)' );\n\
 \t\t\t_context.beginPath();\n\
-\t\t\t_context.moveTo( v1.positionScreen.x, v1.positionScreen.y );\n\
-\t\t\t_context.lineTo( v2.positionScreen.x, v2.positionScreen.y );\n\
+\t\t\t_context.moveTo( v1.x - 10, v1.y );\n\
+\t\t\t_context.lineTo( v1.x + 10, v1.y );\n\
+\t\t\t_context.moveTo( v1.x, v1.y - 10 );\n\
+\t\t\t_context.lineTo( v1.x, v1.y + 10 );\n\
+\t\t\t_context.stroke();\n\
+\t\t\t*/\n\
 \n\
-\t\t\tif ( material instanceof THREE.LineBasicMaterial ) {\n\
+\t\t} else if ( material instanceof THREE.ParticleCanvasMaterial ) {\n\
 \n\
-\t\t\t\tsetLineWidth( material.linewidth );\n\
-\t\t\t\tsetLineCap( material.linecap );\n\
-\t\t\t\tsetLineJoin( material.linejoin );\n\
-\t\t\t\tsetStrokeStyle( material.color.getStyle() );\n\
+\t\t\twidth = element.scale.x * _canvasWidthHalf;\n\
+\t\t\theight = element.scale.y * _canvasHeightHalf;\n\
 \n\
-\t\t\t\t_context.stroke();\n\
-\t\t\t\t_elemBox.expandByScalar( material.linewidth * 2 );\n\
+\t\t\t_elemBox.min.set( v1.x - width, v1.y - height );\n\
+\t\t\t_elemBox.max.set( v1.x + width, v1.y + height );\n\
+\n\
+\t\t\tif ( _clipBox.isIntersectionBox( _elemBox ) === false ) {\n\
+\n\
+\t\t\t\t_elemBox.makeEmpty();\n\
+\t\t\t\treturn;\n\
 \n\
 \t\t\t}\n\
 \n\
+\t\t\tsetStrokeStyle( material.color.getStyle() );\n\
+\t\t\tsetFillStyle( material.color.getStyle() );\n\
+\n\
+\t\t\t_context.save();\n\
+\t\t\t_context.translate( v1.x, v1.y );\n\
+\t\t\t_context.rotate( - element.rotation );\n\
+\t\t\t_context.scale( width, height );\n\
+\n\
+\t\t\tmaterial.program( _context );\n\
+\n\
+\t\t\t_context.restore();\n\
+\n\
 \t\t}\n\
 \n\
-\t\tfunction renderFace3( v1, v2, v3, uv1, uv2, uv3, element, material, scene ) {\n\
+\t}\n\
 \n\
-\t\t\t_this.info.render.vertices += 3;\n\
-\t\t\t_this.info.render.faces ++;\n\
+\tfunction renderLine( v1, v2, element, material ) {\n\
 \n\
-\t\t\tsetOpacity( material.opacity );\n\
-\t\t\tsetBlending( material.blending );\n\
+\t\tsetOpacity( material.opacity );\n\
+\t\tsetBlending( material.blending );\n\
 \n\
-\t\t\t_v1x = v1.positionScreen.x; _v1y = v1.positionScreen.y;\n\
-\t\t\t_v2x = v2.positionScreen.x; _v2y = v2.positionScreen.y;\n\
-\t\t\t_v3x = v3.positionScreen.x; _v3y = v3.positionScreen.y;\n\
+\t\t_context.beginPath();\n\
+\t\t_context.moveTo( v1.positionScreen.x, v1.positionScreen.y );\n\
+\t\t_context.lineTo( v2.positionScreen.x, v2.positionScreen.y );\n\
 \n\
-\t\t\tdrawTriangle( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y );\n\
+\t\tif ( material instanceof THREE.LineBasicMaterial ) {\n\
 \n\
-\t\t\tif ( ( material instanceof THREE.MeshLambertMaterial || material instanceof THREE.MeshPhongMaterial ) && material.map === null && material.map === null ) {\n\
+\t\t\tsetLineWidth( material.linewidth );\n\
+\t\t\tsetLineCap( material.linecap );\n\
+\t\t\tsetLineJoin( material.linejoin );\n\
 \n\
-\t\t\t\t_diffuseColor.copy( material.color );\n\
-\t\t\t\t_emissiveColor.copy( material.emissive );\n\
+\t\t\tif ( material.vertexColors !== THREE.VertexColors ) {\n\
 \n\
-\t\t\t\tif ( material.vertexColors === THREE.FaceColors ) {\n\
+\t\t\t\tsetStrokeStyle( material.color.getStyle() );\n\
 \n\
-\t\t\t\t\t_diffuseColor.r *= element.color.r;\n\
-\t\t\t\t\t_diffuseColor.g *= element.color.g;\n\
-\t\t\t\t\t_diffuseColor.b *= element.color.b;\n\
+\t\t\t} else {\n\
 \n\
-\t\t\t\t}\n\
+\t\t\t\tvar colorStyle1 = element.vertexColors[0].getStyle();\n\
+\t\t\t\tvar colorStyle2 = element.vertexColors[1].getStyle();\n\
 \n\
-\t\t\t\tif ( _enableLighting === true ) {\n\
+\t\t\t\tif ( colorStyle1 === colorStyle2 ) {\n\
 \n\
-\t\t\t\t\tif ( material.wireframe === false && material.shading == THREE.SmoothShading && element.vertexNormalsLength == 3 ) {\n\
-\n\
-\t\t\t\t\t\t_color1.r = _color2.r = _color3.r = _ambientLight.r;\n\
-\t\t\t\t\t\t_color1.g = _color2.g = _color3.g = _ambientLight.g;\n\
-\t\t\t\t\t\t_color1.b = _color2.b = _color3.b = _ambientLight.b;\n\
-\n\
-\t\t\t\t\t\tcalculateLight( element.v1.positionWorld, element.vertexNormalsWorld[ 0 ], _color1 );\n\
-\t\t\t\t\t\tcalculateLight( element.v2.positionWorld, element.vertexNormalsWorld[ 1 ], _color2 );\n\
-\t\t\t\t\t\tcalculateLight( element.v3.positionWorld, element.vertexNormalsWorld[ 2 ], _color3 );\n\
-\n\
-\t\t\t\t\t\t_color1.r = _color1.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color1.g = _color1.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color1.b = _color1.b * _diffuseColor.b + _emissiveColor.b;\n\
-\n\
-\t\t\t\t\t\t_color2.r = _color2.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color2.g = _color2.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color2.b = _color2.b * _diffuseColor.b + _emissiveColor.b;\n\
-\n\
-\t\t\t\t\t\t_color3.r = _color3.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color3.g = _color3.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color3.b = _color3.b * _diffuseColor.b + _emissiveColor.b;\n\
-\n\
-\t\t\t\t\t\t_color4.r = ( _color2.r + _color3.r ) * 0.5;\n\
-\t\t\t\t\t\t_color4.g = ( _color2.g + _color3.g ) * 0.5;\n\
-\t\t\t\t\t\t_color4.b = ( _color2.b + _color3.b ) * 0.5;\n\
-\n\
-\t\t\t\t\t\t_image = getGradientTexture( _color1, _color2, _color3, _color4 );\n\
-\n\
-\t\t\t\t\t\tclipImage( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, 0, 0, 1, 0, 0, 1, _image );\n\
-\n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t_color.r = _ambientLight.r;\n\
-\t\t\t\t\t\t_color.g = _ambientLight.g;\n\
-\t\t\t\t\t\t_color.b = _ambientLight.b;\n\
-\n\
-\t\t\t\t\t\tcalculateLight( element.centroidWorld, element.normalWorld, _color );\n\
-\n\
-\t\t\t\t\t\t_color.r = _color.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color.g = _color.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color.b = _color.b * _diffuseColor.b + _emissiveColor.b;\n\
-\n\
-\t\t\t\t\t\tmaterial.wireframe === true\n\
-\t\t\t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
-\t\t\t\t\t\t\t: fillPath( _color );\n\
-\n\
-\t\t\t\t\t}\n\
+\t\t\t\t\tsetStrokeStyle( colorStyle1 );\n\
 \n\
 \t\t\t\t} else {\n\
 \n\
-\t\t\t\t\tmaterial.wireframe === true\n\
-\t\t\t\t\t\t? strokePath( material.color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
-\t\t\t\t\t\t: fillPath( material.color );\n\
+\t\t\t\t\ttry {\n\
 \n\
-\t\t\t\t}\n\
+\t\t\t\t\t\tvar grad = _context.createLinearGradient(\n\
+\t\t\t\t\t\t\tv1.positionScreen.x,\n\
+\t\t\t\t\t\t\tv1.positionScreen.y,\n\
+\t\t\t\t\t\t\tv2.positionScreen.x,\n\
+\t\t\t\t\t\t\tv2.positionScreen.y\n\
+\t\t\t\t\t\t);\n\
+\t\t\t\t\t\tgrad.addColorStop( 0, colorStyle1 );\n\
+\t\t\t\t\t\tgrad.addColorStop( 1, colorStyle2 );\n\
 \n\
-\t\t\t} else if ( material instanceof THREE.MeshBasicMaterial || material instanceof THREE.MeshLambertMaterial || material instanceof THREE.MeshPhongMaterial ) {\n\
+\t\t\t\t\t} catch ( exception ) {\n\
 \n\
-\t\t\t\tif ( material.map !== null ) {\n\
-\n\
-\t\t\t\t\tif ( material.map.mapping instanceof THREE.UVMapping ) {\n\
-\n\
-\t\t\t\t\t\t_uvs = element.uvs[ 0 ];\n\
-\t\t\t\t\t\tpatternPath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _uvs[ uv1 ].x, _uvs[ uv1 ].y, _uvs[ uv2 ].x, _uvs[ uv2 ].y, _uvs[ uv3 ].x, _uvs[ uv3 ].y, material.map );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\n\
-\t\t\t\t} else if ( material.envMap !== null ) {\n\
-\n\
-\t\t\t\t\tif ( material.envMap.mapping instanceof THREE.SphericalReflectionMapping ) {\n\
-\n\
-\t\t\t\t\t\tvar cameraMatrix = camera.matrixWorldInverse;\n\
-\n\
-\t\t\t\t\t\t_vector3.copy( element.vertexNormalsWorld[ uv1 ] );\n\
-\t\t\t\t\t\t_uv1x = ( _vector3.x * cameraMatrix.elements[0] + _vector3.y * cameraMatrix.elements[4] + _vector3.z * cameraMatrix.elements[8] ) * 0.5 + 0.5;\n\
-\t\t\t\t\t\t_uv1y = ( _vector3.x * cameraMatrix.elements[1] + _vector3.y * cameraMatrix.elements[5] + _vector3.z * cameraMatrix.elements[9] ) * 0.5 + 0.5;\n\
-\n\
-\t\t\t\t\t\t_vector3.copy( element.vertexNormalsWorld[ uv2 ] );\n\
-\t\t\t\t\t\t_uv2x = ( _vector3.x * cameraMatrix.elements[0] + _vector3.y * cameraMatrix.elements[4] + _vector3.z * cameraMatrix.elements[8] ) * 0.5 + 0.5;\n\
-\t\t\t\t\t\t_uv2y = ( _vector3.x * cameraMatrix.elements[1] + _vector3.y * cameraMatrix.elements[5] + _vector3.z * cameraMatrix.elements[9] ) * 0.5 + 0.5;\n\
-\n\
-\t\t\t\t\t\t_vector3.copy( element.vertexNormalsWorld[ uv3 ] );\n\
-\t\t\t\t\t\t_uv3x = ( _vector3.x * cameraMatrix.elements[0] + _vector3.y * cameraMatrix.elements[4] + _vector3.z * cameraMatrix.elements[8] ) * 0.5 + 0.5;\n\
-\t\t\t\t\t\t_uv3y = ( _vector3.x * cameraMatrix.elements[1] + _vector3.y * cameraMatrix.elements[5] + _vector3.z * cameraMatrix.elements[9] ) * 0.5 + 0.5;\n\
-\n\
-\t\t\t\t\t\tpatternPath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _uv1x, _uv1y, _uv2x, _uv2y, _uv3x, _uv3y, material.envMap );\n\
-\n\
-\t\t\t\t\t}/* else if ( material.envMap.mapping == THREE.SphericalRefractionMapping ) {\n\
-\n\
-\n\
-\n\
-\t\t\t\t\t}*/\n\
-\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t_color.copy( material.color );\n\
-\n\
-\t\t\t\t\tif ( material.vertexColors === THREE.FaceColors ) {\n\
-\n\
-\t\t\t\t\t\t_color.r *= element.color.r;\n\
-\t\t\t\t\t\t_color.g *= element.color.g;\n\
-\t\t\t\t\t\t_color.b *= element.color.b;\n\
+\t\t\t\t\t\tgrad = colorStyle1;\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
-\t\t\t\t\tmaterial.wireframe === true\n\
-\t\t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
-\t\t\t\t\t\t: fillPath( _color );\n\
+\t\t\t\t\tsetStrokeStyle( grad );\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t} else if ( material instanceof THREE.MeshDepthMaterial ) {\n\
+\t\t\t}\n\
 \n\
-\t\t\t\t_near = camera.near;\n\
-\t\t\t\t_far = camera.far;\n\
+\t\t\t_context.stroke();\n\
+\t\t\t_elemBox.expandByScalar( material.linewidth * 2 );\n\
 \n\
-\t\t\t\t_color1.r = _color1.g = _color1.b = 1 - smoothstep( v1.positionScreen.z, _near, _far );\n\
-\t\t\t\t_color2.r = _color2.g = _color2.b = 1 - smoothstep( v2.positionScreen.z, _near, _far );\n\
-\t\t\t\t_color3.r = _color3.g = _color3.b = 1 - smoothstep( v3.positionScreen.z, _near, _far );\n\
+\t\t} else if ( material instanceof THREE.LineDashedMaterial ) {\n\
 \n\
-\t\t\t\t_color4.r = ( _color2.r + _color3.r ) * 0.5;\n\
-\t\t\t\t_color4.g = ( _color2.g + _color3.g ) * 0.5;\n\
-\t\t\t\t_color4.b = ( _color2.b + _color3.b ) * 0.5;\n\
+\t\t\tsetLineWidth( material.linewidth );\n\
+\t\t\tsetLineCap( material.linecap );\n\
+\t\t\tsetLineJoin( material.linejoin );\n\
+\t\t\tsetStrokeStyle( material.color.getStyle() );\n\
+\t\t\tsetDashAndGap( material.dashSize, material.gapSize );\n\
+\n\
+\t\t\t_context.stroke();\n\
+\n\
+\t\t\t_elemBox.expandByScalar( material.linewidth * 2 );\n\
+\n\
+\t\t\tsetDashAndGap( null, null );\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
+\tfunction renderFace3( v1, v2, v3, uv1, uv2, uv3, element, material ) {\n\
+\n\
+\t\t_this.info.render.vertices += 3;\n\
+\t\t_this.info.render.faces ++;\n\
+\n\
+\t\tsetOpacity( material.opacity );\n\
+\t\tsetBlending( material.blending );\n\
+\n\
+\t\t_v1x = v1.positionScreen.x; _v1y = v1.positionScreen.y;\n\
+\t\t_v2x = v2.positionScreen.x; _v2y = v2.positionScreen.y;\n\
+\t\t_v3x = v3.positionScreen.x; _v3y = v3.positionScreen.y;\n\
+\n\
+\t\tdrawTriangle( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y );\n\
+\n\
+\t\tif ( ( material instanceof THREE.MeshLambertMaterial || material instanceof THREE.MeshPhongMaterial ) && material.map === null ) {\n\
+\n\
+\t\t\t_diffuseColor.copy( material.color );\n\
+\t\t\t_emissiveColor.copy( material.emissive );\n\
+\n\
+\t\t\tif ( material.vertexColors === THREE.FaceColors ) {\n\
+\n\
+\t\t\t\t_diffuseColor.multiply( element.color );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tif ( material.wireframe === false && material.shading == THREE.SmoothShading && element.vertexNormalsLength == 3 ) {\n\
+\n\
+\t\t\t\t_color1.copy( _ambientLight );\n\
+\t\t\t\t_color2.copy( _ambientLight );\n\
+\t\t\t\t_color3.copy( _ambientLight );\n\
+\n\
+\t\t\t\tcalculateLight( element.v1.positionWorld, element.vertexNormalsModel[ 0 ], _color1 );\n\
+\t\t\t\tcalculateLight( element.v2.positionWorld, element.vertexNormalsModel[ 1 ], _color2 );\n\
+\t\t\t\tcalculateLight( element.v3.positionWorld, element.vertexNormalsModel[ 2 ], _color3 );\n\
+\n\
+\t\t\t\t_color1.multiply( _diffuseColor ).add( _emissiveColor );\n\
+\t\t\t\t_color2.multiply( _diffuseColor ).add( _emissiveColor );\n\
+\t\t\t\t_color3.multiply( _diffuseColor ).add( _emissiveColor );\n\
+\t\t\t\t_color4.addColors( _color2, _color3 ).multiplyScalar( 0.5 );\n\
 \n\
 \t\t\t\t_image = getGradientTexture( _color1, _color2, _color3, _color4 );\n\
 \n\
 \t\t\t\tclipImage( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, 0, 0, 1, 0, 0, 1, _image );\n\
 \n\
-\t\t\t} else if ( material instanceof THREE.MeshNormalMaterial ) {\n\
+\t\t\t} else {\n\
 \n\
-\t\t\t\t_color.r = normalToComponent( element.normalWorld.x );\n\
-\t\t\t\t_color.g = normalToComponent( element.normalWorld.y );\n\
-\t\t\t\t_color.b = normalToComponent( element.normalWorld.z );\n\
+\t\t\t\t_color.copy( _ambientLight );\n\
+\n\
+\t\t\t\tcalculateLight( element.centroidModel, element.normalModel, _color );\n\
+\n\
+\t\t\t\t_color.multiply( _diffuseColor ).add( _emissiveColor );\n\
 \n\
 \t\t\t\tmaterial.wireframe === true\n\
 \t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
@@ -17751,408 +19601,318 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t}\n\
+\t\t} else if ( material instanceof THREE.MeshBasicMaterial || material instanceof THREE.MeshLambertMaterial || material instanceof THREE.MeshPhongMaterial ) {\n\
 \n\
-\t\tfunction renderFace4( v1, v2, v3, v4, v5, v6, element, material, scene ) {\n\
+\t\t\tif ( material.map !== null ) {\n\
 \n\
-\t\t\t_this.info.render.vertices += 4;\n\
-\t\t\t_this.info.render.faces ++;\n\
+\t\t\t\tif ( material.map.mapping instanceof THREE.UVMapping ) {\n\
 \n\
-\t\t\tsetOpacity( material.opacity );\n\
-\t\t\tsetBlending( material.blending );\n\
-\n\
-\t\t\tif ( ( material.map !== undefined && material.map !== null ) || ( material.envMap !== undefined && material.envMap !== null ) ) {\n\
-\n\
-\t\t\t\t// Let renderFace3() handle this\n\
-\n\
-\t\t\t\trenderFace3( v1, v2, v4, 0, 1, 3, element, material, scene );\n\
-\t\t\t\trenderFace3( v5, v3, v6, 1, 2, 3, element, material, scene );\n\
-\n\
-\t\t\t\treturn;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\t_v1x = v1.positionScreen.x; _v1y = v1.positionScreen.y;\n\
-\t\t\t_v2x = v2.positionScreen.x; _v2y = v2.positionScreen.y;\n\
-\t\t\t_v3x = v3.positionScreen.x; _v3y = v3.positionScreen.y;\n\
-\t\t\t_v4x = v4.positionScreen.x; _v4y = v4.positionScreen.y;\n\
-\t\t\t_v5x = v5.positionScreen.x; _v5y = v5.positionScreen.y;\n\
-\t\t\t_v6x = v6.positionScreen.x; _v6y = v6.positionScreen.y;\n\
-\n\
-\t\t\tif ( material instanceof THREE.MeshLambertMaterial || material instanceof THREE.MeshPhongMaterial ) {\n\
-\n\
-\t\t\t\t_diffuseColor.copy( material.color );\n\
-\t\t\t\t_emissiveColor.copy( material.emissive );\n\
-\n\
-\t\t\t\tif ( material.vertexColors === THREE.FaceColors ) {\n\
-\n\
-\t\t\t\t\t_diffuseColor.r *= element.color.r;\n\
-\t\t\t\t\t_diffuseColor.g *= element.color.g;\n\
-\t\t\t\t\t_diffuseColor.b *= element.color.b;\n\
+\t\t\t\t\t_uvs = element.uvs[ 0 ];\n\
+\t\t\t\t\tpatternPath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _uvs[ uv1 ].x, _uvs[ uv1 ].y, _uvs[ uv2 ].x, _uvs[ uv2 ].y, _uvs[ uv3 ].x, _uvs[ uv3 ].y, material.map );\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\tif ( _enableLighting === true ) {\n\
 \n\
-\t\t\t\t\tif ( material.wireframe === false && material.shading == THREE.SmoothShading && element.vertexNormalsLength == 4 ) {\n\
+\t\t\t} else if ( material.envMap !== null ) {\n\
 \n\
-\t\t\t\t\t\t_color1.r = _color2.r = _color3.r = _color4.r = _ambientLight.r;\n\
-\t\t\t\t\t\t_color1.g = _color2.g = _color3.g = _color4.g = _ambientLight.g;\n\
-\t\t\t\t\t\t_color1.b = _color2.b = _color3.b = _color4.b = _ambientLight.b;\n\
+\t\t\t\tif ( material.envMap.mapping instanceof THREE.SphericalReflectionMapping ) {\n\
 \n\
-\t\t\t\t\t\tcalculateLight( element.v1.positionWorld, element.vertexNormalsWorld[ 0 ], _color1 );\n\
-\t\t\t\t\t\tcalculateLight( element.v2.positionWorld, element.vertexNormalsWorld[ 1 ], _color2 );\n\
-\t\t\t\t\t\tcalculateLight( element.v4.positionWorld, element.vertexNormalsWorld[ 3 ], _color3 );\n\
-\t\t\t\t\t\tcalculateLight( element.v3.positionWorld, element.vertexNormalsWorld[ 2 ], _color4 );\n\
+\t\t\t\t\t_vector3.copy( element.vertexNormalsModelView[ uv1 ] );\n\
+\t\t\t\t\t_uv1x = 0.5 * _vector3.x + 0.5;\n\
+\t\t\t\t\t_uv1y = 0.5 * _vector3.y + 0.5;\n\
 \n\
-\t\t\t\t\t\t_color1.r = _color1.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color1.g = _color1.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color1.b = _color1.b * _diffuseColor.b + _emissiveColor.b;\n\
+\t\t\t\t\t_vector3.copy( element.vertexNormalsModelView[ uv2 ] );\n\
+\t\t\t\t\t_uv2x = 0.5 * _vector3.x + 0.5;\n\
+\t\t\t\t\t_uv2y = 0.5 * _vector3.y + 0.5;\n\
 \n\
-\t\t\t\t\t\t_color2.r = _color2.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color2.g = _color2.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color2.b = _color2.b * _diffuseColor.b + _emissiveColor.b;\n\
+\t\t\t\t\t_vector3.copy( element.vertexNormalsModelView[ uv3 ] );\n\
+\t\t\t\t\t_uv3x = 0.5 * _vector3.x + 0.5;\n\
+\t\t\t\t\t_uv3y = 0.5 * _vector3.y + 0.5;\n\
 \n\
-\t\t\t\t\t\t_color3.r = _color3.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color3.g = _color3.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color3.b = _color3.b * _diffuseColor.b + _emissiveColor.b;\n\
+\t\t\t\t\tpatternPath( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _uv1x, _uv1y, _uv2x, _uv2y, _uv3x, _uv3y, material.envMap );\n\
 \n\
-\t\t\t\t\t\t_color4.r = _color4.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color4.g = _color4.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color4.b = _color4.b * _diffuseColor.b + _emissiveColor.b;\n\
+\t\t\t\t}/* else if ( material.envMap.mapping == THREE.SphericalRefractionMapping ) {\n\
 \n\
-\t\t\t\t\t\t_image = getGradientTexture( _color1, _color2, _color3, _color4 );\n\
 \n\
-\t\t\t\t\t\t// TODO: UVs are incorrect, v4->v3?\n\
 \n\
-\t\t\t\t\t\tdrawTriangle( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y );\n\
-\t\t\t\t\t\tclipImage( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y, 0, 0, 1, 0, 0, 1, _image );\n\
+\t\t\t\t}*/\n\
 \n\
-\t\t\t\t\t\tdrawTriangle( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y );\n\
-\t\t\t\t\t\tclipImage( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y, 1, 0, 1, 1, 0, 1, _image );\n\
 \n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t_color.r = _ambientLight.r;\n\
-\t\t\t\t\t\t_color.g = _ambientLight.g;\n\
-\t\t\t\t\t\t_color.b = _ambientLight.b;\n\
-\n\
-\t\t\t\t\t\tcalculateLight( element.centroidWorld, element.normalWorld, _color );\n\
-\n\
-\t\t\t\t\t\t_color.r = _color.r * _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t\t_color.g = _color.g * _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t\t_color.b = _color.b * _diffuseColor.b + _emissiveColor.b;\n\
-\n\
-\t\t\t\t\t\tdrawQuad( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _v4x, _v4y );\n\
-\n\
-\t\t\t\t\t\tmaterial.wireframe === true\n\
-\t\t\t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
-\t\t\t\t\t\t\t: fillPath( _color );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t_color.r = _diffuseColor.r + _emissiveColor.r;\n\
-\t\t\t\t\t_color.g = _diffuseColor.g + _emissiveColor.g;\n\
-\t\t\t\t\t_color.b = _diffuseColor.b + _emissiveColor.b;\n\
-\n\
-\t\t\t\t\tdrawQuad( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _v4x, _v4y );\n\
-\n\
-\t\t\t\t\tmaterial.wireframe === true\n\
-\t\t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
-\t\t\t\t\t\t: fillPath( _color );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t} else if ( material instanceof THREE.MeshBasicMaterial ) {\n\
+\t\t\t} else {\n\
 \n\
 \t\t\t\t_color.copy( material.color );\n\
 \n\
 \t\t\t\tif ( material.vertexColors === THREE.FaceColors ) {\n\
 \n\
-\t\t\t\t\t_color.r *= element.color.r;\n\
-\t\t\t\t\t_color.g *= element.color.g;\n\
-\t\t\t\t\t_color.b *= element.color.b;\n\
+\t\t\t\t\t_color.multiply( element.color );\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\tdrawQuad( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _v4x, _v4y );\n\
+\t\t\t\tmaterial.wireframe === true\n\
+\t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
+\t\t\t\t\t: fillPath( _color );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t} else if ( material instanceof THREE.MeshDepthMaterial ) {\n\
+\n\
+\t\t\t_near = _camera.near;\n\
+\t\t\t_far = _camera.far;\n\
+\n\
+\t\t\t_color1.r = _color1.g = _color1.b = 1 - smoothstep( v1.positionScreen.z * v1.positionScreen.w, _near, _far );\n\
+\t\t\t_color2.r = _color2.g = _color2.b = 1 - smoothstep( v2.positionScreen.z * v2.positionScreen.w, _near, _far );\n\
+\t\t\t_color3.r = _color3.g = _color3.b = 1 - smoothstep( v3.positionScreen.z * v3.positionScreen.w, _near, _far );\n\
+\t\t\t_color4.addColors( _color2, _color3 ).multiplyScalar( 0.5 );\n\
+\n\
+\t\t\t_image = getGradientTexture( _color1, _color2, _color3, _color4 );\n\
+\n\
+\t\t\tclipImage( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, 0, 0, 1, 0, 0, 1, _image );\n\
+\n\
+\t\t} else if ( material instanceof THREE.MeshNormalMaterial ) {\n\
+\n\
+\t\t\tvar normal;\n\
+\n\
+\t\t\tif ( material.shading == THREE.FlatShading ) {\n\
+\n\
+\t\t\t\tnormal = element.normalModelView;\n\
+\n\
+\t\t\t\t_color.setRGB( normal.x, normal.y, normal.z ).multiplyScalar( 0.5 ).addScalar( 0.5 );\n\
 \n\
 \t\t\t\tmaterial.wireframe === true\n\
 \t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
 \t\t\t\t\t: fillPath( _color );\n\
 \n\
-\t\t\t} else if ( material instanceof THREE.MeshNormalMaterial ) {\n\
+\t\t\t} else if ( material.shading == THREE.SmoothShading ) {\n\
 \n\
-\t\t\t\t_color.r = normalToComponent( element.normalWorld.x );\n\
-\t\t\t\t_color.g = normalToComponent( element.normalWorld.y );\n\
-\t\t\t\t_color.b = normalToComponent( element.normalWorld.z );\n\
+\t\t\t\tnormal = element.vertexNormalsModelView[ uv1 ];\n\
+\t\t\t\t_color1.setRGB( normal.x, normal.y, normal.z ).multiplyScalar( 0.5 ).addScalar( 0.5 );\n\
 \n\
-\t\t\t\tdrawQuad( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, _v4x, _v4y );\n\
+\t\t\t\tnormal = element.vertexNormalsModelView[ uv2 ];\n\
+\t\t\t\t_color2.setRGB( normal.x, normal.y, normal.z ).multiplyScalar( 0.5 ).addScalar( 0.5 );\n\
 \n\
-\t\t\t\tmaterial.wireframe === true\n\
-\t\t\t\t\t? strokePath( _color, material.wireframeLinewidth, material.wireframeLinecap, material.wireframeLinejoin )\n\
-\t\t\t\t\t: fillPath( _color );\n\
+\t\t\t\tnormal = element.vertexNormalsModelView[ uv3 ];\n\
+\t\t\t\t_color3.setRGB( normal.x, normal.y, normal.z ).multiplyScalar( 0.5 ).addScalar( 0.5 );\n\
 \n\
-\t\t\t} else if ( material instanceof THREE.MeshDepthMaterial ) {\n\
-\n\
-\t\t\t\t_near = camera.near;\n\
-\t\t\t\t_far = camera.far;\n\
-\n\
-\t\t\t\t_color1.r = _color1.g = _color1.b = 1 - smoothstep( v1.positionScreen.z, _near, _far );\n\
-\t\t\t\t_color2.r = _color2.g = _color2.b = 1 - smoothstep( v2.positionScreen.z, _near, _far );\n\
-\t\t\t\t_color3.r = _color3.g = _color3.b = 1 - smoothstep( v4.positionScreen.z, _near, _far );\n\
-\t\t\t\t_color4.r = _color4.g = _color4.b = 1 - smoothstep( v3.positionScreen.z, _near, _far );\n\
+\t\t\t\t_color4.addColors( _color2, _color3 ).multiplyScalar( 0.5 );\n\
 \n\
 \t\t\t\t_image = getGradientTexture( _color1, _color2, _color3, _color4 );\n\
 \n\
-\t\t\t\t// TODO: UVs are incorrect, v4->v3?\n\
-\n\
-\t\t\t\tdrawTriangle( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y );\n\
-\t\t\t\tclipImage( _v1x, _v1y, _v2x, _v2y, _v4x, _v4y, 0, 0, 1, 0, 0, 1, _image );\n\
-\n\
-\t\t\t\tdrawTriangle( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y );\n\
-\t\t\t\tclipImage( _v5x, _v5y, _v3x, _v3y, _v6x, _v6y, 1, 0, 1, 1, 0, 1, _image );\n\
+\t\t\t\tclipImage( _v1x, _v1y, _v2x, _v2y, _v3x, _v3y, 0, 0, 1, 0, 0, 1, _image );\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t\t//\n\
+\t}\n\
 \n\
-\t\tfunction drawTriangle( x0, y0, x1, y1, x2, y2 ) {\n\
+\t//\n\
 \n\
-\t\t\t_context.beginPath();\n\
-\t\t\t_context.moveTo( x0, y0 );\n\
-\t\t\t_context.lineTo( x1, y1 );\n\
-\t\t\t_context.lineTo( x2, y2 );\n\
-\t\t\t_context.closePath();\n\
+\tfunction drawTriangle( x0, y0, x1, y1, x2, y2 ) {\n\
+\n\
+\t\t_context.beginPath();\n\
+\t\t_context.moveTo( x0, y0 );\n\
+\t\t_context.lineTo( x1, y1 );\n\
+\t\t_context.lineTo( x2, y2 );\n\
+\t\t_context.closePath();\n\
+\n\
+\t}\n\
+\n\
+\tfunction strokePath( color, linewidth, linecap, linejoin ) {\n\
+\n\
+\t\tsetLineWidth( linewidth );\n\
+\t\tsetLineCap( linecap );\n\
+\t\tsetLineJoin( linejoin );\n\
+\t\tsetStrokeStyle( color.getStyle() );\n\
+\n\
+\t\t_context.stroke();\n\
+\n\
+\t\t_elemBox.expandByScalar( linewidth * 2 );\n\
+\n\
+\t}\n\
+\n\
+\tfunction fillPath( color ) {\n\
+\n\
+\t\tsetFillStyle( color.getStyle() );\n\
+\t\t_context.fill();\n\
+\n\
+\t}\n\
+\n\
+\tfunction patternPath( x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2, texture ) {\n\
+\n\
+\t\tif ( texture instanceof THREE.DataTexture || texture.image === undefined || texture.image.width == 0 ) return;\n\
+\n\
+\t\tif ( texture.needsUpdate === true ) {\n\
+\n\
+\t\t\tvar repeatX = texture.wrapS == THREE.RepeatWrapping;\n\
+\t\t\tvar repeatY = texture.wrapT == THREE.RepeatWrapping;\n\
+\n\
+\t\t\t_patterns[ texture.id ] = _context.createPattern(\n\
+\t\t\t\ttexture.image, repeatX === true && repeatY === true\n\
+\t\t\t\t\t? 'repeat'\n\
+\t\t\t\t\t: repeatX === true && repeatY === false\n\
+\t\t\t\t\t\t? 'repeat-x'\n\
+\t\t\t\t\t\t: repeatX === false && repeatY === true\n\
+\t\t\t\t\t\t\t? 'repeat-y'\n\
+\t\t\t\t\t\t\t: 'no-repeat'\n\
+\t\t\t);\n\
+\n\
+\t\t\ttexture.needsUpdate = false;\n\
 \n\
 \t\t}\n\
 \n\
-\t\tfunction drawQuad( x0, y0, x1, y1, x2, y2, x3, y3 ) {\n\
+\t\t_patterns[ texture.id ] === undefined\n\
+\t\t\t? setFillStyle( 'rgba(0,0,0,1)' )\n\
+\t\t\t: setFillStyle( _patterns[ texture.id ] );\n\
 \n\
-\t\t\t_context.beginPath();\n\
-\t\t\t_context.moveTo( x0, y0 );\n\
-\t\t\t_context.lineTo( x1, y1 );\n\
-\t\t\t_context.lineTo( x2, y2 );\n\
-\t\t\t_context.lineTo( x3, y3 );\n\
-\t\t\t_context.closePath();\n\
+\t\t// http://extremelysatisfactorytotalitarianism.com/blog/?p=2120\n\
 \n\
-\t\t}\n\
+\t\tvar a, b, c, d, e, f, det, idet,\n\
+\t\toffsetX = texture.offset.x / texture.repeat.x,\n\
+\t\toffsetY = texture.offset.y / texture.repeat.y,\n\
+\t\twidth = texture.image.width * texture.repeat.x,\n\
+\t\theight = texture.image.height * texture.repeat.y;\n\
 \n\
-\t\tfunction strokePath( color, linewidth, linecap, linejoin ) {\n\
+\t\tu0 = ( u0 + offsetX ) * width;\n\
+\t\tv0 = ( 1.0 - v0 + offsetY ) * height;\n\
 \n\
-\t\t\tsetLineWidth( linewidth );\n\
-\t\t\tsetLineCap( linecap );\n\
-\t\t\tsetLineJoin( linejoin );\n\
-\t\t\tsetStrokeStyle( color.getStyle() );\n\
+\t\tu1 = ( u1 + offsetX ) * width;\n\
+\t\tv1 = ( 1.0 - v1 + offsetY ) * height;\n\
 \n\
-\t\t\t_context.stroke();\n\
+\t\tu2 = ( u2 + offsetX ) * width;\n\
+\t\tv2 = ( 1.0 - v2 + offsetY ) * height;\n\
 \n\
-\t\t\t_elemBox.expandByScalar( linewidth * 2 );\n\
+\t\tx1 -= x0; y1 -= y0;\n\
+\t\tx2 -= x0; y2 -= y0;\n\
 \n\
-\t\t}\n\
+\t\tu1 -= u0; v1 -= v0;\n\
+\t\tu2 -= u0; v2 -= v0;\n\
 \n\
-\t\tfunction fillPath( color ) {\n\
+\t\tdet = u1 * v2 - u2 * v1;\n\
 \n\
-\t\t\tsetFillStyle( color.getStyle() );\n\
-\t\t\t_context.fill();\n\
+\t\tif ( det === 0 ) {\n\
 \n\
-\t\t}\n\
+\t\t\tif ( _imagedatas[ texture.id ] === undefined ) {\n\
 \n\
-\t\tfunction patternPath( x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2, texture ) {\n\
+\t\t\t\tvar canvas = document.createElement( 'canvas' )\n\
+\t\t\t\tcanvas.width = texture.image.width;\n\
+\t\t\t\tcanvas.height = texture.image.height;\n\
 \n\
-\t\t\tif ( texture instanceof THREE.DataTexture || texture.image === undefined || texture.image.width == 0 ) return;\n\
+\t\t\t\tvar context = canvas.getContext( '2d' );\n\
+\t\t\t\tcontext.drawImage( texture.image, 0, 0 );\n\
 \n\
-\t\t\tif ( texture.needsUpdate === true ) {\n\
-\n\
-\t\t\t\tvar repeatX = texture.wrapS == THREE.RepeatWrapping;\n\
-\t\t\t\tvar repeatY = texture.wrapT == THREE.RepeatWrapping;\n\
-\n\
-\t\t\t\t_patterns[ texture.id ] = _context.createPattern(\n\
-\t\t\t\t\ttexture.image, repeatX === true && repeatY === true\n\
-\t\t\t\t\t\t? 'repeat'\n\
-\t\t\t\t\t\t: repeatX === true && repeatY === false\n\
-\t\t\t\t\t\t\t? 'repeat-x'\n\
-\t\t\t\t\t\t\t: repeatX === false && repeatY === true\n\
-\t\t\t\t\t\t\t\t? 'repeat-y'\n\
-\t\t\t\t\t\t\t\t: 'no-repeat'\n\
-\t\t\t\t);\n\
-\n\
-\t\t\t\ttexture.needsUpdate = false;\n\
+\t\t\t\t_imagedatas[ texture.id ] = context.getImageData( 0, 0, texture.image.width, texture.image.height ).data;\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\t_patterns[ texture.id ] === undefined\n\
-\t\t\t\t? setFillStyle( 'rgba(0,0,0,1)' )\n\
-\t\t\t\t: setFillStyle( _patterns[ texture.id ] );\n\
+\t\t\tvar data = _imagedatas[ texture.id ];\n\
+\t\t\tvar index = ( Math.floor( u0 ) + Math.floor( v0 ) * texture.image.width ) * 4;\n\
 \n\
-\t\t\t// http://extremelysatisfactorytotalitarianism.com/blog/?p=2120\n\
+\t\t\t_color.setRGB( data[ index ] / 255, data[ index + 1 ] / 255, data[ index + 2 ] / 255 );\n\
+\t\t\tfillPath( _color );\n\
 \n\
-\t\t\tvar a, b, c, d, e, f, det, idet,\n\
-\t\t\toffsetX = texture.offset.x / texture.repeat.x,\n\
-\t\t\toffsetY = texture.offset.y / texture.repeat.y,\n\
-\t\t\twidth = texture.image.width * texture.repeat.x,\n\
-\t\t\theight = texture.image.height * texture.repeat.y;\n\
-\n\
-\t\t\tu0 = ( u0 + offsetX ) * width;\n\
-\t\t\tv0 = ( 1.0 - v0 + offsetY ) * height;\n\
-\n\
-\t\t\tu1 = ( u1 + offsetX ) * width;\n\
-\t\t\tv1 = ( 1.0 - v1 + offsetY ) * height;\n\
-\n\
-\t\t\tu2 = ( u2 + offsetX ) * width;\n\
-\t\t\tv2 = ( 1.0 - v2 + offsetY ) * height;\n\
-\n\
-\t\t\tx1 -= x0; y1 -= y0;\n\
-\t\t\tx2 -= x0; y2 -= y0;\n\
-\n\
-\t\t\tu1 -= u0; v1 -= v0;\n\
-\t\t\tu2 -= u0; v2 -= v0;\n\
-\n\
-\t\t\tdet = u1 * v2 - u2 * v1;\n\
-\n\
-\t\t\tif ( det === 0 ) {\n\
-\n\
-\t\t\t\tif ( _imagedatas[ texture.id ] === undefined ) {\n\
-\n\
-\t\t\t\t\tvar canvas = document.createElement( 'canvas' )\n\
-\t\t\t\t\tcanvas.width = texture.image.width;\n\
-\t\t\t\t\tcanvas.height = texture.image.height;\n\
-\n\
-\t\t\t\t\tvar context = canvas.getContext( '2d' );\n\
-\t\t\t\t\tcontext.drawImage( texture.image, 0, 0 );\n\
-\n\
-\t\t\t\t\t_imagedatas[ texture.id ] = context.getImageData( 0, 0, texture.image.width, texture.image.height ).data;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tvar data = _imagedatas[ texture.id ];\n\
-\t\t\t\tvar index = ( Math.floor( u0 ) + Math.floor( v0 ) * texture.image.width ) * 4;\n\
-\n\
-\t\t\t\t_color.setRGB( data[ index ] / 255, data[ index + 1 ] / 255, data[ index + 2 ] / 255 );\n\
-\t\t\t\tfillPath( _color );\n\
-\n\
-\t\t\t\treturn;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tidet = 1 / det;\n\
-\n\
-\t\t\ta = ( v2 * x1 - v1 * x2 ) * idet;\n\
-\t\t\tb = ( v2 * y1 - v1 * y2 ) * idet;\n\
-\t\t\tc = ( u1 * x2 - u2 * x1 ) * idet;\n\
-\t\t\td = ( u1 * y2 - u2 * y1 ) * idet;\n\
-\n\
-\t\t\te = x0 - a * u0 - c * v0;\n\
-\t\t\tf = y0 - b * u0 - d * v0;\n\
-\n\
-\t\t\t_context.save();\n\
-\t\t\t_context.transform( a, b, c, d, e, f );\n\
-\t\t\t_context.fill();\n\
-\t\t\t_context.restore();\n\
+\t\t\treturn;\n\
 \n\
 \t\t}\n\
 \n\
-\t\tfunction clipImage( x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2, image ) {\n\
+\t\tidet = 1 / det;\n\
 \n\
-\t\t\t// http://extremelysatisfactorytotalitarianism.com/blog/?p=2120\n\
+\t\ta = ( v2 * x1 - v1 * x2 ) * idet;\n\
+\t\tb = ( v2 * y1 - v1 * y2 ) * idet;\n\
+\t\tc = ( u1 * x2 - u2 * x1 ) * idet;\n\
+\t\td = ( u1 * y2 - u2 * y1 ) * idet;\n\
 \n\
-\t\t\tvar a, b, c, d, e, f, det, idet,\n\
-\t\t\twidth = image.width - 1,\n\
-\t\t\theight = image.height - 1;\n\
+\t\te = x0 - a * u0 - c * v0;\n\
+\t\tf = y0 - b * u0 - d * v0;\n\
 \n\
-\t\t\tu0 *= width; v0 *= height;\n\
-\t\t\tu1 *= width; v1 *= height;\n\
-\t\t\tu2 *= width; v2 *= height;\n\
+\t\t_context.save();\n\
+\t\t_context.transform( a, b, c, d, e, f );\n\
+\t\t_context.fill();\n\
+\t\t_context.restore();\n\
 \n\
-\t\t\tx1 -= x0; y1 -= y0;\n\
-\t\t\tx2 -= x0; y2 -= y0;\n\
+\t}\n\
 \n\
-\t\t\tu1 -= u0; v1 -= v0;\n\
-\t\t\tu2 -= u0; v2 -= v0;\n\
+\tfunction clipImage( x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2, image ) {\n\
 \n\
-\t\t\tdet = u1 * v2 - u2 * v1;\n\
+\t\t// http://extremelysatisfactorytotalitarianism.com/blog/?p=2120\n\
 \n\
-\t\t\tidet = 1 / det;\n\
+\t\tvar a, b, c, d, e, f, det, idet,\n\
+\t\twidth = image.width - 1,\n\
+\t\theight = image.height - 1;\n\
 \n\
-\t\t\ta = ( v2 * x1 - v1 * x2 ) * idet;\n\
-\t\t\tb = ( v2 * y1 - v1 * y2 ) * idet;\n\
-\t\t\tc = ( u1 * x2 - u2 * x1 ) * idet;\n\
-\t\t\td = ( u1 * y2 - u2 * y1 ) * idet;\n\
+\t\tu0 *= width; v0 *= height;\n\
+\t\tu1 *= width; v1 *= height;\n\
+\t\tu2 *= width; v2 *= height;\n\
 \n\
-\t\t\te = x0 - a * u0 - c * v0;\n\
-\t\t\tf = y0 - b * u0 - d * v0;\n\
+\t\tx1 -= x0; y1 -= y0;\n\
+\t\tx2 -= x0; y2 -= y0;\n\
 \n\
-\t\t\t_context.save();\n\
-\t\t\t_context.transform( a, b, c, d, e, f );\n\
-\t\t\t_context.clip();\n\
-\t\t\t_context.drawImage( image, 0, 0 );\n\
-\t\t\t_context.restore();\n\
+\t\tu1 -= u0; v1 -= v0;\n\
+\t\tu2 -= u0; v2 -= v0;\n\
 \n\
-\t\t}\n\
+\t\tdet = u1 * v2 - u2 * v1;\n\
 \n\
-\t\tfunction getGradientTexture( color1, color2, color3, color4 ) {\n\
+\t\tidet = 1 / det;\n\
 \n\
-\t\t\t// http://mrdoob.com/blog/post/710\n\
+\t\ta = ( v2 * x1 - v1 * x2 ) * idet;\n\
+\t\tb = ( v2 * y1 - v1 * y2 ) * idet;\n\
+\t\tc = ( u1 * x2 - u2 * x1 ) * idet;\n\
+\t\td = ( u1 * y2 - u2 * y1 ) * idet;\n\
 \n\
-\t\t\t_pixelMapData[ 0 ] = ( color1.r * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 1 ] = ( color1.g * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 2 ] = ( color1.b * 255 ) | 0;\n\
+\t\te = x0 - a * u0 - c * v0;\n\
+\t\tf = y0 - b * u0 - d * v0;\n\
 \n\
-\t\t\t_pixelMapData[ 4 ] = ( color2.r * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 5 ] = ( color2.g * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 6 ] = ( color2.b * 255 ) | 0;\n\
+\t\t_context.save();\n\
+\t\t_context.transform( a, b, c, d, e, f );\n\
+\t\t_context.clip();\n\
+\t\t_context.drawImage( image, 0, 0 );\n\
+\t\t_context.restore();\n\
 \n\
-\t\t\t_pixelMapData[ 8 ] = ( color3.r * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 9 ] = ( color3.g * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 10 ] = ( color3.b * 255 ) | 0;\n\
+\t}\n\
 \n\
-\t\t\t_pixelMapData[ 12 ] = ( color4.r * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 13 ] = ( color4.g * 255 ) | 0;\n\
-\t\t\t_pixelMapData[ 14 ] = ( color4.b * 255 ) | 0;\n\
+\tfunction getGradientTexture( color1, color2, color3, color4 ) {\n\
 \n\
-\t\t\t_pixelMapContext.putImageData( _pixelMapImage, 0, 0 );\n\
-\t\t\t_gradientMapContext.drawImage( _pixelMap, 0, 0 );\n\
+\t\t// http://mrdoob.com/blog/post/710\n\
 \n\
-\t\t\treturn _gradientMap;\n\
+\t\t_pixelMapData[ 0 ] = ( color1.r * 255 ) | 0;\n\
+\t\t_pixelMapData[ 1 ] = ( color1.g * 255 ) | 0;\n\
+\t\t_pixelMapData[ 2 ] = ( color1.b * 255 ) | 0;\n\
 \n\
-\t\t}\n\
+\t\t_pixelMapData[ 4 ] = ( color2.r * 255 ) | 0;\n\
+\t\t_pixelMapData[ 5 ] = ( color2.g * 255 ) | 0;\n\
+\t\t_pixelMapData[ 6 ] = ( color2.b * 255 ) | 0;\n\
 \n\
-\t\tfunction smoothstep( value, min, max ) {\n\
+\t\t_pixelMapData[ 8 ] = ( color3.r * 255 ) | 0;\n\
+\t\t_pixelMapData[ 9 ] = ( color3.g * 255 ) | 0;\n\
+\t\t_pixelMapData[ 10 ] = ( color3.b * 255 ) | 0;\n\
 \n\
-\t\t\tvar x = ( value - min ) / ( max - min );\n\
-\t\t\treturn x * x * ( 3 - 2 * x );\n\
+\t\t_pixelMapData[ 12 ] = ( color4.r * 255 ) | 0;\n\
+\t\t_pixelMapData[ 13 ] = ( color4.g * 255 ) | 0;\n\
+\t\t_pixelMapData[ 14 ] = ( color4.b * 255 ) | 0;\n\
 \n\
-\t\t}\n\
+\t\t_pixelMapContext.putImageData( _pixelMapImage, 0, 0 );\n\
+\t\t_gradientMapContext.drawImage( _pixelMap, 0, 0 );\n\
 \n\
-\t\tfunction normalToComponent( normal ) {\n\
+\t\treturn _gradientMap;\n\
 \n\
-\t\t\tvar component = ( normal + 1 ) * 0.5;\n\
-\t\t\treturn component < 0 ? 0 : ( component > 1 ? 1 : component );\n\
+\t}\n\
 \n\
-\t\t}\n\
+\t// Hide anti-alias gaps\n\
 \n\
-\t\t// Hide anti-alias gaps\n\
+\tfunction expand( v1, v2, pixels ) {\n\
 \n\
-\t\tfunction expand( v1, v2 ) {\n\
+\t\tvar x = v2.x - v1.x, y = v2.y - v1.y,\n\
+\t\tdet = x * x + y * y, idet;\n\
 \n\
-\t\t\tvar x = v2.x - v1.x, y =  v2.y - v1.y,\n\
-\t\t\tdet = x * x + y * y, idet;\n\
+\t\tif ( det === 0 ) return;\n\
 \n\
-\t\t\tif ( det === 0 ) return;\n\
+\t\tidet = pixels / Math.sqrt( det );\n\
 \n\
-\t\t\tidet = 1 / Math.sqrt( det );\n\
+\t\tx *= idet; y *= idet;\n\
 \n\
-\t\t\tx *= idet; y *= idet;\n\
+\t\tv2.x += x; v2.y += y;\n\
+\t\tv1.x -= x; v1.y -= y;\n\
 \n\
-\t\t\tv2.x += x; v2.y += y;\n\
-\t\t\tv1.x -= x; v1.y -= y;\n\
-\n\
-\t\t}\n\
-\t};\n\
+\t}\n\
 \n\
 \t// Context cached methods.\n\
 \n\
@@ -18250,7 +20010,20 @@ THREE.CanvasRenderer = function ( parameters ) {\n\
 \n\
 \t}\n\
 \n\
+\tfunction setDashAndGap( dashSizeValue, gapSizeValue ) {\n\
+\n\
+\t\tif ( _contextDashSize !== dashSizeValue || _contextGapSize !== gapSizeValue ) {\n\
+\n\
+\t\t\t_context.setLineDash( [ dashSizeValue, gapSizeValue ] );\n\
+\t\t\t_contextDashSize = dashSizeValue;\n\
+\t\t\t_contextGapSize = gapSizeValue;\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -19142,7 +20915,7 @@ THREE.ShaderChunk = {\n\
 \n\
 \t\t\"#ifdef USE_NORMALMAP\",\n\
 \n\
-\t\t\t\"normal = perturbNormal2Arb( -viewPosition, normal );\",\n\
+\t\t\t\"normal = perturbNormal2Arb( -vViewPosition, normal );\",\n\
 \n\
 \t\t\"#elif defined( USE_BUMPMAP )\",\n\
 \n\
@@ -19931,40 +21704,24 @@ THREE.ShaderChunk = {\n\
 \t\t\t\t\t\t\"mat3 depthKernel;\",\n\
 \n\
 \t\t\t\t\t\t\"depthKernel[0][0] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( dx0, dy0 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[0][0] < shadowCoord.z ) shadowKernel[0][0] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[0][0] = 0.0;\",\n\
-\n\
 \t\t\t\t\t\t\"depthKernel[0][1] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( dx0, 0.0 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[0][1] < shadowCoord.z ) shadowKernel[0][1] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[0][1] = 0.0;\",\n\
-\n\
-\t\t\t\t\t\t\"depthKernel[0][2] = unpackDepth( texture2D( shadowMap[ i], shadowCoord.xy + vec2( dx0, dy1 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[0][2] < shadowCoord.z ) shadowKernel[0][2] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[0][2] = 0.0;\",\n\
-\n\
+\t\t\t\t\t\t\"depthKernel[0][2] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( dx0, dy1 ) ) );\",\n\
 \t\t\t\t\t\t\"depthKernel[1][0] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( 0.0, dy0 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[1][0] < shadowCoord.z ) shadowKernel[1][0] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[1][0] = 0.0;\",\n\
-\n\
 \t\t\t\t\t\t\"depthKernel[1][1] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[1][1] < shadowCoord.z ) shadowKernel[1][1] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[1][1] = 0.0;\",\n\
-\n\
 \t\t\t\t\t\t\"depthKernel[1][2] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( 0.0, dy1 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[1][2] < shadowCoord.z ) shadowKernel[1][2] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[1][2] = 0.0;\",\n\
-\n\
 \t\t\t\t\t\t\"depthKernel[2][0] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( dx1, dy0 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[2][0] < shadowCoord.z ) shadowKernel[2][0] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[2][0] = 0.0;\",\n\
-\n\
 \t\t\t\t\t\t\"depthKernel[2][1] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( dx1, 0.0 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[2][1] < shadowCoord.z ) shadowKernel[2][1] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[2][1] = 0.0;\",\n\
-\n\
 \t\t\t\t\t\t\"depthKernel[2][2] = unpackDepth( texture2D( shadowMap[ i ], shadowCoord.xy + vec2( dx1, dy1 ) ) );\",\n\
-\t\t\t\t\t\t\"if ( depthKernel[2][2] < shadowCoord.z ) shadowKernel[2][2] = 0.25;\",\n\
-\t\t\t\t\t\t\"else shadowKernel[2][2] = 0.0;\",\n\
+\n\
+\t\t\t\t\t\t\"vec3 shadowZ = vec3( shadowCoord.z );\",\n\
+\t\t\t\t\t\t\"shadowKernel[0] = vec3(lessThan(depthKernel[0], shadowZ ));\",\n\
+\t\t\t\t\t\t\"shadowKernel[0] *= vec3(0.25);\",\n\
+\t\t\t\t\t\t\t\t\t\t\t\t\t\n\
+\t\t\t\t\t\t\"shadowKernel[1] = vec3(lessThan(depthKernel[1], shadowZ ));\",\n\
+\t\t\t\t\t\t\"shadowKernel[1] *= vec3(0.25);\",\n\
+\n\
+\t\t\t\t\t\t\"shadowKernel[2] = vec3(lessThan(depthKernel[2], shadowZ ));\",\n\
+\t\t\t\t\t\t\"shadowKernel[2] *= vec3(0.25);\",\n\
 \n\
 \t\t\t\t\t\t\"vec2 fractionalCoord = 1.0 - fract( shadowCoord.xy * shadowMapSize[i].xy );\",\n\
 \n\
@@ -20249,86 +22006,6 @@ THREE.UniformsLib = {\n\
 };\n\
 \n\
 THREE.ShaderLib = {\n\
-\n\
-\t'depth': {\n\
-\n\
-\t\tuniforms: {\n\
-\n\
-\t\t\t\"mNear\": { type: \"f\", value: 1.0 },\n\
-\t\t\t\"mFar\" : { type: \"f\", value: 2000.0 },\n\
-\t\t\t\"opacity\" : { type: \"f\", value: 1.0 }\n\
-\n\
-\t\t},\n\
-\n\
-\t\tvertexShader: [\n\
-\n\
-\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\",\n\
-\n\
-\t\t\t\"}\"\n\
-\n\
-\t\t].join(\"\\n\
-\"),\n\
-\n\
-\t\tfragmentShader: [\n\
-\n\
-\t\t\t\"uniform float mNear;\",\n\
-\t\t\t\"uniform float mFar;\",\n\
-\t\t\t\"uniform float opacity;\",\n\
-\n\
-\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\"float depth = gl_FragCoord.z / gl_FragCoord.w;\",\n\
-\t\t\t\t\"float color = 1.0 - smoothstep( mNear, mFar, depth );\",\n\
-\t\t\t\t\"gl_FragColor = vec4( vec3( color ), opacity );\",\n\
-\n\
-\t\t\t\"}\"\n\
-\n\
-\t\t].join(\"\\n\
-\")\n\
-\n\
-\t},\n\
-\n\
-\t'normal': {\n\
-\n\
-\t\tuniforms: {\n\
-\n\
-\t\t\t\"opacity\" : { type: \"f\", value: 1.0 }\n\
-\n\
-\t\t},\n\
-\n\
-\t\tvertexShader: [\n\
-\n\
-\t\t\t\"varying vec3 vNormal;\",\n\
-\n\
-\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\"vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );\",\n\
-\t\t\t\t\"vNormal = normalize( normalMatrix * normal );\",\n\
-\n\
-\t\t\t\t\"gl_Position = projectionMatrix * mvPosition;\",\n\
-\n\
-\t\t\t\"}\"\n\
-\n\
-\t\t].join(\"\\n\
-\"),\n\
-\n\
-\t\tfragmentShader: [\n\
-\n\
-\t\t\t\"uniform float opacity;\",\n\
-\t\t\t\"varying vec3 vNormal;\",\n\
-\n\
-\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\"gl_FragColor = vec4( 0.5 * normalize( vNormal ) + 0.5, opacity );\",\n\
-\n\
-\t\t\t\"}\"\n\
-\n\
-\t\t].join(\"\\n\
-\")\n\
-\n\
-\t},\n\
 \n\
 \t'basic': {\n\
 \n\
@@ -20787,6 +22464,776 @@ THREE.ShaderLib = {\n\
 \n\
 \t},\n\
 \n\
+\t'depth': {\n\
+\n\
+\t\tuniforms: {\n\
+\n\
+\t\t\t\"mNear\": { type: \"f\", value: 1.0 },\n\
+\t\t\t\"mFar\" : { type: \"f\", value: 2000.0 },\n\
+\t\t\t\"opacity\" : { type: \"f\", value: 1.0 }\n\
+\n\
+\t\t},\n\
+\n\
+\t\tvertexShader: [\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\t\"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\",\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\"),\n\
+\n\
+\t\tfragmentShader: [\n\
+\n\
+\t\t\t\"uniform float mNear;\",\n\
+\t\t\t\"uniform float mFar;\",\n\
+\t\t\t\"uniform float opacity;\",\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\t\"float depth = gl_FragCoord.z / gl_FragCoord.w;\",\n\
+\t\t\t\t\"float color = 1.0 - smoothstep( mNear, mFar, depth );\",\n\
+\t\t\t\t\"gl_FragColor = vec4( vec3( color ), opacity );\",\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\")\n\
+\n\
+\t},\n\
+\n\
+\t'normal': {\n\
+\n\
+\t\tuniforms: {\n\
+\n\
+\t\t\t\"opacity\" : { type: \"f\", value: 1.0 }\n\
+\n\
+\t\t},\n\
+\n\
+\t\tvertexShader: [\n\
+\n\
+\t\t\t\"varying vec3 vNormal;\",\n\
+\n\
+\t\t\tTHREE.ShaderChunk[ \"morphtarget_pars_vertex\" ],\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\t\"vNormal = normalize( normalMatrix * normal );\",\n\
+\n\
+\t\t\t\tTHREE.ShaderChunk[ \"morphtarget_vertex\" ],\n\
+\t\t\t\tTHREE.ShaderChunk[ \"default_vertex\" ],\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\"),\n\
+\n\
+\t\tfragmentShader: [\n\
+\n\
+\t\t\t\"uniform float opacity;\",\n\
+\t\t\t\"varying vec3 vNormal;\",\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\t\"gl_FragColor = vec4( 0.5 * normalize( vNormal ) + 0.5, opacity );\",\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\")\n\
+\n\
+\t},\n\
+\n\
+\t/* -------------------------------------------------------------------------\n\
+\t//\tNormal map shader\n\
+\t//\t\t- Blinn-Phong\n\
+\t//\t\t- normal + diffuse + specular + AO + displacement + reflection + shadow maps\n\
+\t//\t\t- point and directional lights (use with \"lights: true\" material option)\n\
+\t ------------------------------------------------------------------------- */\n\
+\n\
+\t'normalmap' : {\n\
+\n\
+\t\tuniforms: THREE.UniformsUtils.merge( [\n\
+\n\
+\t\t\tTHREE.UniformsLib[ \"fog\" ],\n\
+\t\t\tTHREE.UniformsLib[ \"lights\" ],\n\
+\t\t\tTHREE.UniformsLib[ \"shadowmap\" ],\n\
+\n\
+\t\t\t{\n\
+\n\
+\t\t\t\"enableAO\"\t\t  : { type: \"i\", value: 0 },\n\
+\t\t\t\"enableDiffuse\"\t  : { type: \"i\", value: 0 },\n\
+\t\t\t\"enableSpecular\"  : { type: \"i\", value: 0 },\n\
+\t\t\t\"enableReflection\": { type: \"i\", value: 0 },\n\
+\t\t\t\"enableDisplacement\": { type: \"i\", value: 0 },\n\
+\n\
+\t\t\t\"tDisplacement\": { type: \"t\", value: null }, // must go first as this is vertex texture\n\
+\t\t\t\"tDiffuse\"\t   : { type: \"t\", value: null },\n\
+\t\t\t\"tCube\"\t\t   : { type: \"t\", value: null },\n\
+\t\t\t\"tNormal\"\t   : { type: \"t\", value: null },\n\
+\t\t\t\"tSpecular\"\t   : { type: \"t\", value: null },\n\
+\t\t\t\"tAO\"\t\t   : { type: \"t\", value: null },\n\
+\n\
+\t\t\t\"uNormalScale\": { type: \"v2\", value: new THREE.Vector2( 1, 1 ) },\n\
+\n\
+\t\t\t\"uDisplacementBias\": { type: \"f\", value: 0.0 },\n\
+\t\t\t\"uDisplacementScale\": { type: \"f\", value: 1.0 },\n\
+\n\
+\t\t\t\"uDiffuseColor\": { type: \"c\", value: new THREE.Color( 0xffffff ) },\n\
+\t\t\t\"uSpecularColor\": { type: \"c\", value: new THREE.Color( 0x111111 ) },\n\
+\t\t\t\"uAmbientColor\": { type: \"c\", value: new THREE.Color( 0xffffff ) },\n\
+\t\t\t\"uShininess\": { type: \"f\", value: 30 },\n\
+\t\t\t\"uOpacity\": { type: \"f\", value: 1 },\n\
+\n\
+\t\t\t\"useRefract\": { type: \"i\", value: 0 },\n\
+\t\t\t\"uRefractionRatio\": { type: \"f\", value: 0.98 },\n\
+\t\t\t\"uReflectivity\": { type: \"f\", value: 0.5 },\n\
+\n\
+\t\t\t\"uOffset\" : { type: \"v2\", value: new THREE.Vector2( 0, 0 ) },\n\
+\t\t\t\"uRepeat\" : { type: \"v2\", value: new THREE.Vector2( 1, 1 ) },\n\
+\n\
+\t\t\t\"wrapRGB\"  : { type: \"v3\", value: new THREE.Vector3( 1, 1, 1 ) }\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t] ),\n\
+\n\
+\t\tfragmentShader: [\n\
+\n\
+\t\t\t\"uniform vec3 uAmbientColor;\",\n\
+\t\t\t\"uniform vec3 uDiffuseColor;\",\n\
+\t\t\t\"uniform vec3 uSpecularColor;\",\n\
+\t\t\t\"uniform float uShininess;\",\n\
+\t\t\t\"uniform float uOpacity;\",\n\
+\n\
+\t\t\t\"uniform bool enableDiffuse;\",\n\
+\t\t\t\"uniform bool enableSpecular;\",\n\
+\t\t\t\"uniform bool enableAO;\",\n\
+\t\t\t\"uniform bool enableReflection;\",\n\
+\n\
+\t\t\t\"uniform sampler2D tDiffuse;\",\n\
+\t\t\t\"uniform sampler2D tNormal;\",\n\
+\t\t\t\"uniform sampler2D tSpecular;\",\n\
+\t\t\t\"uniform sampler2D tAO;\",\n\
+\n\
+\t\t\t\"uniform samplerCube tCube;\",\n\
+\n\
+\t\t\t\"uniform vec2 uNormalScale;\",\n\
+\n\
+\t\t\t\"uniform bool useRefract;\",\n\
+\t\t\t\"uniform float uRefractionRatio;\",\n\
+\t\t\t\"uniform float uReflectivity;\",\n\
+\n\
+\t\t\t\"varying vec3 vTangent;\",\n\
+\t\t\t\"varying vec3 vBinormal;\",\n\
+\t\t\t\"varying vec3 vNormal;\",\n\
+\t\t\t\"varying vec2 vUv;\",\n\
+\n\
+\t\t\t\"uniform vec3 ambientLightColor;\",\n\
+\n\
+\t\t\t\"#if MAX_DIR_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\"uniform vec3 directionalLightColor[ MAX_DIR_LIGHTS ];\",\n\
+\t\t\t\t\"uniform vec3 directionalLightDirection[ MAX_DIR_LIGHTS ];\",\n\
+\n\
+\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\"#if MAX_HEMI_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\"uniform vec3 hemisphereLightSkyColor[ MAX_HEMI_LIGHTS ];\",\n\
+\t\t\t\t\"uniform vec3 hemisphereLightGroundColor[ MAX_HEMI_LIGHTS ];\",\n\
+\t\t\t\t\"uniform vec3 hemisphereLightDirection[ MAX_HEMI_LIGHTS ];\",\n\
+\n\
+\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\"#if MAX_POINT_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\"uniform vec3 pointLightColor[ MAX_POINT_LIGHTS ];\",\n\
+\t\t\t\t\"uniform vec3 pointLightPosition[ MAX_POINT_LIGHTS ];\",\n\
+\t\t\t\t\"uniform float pointLightDistance[ MAX_POINT_LIGHTS ];\",\n\
+\n\
+\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\"#if MAX_SPOT_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\"uniform vec3 spotLightColor[ MAX_SPOT_LIGHTS ];\",\n\
+\t\t\t\t\"uniform vec3 spotLightPosition[ MAX_SPOT_LIGHTS ];\",\n\
+\t\t\t\t\"uniform vec3 spotLightDirection[ MAX_SPOT_LIGHTS ];\",\n\
+\t\t\t\t\"uniform float spotLightAngleCos[ MAX_SPOT_LIGHTS ];\",\n\
+\t\t\t\t\"uniform float spotLightExponent[ MAX_SPOT_LIGHTS ];\",\n\
+\t\t\t\t\"uniform float spotLightDistance[ MAX_SPOT_LIGHTS ];\",\n\
+\n\
+\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\"#ifdef WRAP_AROUND\",\n\
+\n\
+\t\t\t\t\"uniform vec3 wrapRGB;\",\n\
+\n\
+\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\"varying vec3 vWorldPosition;\",\n\
+\t\t\t\"varying vec3 vViewPosition;\",\n\
+\n\
+\t\t\tTHREE.ShaderChunk[ \"shadowmap_pars_fragment\" ],\n\
+\t\t\tTHREE.ShaderChunk[ \"fog_pars_fragment\" ],\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\t\"gl_FragColor = vec4( vec3( 1.0 ), uOpacity );\",\n\
+\n\
+\t\t\t\t\"vec3 specularTex = vec3( 1.0 );\",\n\
+\n\
+\t\t\t\t\"vec3 normalTex = texture2D( tNormal, vUv ).xyz * 2.0 - 1.0;\",\n\
+\t\t\t\t\"normalTex.xy *= uNormalScale;\",\n\
+\t\t\t\t\"normalTex = normalize( normalTex );\",\n\
+\n\
+\t\t\t\t\"if( enableDiffuse ) {\",\n\
+\n\
+\t\t\t\t\t\"#ifdef GAMMA_INPUT\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 texelColor = texture2D( tDiffuse, vUv );\",\n\
+\t\t\t\t\t\t\"texelColor.xyz *= texelColor.xyz;\",\n\
+\n\
+\t\t\t\t\t\t\"gl_FragColor = gl_FragColor * texelColor;\",\n\
+\n\
+\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\"gl_FragColor = gl_FragColor * texture2D( tDiffuse, vUv );\",\n\
+\n\
+\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"if( enableAO ) {\",\n\
+\n\
+\t\t\t\t\t\"#ifdef GAMMA_INPUT\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 aoColor = texture2D( tAO, vUv );\",\n\
+\t\t\t\t\t\t\"aoColor.xyz *= aoColor.xyz;\",\n\
+\n\
+\t\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * aoColor.xyz;\",\n\
+\n\
+\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * texture2D( tAO, vUv ).xyz;\",\n\
+\n\
+\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"if( enableSpecular )\",\n\
+\t\t\t\t\t\"specularTex = texture2D( tSpecular, vUv ).xyz;\",\n\
+\n\
+\t\t\t\t\"mat3 tsb = mat3( normalize( vTangent ), normalize( vBinormal ), normalize( vNormal ) );\",\n\
+\t\t\t\t\"vec3 finalNormal = tsb * normalTex;\",\n\
+\n\
+\t\t\t\t\"#ifdef FLIP_SIDED\",\n\
+\n\
+\t\t\t\t\t\"finalNormal = -finalNormal;\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"vec3 normal = normalize( finalNormal );\",\n\
+\t\t\t\t\"vec3 viewPosition = normalize( vViewPosition );\",\n\
+\n\
+\t\t\t\t// point lights\n\
+\n\
+\t\t\t\t\"#if MAX_POINT_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"vec3 pointDiffuse = vec3( 0.0 );\",\n\
+\t\t\t\t\t\"vec3 pointSpecular = vec3( 0.0 );\",\n\
+\n\
+\t\t\t\t\t\"for ( int i = 0; i < MAX_POINT_LIGHTS; i ++ ) {\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 lPosition = viewMatrix * vec4( pointLightPosition[ i ], 1.0 );\",\n\
+\t\t\t\t\t\t\"vec3 pointVector = lPosition.xyz + vViewPosition.xyz;\",\n\
+\n\
+\t\t\t\t\t\t\"float pointDistance = 1.0;\",\n\
+\t\t\t\t\t\t\"if ( pointLightDistance[ i ] > 0.0 )\",\n\
+\t\t\t\t\t\t\t\"pointDistance = 1.0 - min( ( length( pointVector ) / pointLightDistance[ i ] ), 1.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"pointVector = normalize( pointVector );\",\n\
+\n\
+\t\t\t\t\t\t// diffuse\n\
+\n\
+\t\t\t\t\t\t\"#ifdef WRAP_AROUND\",\n\
+\n\
+\t\t\t\t\t\t\t\"float pointDiffuseWeightFull = max( dot( normal, pointVector ), 0.0 );\",\n\
+\t\t\t\t\t\t\t\"float pointDiffuseWeightHalf = max( 0.5 * dot( normal, pointVector ) + 0.5, 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\t\"vec3 pointDiffuseWeight = mix( vec3 ( pointDiffuseWeightFull ), vec3( pointDiffuseWeightHalf ), wrapRGB );\",\n\
+\n\
+\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\"float pointDiffuseWeight = max( dot( normal, pointVector ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\t\"pointDiffuse += pointDistance * pointLightColor[ i ] * uDiffuseColor * pointDiffuseWeight;\",\n\
+\n\
+\t\t\t\t\t\t// specular\n\
+\n\
+\t\t\t\t\t\t\"vec3 pointHalfVector = normalize( pointVector + viewPosition );\",\n\
+\t\t\t\t\t\t\"float pointDotNormalHalf = max( dot( normal, pointHalfVector ), 0.0 );\",\n\
+\t\t\t\t\t\t\"float pointSpecularWeight = specularTex.r * max( pow( pointDotNormalHalf, uShininess ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
+\n\
+\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
+\n\
+\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
+\n\
+\t\t\t\t\t\t\t\"vec3 schlick = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( pointVector, pointHalfVector ), 5.0 );\",\n\
+\t\t\t\t\t\t\t\"pointSpecular += schlick * pointLightColor[ i ] * pointSpecularWeight * pointDiffuseWeight * pointDistance * specularNormalization;\",\n\
+\n\
+\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\"pointSpecular += pointDistance * pointLightColor[ i ] * uSpecularColor * pointSpecularWeight * pointDiffuseWeight;\",\n\
+\n\
+\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t// spot lights\n\
+\n\
+\t\t\t\t\"#if MAX_SPOT_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"vec3 spotDiffuse = vec3( 0.0 );\",\n\
+\t\t\t\t\t\"vec3 spotSpecular = vec3( 0.0 );\",\n\
+\n\
+\t\t\t\t\t\"for ( int i = 0; i < MAX_SPOT_LIGHTS; i ++ ) {\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 lPosition = viewMatrix * vec4( spotLightPosition[ i ], 1.0 );\",\n\
+\t\t\t\t\t\t\"vec3 spotVector = lPosition.xyz + vViewPosition.xyz;\",\n\
+\n\
+\t\t\t\t\t\t\"float spotDistance = 1.0;\",\n\
+\t\t\t\t\t\t\"if ( spotLightDistance[ i ] > 0.0 )\",\n\
+\t\t\t\t\t\t\t\"spotDistance = 1.0 - min( ( length( spotVector ) / spotLightDistance[ i ] ), 1.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"spotVector = normalize( spotVector );\",\n\
+\n\
+\t\t\t\t\t\t\"float spotEffect = dot( spotLightDirection[ i ], normalize( spotLightPosition[ i ] - vWorldPosition ) );\",\n\
+\n\
+\t\t\t\t\t\t\"if ( spotEffect > spotLightAngleCos[ i ] ) {\",\n\
+\n\
+\t\t\t\t\t\t\t\"spotEffect = max( pow( spotEffect, spotLightExponent[ i ] ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\t// diffuse\n\
+\n\
+\t\t\t\t\t\t\t\"#ifdef WRAP_AROUND\",\n\
+\n\
+\t\t\t\t\t\t\t\t\"float spotDiffuseWeightFull = max( dot( normal, spotVector ), 0.0 );\",\n\
+\t\t\t\t\t\t\t\t\"float spotDiffuseWeightHalf = max( 0.5 * dot( normal, spotVector ) + 0.5, 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\t\t\"vec3 spotDiffuseWeight = mix( vec3 ( spotDiffuseWeightFull ), vec3( spotDiffuseWeightHalf ), wrapRGB );\",\n\
+\n\
+\t\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\t\"float spotDiffuseWeight = max( dot( normal, spotVector ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\t\t\"spotDiffuse += spotDistance * spotLightColor[ i ] * uDiffuseColor * spotDiffuseWeight * spotEffect;\",\n\
+\n\
+\t\t\t\t\t\t\t// specular\n\
+\n\
+\t\t\t\t\t\t\t\"vec3 spotHalfVector = normalize( spotVector + viewPosition );\",\n\
+\t\t\t\t\t\t\t\"float spotDotNormalHalf = max( dot( normal, spotHalfVector ), 0.0 );\",\n\
+\t\t\t\t\t\t\t\"float spotSpecularWeight = specularTex.r * max( pow( spotDotNormalHalf, uShininess ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
+\n\
+\t\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
+\n\
+\t\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
+\n\
+\t\t\t\t\t\t\t\t\"vec3 schlick = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( spotVector, spotHalfVector ), 5.0 );\",\n\
+\t\t\t\t\t\t\t\t\"spotSpecular += schlick * spotLightColor[ i ] * spotSpecularWeight * spotDiffuseWeight * spotDistance * specularNormalization * spotEffect;\",\n\
+\n\
+\t\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\t\"spotSpecular += spotDistance * spotLightColor[ i ] * uSpecularColor * spotSpecularWeight * spotDiffuseWeight * spotEffect;\",\n\
+\n\
+\t\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t// directional lights\n\
+\n\
+\t\t\t\t\"#if MAX_DIR_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"vec3 dirDiffuse = vec3( 0.0 );\",\n\
+\t\t\t\t\t\"vec3 dirSpecular = vec3( 0.0 );\",\n\
+\n\
+\t\t\t\t\t\"for( int i = 0; i < MAX_DIR_LIGHTS; i++ ) {\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 lDirection = viewMatrix * vec4( directionalLightDirection[ i ], 0.0 );\",\n\
+\t\t\t\t\t\t\"vec3 dirVector = normalize( lDirection.xyz );\",\n\
+\n\
+\t\t\t\t\t\t// diffuse\n\
+\n\
+\t\t\t\t\t\t\"#ifdef WRAP_AROUND\",\n\
+\n\
+\t\t\t\t\t\t\t\"float directionalLightWeightingFull = max( dot( normal, dirVector ), 0.0 );\",\n\
+\t\t\t\t\t\t\t\"float directionalLightWeightingHalf = max( 0.5 * dot( normal, dirVector ) + 0.5, 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\t\"vec3 dirDiffuseWeight = mix( vec3( directionalLightWeightingFull ), vec3( directionalLightWeightingHalf ), wrapRGB );\",\n\
+\n\
+\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\"float dirDiffuseWeight = max( dot( normal, dirVector ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\t\"dirDiffuse += directionalLightColor[ i ] * uDiffuseColor * dirDiffuseWeight;\",\n\
+\n\
+\t\t\t\t\t\t// specular\n\
+\n\
+\t\t\t\t\t\t\"vec3 dirHalfVector = normalize( dirVector + viewPosition );\",\n\
+\t\t\t\t\t\t\"float dirDotNormalHalf = max( dot( normal, dirHalfVector ), 0.0 );\",\n\
+\t\t\t\t\t\t\"float dirSpecularWeight = specularTex.r * max( pow( dirDotNormalHalf, uShininess ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
+\n\
+\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
+\n\
+\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
+\n\
+\t\t\t\t\t\t\t\"vec3 schlick = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( dirVector, dirHalfVector ), 5.0 );\",\n\
+\t\t\t\t\t\t\t\"dirSpecular += schlick * directionalLightColor[ i ] * dirSpecularWeight * dirDiffuseWeight * specularNormalization;\",\n\
+\n\
+\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\"dirSpecular += directionalLightColor[ i ] * uSpecularColor * dirSpecularWeight * dirDiffuseWeight;\",\n\
+\n\
+\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t// hemisphere lights\n\
+\n\
+\t\t\t\t\"#if MAX_HEMI_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"vec3 hemiDiffuse  = vec3( 0.0 );\",\n\
+\t\t\t\t\t\"vec3 hemiSpecular = vec3( 0.0 );\" ,\n\
+\n\
+\t\t\t\t\t\"for( int i = 0; i < MAX_HEMI_LIGHTS; i ++ ) {\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 lDirection = viewMatrix * vec4( hemisphereLightDirection[ i ], 0.0 );\",\n\
+\t\t\t\t\t\t\"vec3 lVector = normalize( lDirection.xyz );\",\n\
+\n\
+\t\t\t\t\t\t// diffuse\n\
+\n\
+\t\t\t\t\t\t\"float dotProduct = dot( normal, lVector );\",\n\
+\t\t\t\t\t\t\"float hemiDiffuseWeight = 0.5 * dotProduct + 0.5;\",\n\
+\n\
+\t\t\t\t\t\t\"vec3 hemiColor = mix( hemisphereLightGroundColor[ i ], hemisphereLightSkyColor[ i ], hemiDiffuseWeight );\",\n\
+\n\
+\t\t\t\t\t\t\"hemiDiffuse += uDiffuseColor * hemiColor;\",\n\
+\n\
+\t\t\t\t\t\t// specular (sky light)\n\
+\n\
+\n\
+\t\t\t\t\t\t\"vec3 hemiHalfVectorSky = normalize( lVector + viewPosition );\",\n\
+\t\t\t\t\t\t\"float hemiDotNormalHalfSky = 0.5 * dot( normal, hemiHalfVectorSky ) + 0.5;\",\n\
+\t\t\t\t\t\t\"float hemiSpecularWeightSky = specularTex.r * max( pow( hemiDotNormalHalfSky, uShininess ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t// specular (ground light)\n\
+\n\
+\t\t\t\t\t\t\"vec3 lVectorGround = -lVector;\",\n\
+\n\
+\t\t\t\t\t\t\"vec3 hemiHalfVectorGround = normalize( lVectorGround + viewPosition );\",\n\
+\t\t\t\t\t\t\"float hemiDotNormalHalfGround = 0.5 * dot( normal, hemiHalfVectorGround ) + 0.5;\",\n\
+\t\t\t\t\t\t\"float hemiSpecularWeightGround = specularTex.r * max( pow( hemiDotNormalHalfGround, uShininess ), 0.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
+\n\
+\t\t\t\t\t\t\t\"float dotProductGround = dot( normal, lVectorGround );\",\n\
+\n\
+\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
+\n\
+\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
+\n\
+\t\t\t\t\t\t\t\"vec3 schlickSky = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( lVector, hemiHalfVectorSky ), 5.0 );\",\n\
+\t\t\t\t\t\t\t\"vec3 schlickGround = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( lVectorGround, hemiHalfVectorGround ), 5.0 );\",\n\
+\t\t\t\t\t\t\t\"hemiSpecular += hemiColor * specularNormalization * ( schlickSky * hemiSpecularWeightSky * max( dotProduct, 0.0 ) + schlickGround * hemiSpecularWeightGround * max( dotProductGround, 0.0 ) );\",\n\
+\n\
+\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\"hemiSpecular += uSpecularColor * hemiColor * ( hemiSpecularWeightSky + hemiSpecularWeightGround ) * hemiDiffuseWeight;\",\n\
+\n\
+\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t// all lights contribution summation\n\
+\n\
+\t\t\t\t\"vec3 totalDiffuse = vec3( 0.0 );\",\n\
+\t\t\t\t\"vec3 totalSpecular = vec3( 0.0 );\",\n\
+\n\
+\t\t\t\t\"#if MAX_DIR_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"totalDiffuse += dirDiffuse;\",\n\
+\t\t\t\t\t\"totalSpecular += dirSpecular;\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"#if MAX_HEMI_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"totalDiffuse += hemiDiffuse;\",\n\
+\t\t\t\t\t\"totalSpecular += hemiSpecular;\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"#if MAX_POINT_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"totalDiffuse += pointDiffuse;\",\n\
+\t\t\t\t\t\"totalSpecular += pointSpecular;\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"#if MAX_SPOT_LIGHTS > 0\",\n\
+\n\
+\t\t\t\t\t\"totalDiffuse += spotDiffuse;\",\n\
+\t\t\t\t\t\"totalSpecular += spotSpecular;\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"#ifdef METAL\",\n\
+\n\
+\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * ( totalDiffuse + ambientLightColor * uAmbientColor + totalSpecular );\",\n\
+\n\
+\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * ( totalDiffuse + ambientLightColor * uAmbientColor ) + totalSpecular;\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"if ( enableReflection ) {\",\n\
+\n\
+\t\t\t\t\t\"vec3 vReflect;\",\n\
+\t\t\t\t\t\"vec3 cameraToVertex = normalize( vWorldPosition - cameraPosition );\",\n\
+\n\
+\t\t\t\t\t\"if ( useRefract ) {\",\n\
+\n\
+\t\t\t\t\t\t\"vReflect = refract( cameraToVertex, normal, uRefractionRatio );\",\n\
+\n\
+\t\t\t\t\t\"} else {\",\n\
+\n\
+\t\t\t\t\t\t\"vReflect = reflect( cameraToVertex, normal );\",\n\
+\n\
+\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\t\"vec4 cubeColor = textureCube( tCube, vec3( -vReflect.x, vReflect.yz ) );\",\n\
+\n\
+\t\t\t\t\t\"#ifdef GAMMA_INPUT\",\n\
+\n\
+\t\t\t\t\t\t\"cubeColor.xyz *= cubeColor.xyz;\",\n\
+\n\
+\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\"gl_FragColor.xyz = mix( gl_FragColor.xyz, cubeColor.xyz, specularTex.r * uReflectivity );\",\n\
+\n\
+\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\tTHREE.ShaderChunk[ \"shadowmap_fragment\" ],\n\
+\t\t\t\tTHREE.ShaderChunk[ \"linear_to_gamma_fragment\" ],\n\
+\t\t\t\tTHREE.ShaderChunk[ \"fog_fragment\" ],\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\"),\n\
+\n\
+\t\tvertexShader: [\n\
+\n\
+\t\t\t\"attribute vec4 tangent;\",\n\
+\n\
+\t\t\t\"uniform vec2 uOffset;\",\n\
+\t\t\t\"uniform vec2 uRepeat;\",\n\
+\n\
+\t\t\t\"uniform bool enableDisplacement;\",\n\
+\n\
+\t\t\t\"#ifdef VERTEX_TEXTURES\",\n\
+\n\
+\t\t\t\t\"uniform sampler2D tDisplacement;\",\n\
+\t\t\t\t\"uniform float uDisplacementScale;\",\n\
+\t\t\t\t\"uniform float uDisplacementBias;\",\n\
+\n\
+\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\"varying vec3 vTangent;\",\n\
+\t\t\t\"varying vec3 vBinormal;\",\n\
+\t\t\t\"varying vec3 vNormal;\",\n\
+\t\t\t\"varying vec2 vUv;\",\n\
+\n\
+\t\t\t\"varying vec3 vWorldPosition;\",\n\
+\t\t\t\"varying vec3 vViewPosition;\",\n\
+\n\
+\t\t\tTHREE.ShaderChunk[ \"skinning_pars_vertex\" ],\n\
+\t\t\tTHREE.ShaderChunk[ \"shadowmap_pars_vertex\" ],\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\tTHREE.ShaderChunk[ \"skinbase_vertex\" ],\n\
+\t\t\t\tTHREE.ShaderChunk[ \"skinnormal_vertex\" ],\n\
+\n\
+\t\t\t\t// normal, tangent and binormal vectors\n\
+\n\
+\t\t\t\t\"#ifdef USE_SKINNING\",\n\
+\n\
+\t\t\t\t\t\"vNormal = normalize( normalMatrix * skinnedNormal.xyz );\",\n\
+\n\
+\t\t\t\t\t\"vec4 skinnedTangent = skinMatrix * vec4( tangent.xyz, 0.0 );\",\n\
+\t\t\t\t\t\"vTangent = normalize( normalMatrix * skinnedTangent.xyz );\",\n\
+\n\
+\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\"vNormal = normalize( normalMatrix * normal );\",\n\
+\t\t\t\t\t\"vTangent = normalize( normalMatrix * tangent.xyz );\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"vBinormal = normalize( cross( vNormal, vTangent ) * tangent.w );\",\n\
+\n\
+\t\t\t\t\"vUv = uv * uRepeat + uOffset;\",\n\
+\n\
+\t\t\t\t// displacement mapping\n\
+\n\
+\t\t\t\t\"vec3 displacedPosition;\",\n\
+\n\
+\t\t\t\t\"#ifdef VERTEX_TEXTURES\",\n\
+\n\
+\t\t\t\t\t\"if ( enableDisplacement ) {\",\n\
+\n\
+\t\t\t\t\t\t\"vec3 dv = texture2D( tDisplacement, uv ).xyz;\",\n\
+\t\t\t\t\t\t\"float df = uDisplacementScale * dv.x + uDisplacementBias;\",\n\
+\t\t\t\t\t\t\"displacedPosition = position + normalize( normal ) * df;\",\n\
+\n\
+\t\t\t\t\t\"} else {\",\n\
+\n\
+\t\t\t\t\t\t\"#ifdef USE_SKINNING\",\n\
+\n\
+\t\t\t\t\t\t\t\"vec4 skinVertex = vec4( position, 1.0 );\",\n\
+\n\
+\t\t\t\t\t\t\t\"vec4 skinned  = boneMatX * skinVertex * skinWeight.x;\",\n\
+\t\t\t\t\t\t\t\"skinned \t  += boneMatY * skinVertex * skinWeight.y;\",\n\
+\n\
+\t\t\t\t\t\t\t\"displacedPosition  = skinned.xyz;\",\n\
+\n\
+\t\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\t\"displacedPosition = position;\",\n\
+\n\
+\t\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\"#ifdef USE_SKINNING\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 skinVertex = vec4( position, 1.0 );\",\n\
+\n\
+\t\t\t\t\t\t\"vec4 skinned  = boneMatX * skinVertex * skinWeight.x;\",\n\
+\t\t\t\t\t\t\"skinned \t  += boneMatY * skinVertex * skinWeight.y;\",\n\
+\n\
+\t\t\t\t\t\t\"displacedPosition  = skinned.xyz;\",\n\
+\n\
+\t\t\t\t\t\"#else\",\n\
+\n\
+\t\t\t\t\t\t\"displacedPosition = position;\",\n\
+\n\
+\t\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\t//\n\
+\n\
+\t\t\t\t\"vec4 mvPosition = modelViewMatrix * vec4( displacedPosition, 1.0 );\",\n\
+\t\t\t\t\"vec4 worldPosition = modelMatrix * vec4( displacedPosition, 1.0 );\",\n\
+\n\
+\t\t\t\t\"gl_Position = projectionMatrix * mvPosition;\",\n\
+\n\
+\t\t\t\t//\n\
+\n\
+\t\t\t\t\"vWorldPosition = worldPosition.xyz;\",\n\
+\t\t\t\t\"vViewPosition = -mvPosition.xyz;\",\n\
+\n\
+\t\t\t\t// shadows\n\
+\n\
+\t\t\t\t\"#ifdef USE_SHADOWMAP\",\n\
+\n\
+\t\t\t\t\t\"for( int i = 0; i < MAX_SHADOWS; i ++ ) {\",\n\
+\n\
+\t\t\t\t\t\t\"vShadowCoord[ i ] = shadowMatrix[ i ] * worldPosition;\",\n\
+\n\
+\t\t\t\t\t\"}\",\n\
+\n\
+\t\t\t\t\"#endif\",\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\")\n\
+\n\
+\t},\n\
+\n\
+\t/* -------------------------------------------------------------------------\n\
+\t//\tCube map shader\n\
+\t ------------------------------------------------------------------------- */\n\
+\n\
+\t'cube': {\n\
+\n\
+\t\tuniforms: { \"tCube\": { type: \"t\", value: null },\n\
+\t\t\t\t\t\"tFlip\": { type: \"f\", value: -1 } },\n\
+\n\
+\t\tvertexShader: [\n\
+\n\
+\t\t\t\"varying vec3 vWorldPosition;\",\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\t\"vec4 worldPosition = modelMatrix * vec4( position, 1.0 );\",\n\
+\t\t\t\t\"vWorldPosition = worldPosition.xyz;\",\n\
+\n\
+\t\t\t\t\"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\",\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\"),\n\
+\n\
+\t\tfragmentShader: [\n\
+\n\
+\t\t\t\"uniform samplerCube tCube;\",\n\
+\t\t\t\"uniform float tFlip;\",\n\
+\n\
+\t\t\t\"varying vec3 vWorldPosition;\",\n\
+\n\
+\t\t\t\"void main() {\",\n\
+\n\
+\t\t\t\t\"gl_FragColor = textureCube( tCube, vec3( tFlip * vWorldPosition.x, vWorldPosition.yz ) );\",\n\
+\n\
+\t\t\t\"}\"\n\
+\n\
+\t\t].join(\"\\n\
+\")\n\
+\n\
+\t},\n\
+\n\
 \t// Depth encoding into RGBA texture\n\
 \t// \tbased on SpiderGL shadow map example\n\
 \t// \t\thttp://spidergl.org/example.php?id=6\n\
@@ -20845,6 +23292,7 @@ THREE.ShaderLib = {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author supereggbert / http://www.paulbrunt.co.uk/\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -20868,8 +23316,22 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t_stencil = parameters.stencil !== undefined ? parameters.stencil : true,\n\
 \t_preserveDrawingBuffer = parameters.preserveDrawingBuffer !== undefined ? parameters.preserveDrawingBuffer : false,\n\
 \n\
-\t_clearColor = parameters.clearColor !== undefined ? new THREE.Color( parameters.clearColor ) : new THREE.Color( 0x000000 ),\n\
-\t_clearAlpha = parameters.clearAlpha !== undefined ? parameters.clearAlpha : 0;\n\
+\t_clearColor = new THREE.Color( 0x000000 ),\n\
+\t_clearAlpha = 0;\n\
+\n\
+\tif ( parameters.clearColor !== undefined ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: clearColor in WebGLRenderer constructor parameters is being removed. Use .setClearColor() instead.' );\n\
+\t\t_clearColor.setHex( parameters.clearColor );\n\
+\n\
+\t}\n\
+\n\
+\tif ( parameters.clearAlpha !== undefined ) {\n\
+\n\
+\t\tconsole.warn( 'DEPRECATED: clearAlpha in WebGLRenderer constructor parameters is being removed. Use .setClearColor() instead.' );\n\
+\t\t_clearAlpha = parameters.clearAlpha;\n\
+\n\
+\t}\n\
 \n\
 \t// public properties\n\
 \n\
@@ -20891,9 +23353,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t// scene graph\n\
 \n\
 \tthis.sortObjects = true;\n\
-\n\
 \tthis.autoUpdateObjects = true;\n\
-\tthis.autoUpdateScene = true;\n\
 \n\
 \t// physically based shading\n\
 \n\
@@ -21026,6 +23486,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \tvar _gl;\n\
 \n\
 \tvar _glExtensionTextureFloat;\n\
+\tvar _glExtensionTextureFloatLinear;\n\
 \tvar _glExtensionStandardDerivatives;\n\
 \tvar _glExtensionTextureFilterAnisotropic;\n\
 \tvar _glExtensionCompressedTextureS3TC;\n\
@@ -21110,19 +23571,47 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
+\tthis.supportsFloatTextures = function () {\n\
+\n\
+\t\treturn _glExtensionTextureFloat;\n\
+\n\
+\t};\n\
+\n\
+\tthis.supportsStandardDerivatives = function () {\n\
+\n\
+\t\treturn _glExtensionStandardDerivatives;\n\
+\n\
+\t};\n\
+\n\
+\tthis.supportsCompressedTextureS3TC = function () {\n\
+\n\
+\t\treturn _glExtensionCompressedTextureS3TC;\n\
+\n\
+\t};\n\
+\n\
 \tthis.getMaxAnisotropy  = function () {\n\
 \n\
 \t\treturn _maxAnisotropy;\n\
 \n\
 \t};\n\
 \n\
-\tthis.setSize = function ( width, height ) {\n\
+\tthis.getPrecision = function () {\n\
+\n\
+\t\treturn _precision;\n\
+\n\
+\t};\n\
+\n\
+\tthis.setSize = function ( width, height, updateStyle ) {\n\
 \n\
 \t\t_canvas.width = width * this.devicePixelRatio;\n\
 \t\t_canvas.height = height * this.devicePixelRatio;\n\
 \n\
-\t\t_canvas.style.width = width + 'px';\n\
-\t\t_canvas.style.height = height + 'px';\n\
+\t\tif ( this.devicePixelRatio !== 1 && updateStyle !== false ) {\n\
+\n\
+\t\t\t_canvas.style.width = width + 'px';\n\
+\t\t\t_canvas.style.height = height + 'px';\n\
+\n\
+\t\t}\n\
 \n\
 \t\tthis.setViewport( 0, 0, _canvas.width, _canvas.height );\n\
 \n\
@@ -21154,21 +23643,19 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Clearing\n\
 \n\
-\tthis.setClearColorHex = function ( hex, alpha ) {\n\
+\tthis.setClearColor = function ( color, alpha ) {\n\
 \n\
-\t\t_clearColor.setHex( hex );\n\
-\t\t_clearAlpha = alpha;\n\
+\t\t_clearColor.set( color );\n\
+\t\t_clearAlpha = alpha !== undefined ? alpha : 1;\n\
 \n\
 \t\t_gl.clearColor( _clearColor.r, _clearColor.g, _clearColor.b, _clearAlpha );\n\
 \n\
 \t};\n\
 \n\
-\tthis.setClearColor = function ( color, alpha ) {\n\
+\tthis.setClearColorHex = function ( hex, alpha ) {\n\
 \n\
-\t\t_clearColor.copy( color );\n\
-\t\t_clearAlpha = alpha;\n\
-\n\
-\t\t_gl.clearColor( _clearColor.r, _clearColor.g, _clearColor.b, _clearAlpha );\n\
+\t\tconsole.warn( 'DEPRECATED: .setClearColorHex() is being removed. Use .setClearColor() instead.' );\n\
+\t\tthis.setClearColor( hex, alpha );\n\
 \n\
 \t};\n\
 \n\
@@ -21325,8 +23812,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tdeallocateGeometry( geometry );\n\
 \n\
-\t\t_this.info.memory.geometries --;\n\
-\n\
 \t};\n\
 \n\
 \tvar onTextureDispose = function ( event ) {\n\
@@ -21366,9 +23851,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Buffer deallocation\n\
 \n\
-\tvar deallocateGeometry = function ( geometry ) {\n\
-\n\
-\t\tgeometry.__webglInit = undefined;\n\
+\tvar deleteBuffers = function ( geometry ) {\n\
 \n\
 \t\tif ( geometry.__webglVertexBuffer !== undefined ) _gl.deleteBuffer( geometry.__webglVertexBuffer );\n\
 \t\tif ( geometry.__webglNormalBuffer !== undefined ) _gl.deleteBuffer( geometry.__webglNormalBuffer );\n\
@@ -21384,42 +23867,81 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\tif ( geometry.__webglLineBuffer !== undefined ) _gl.deleteBuffer( geometry.__webglLineBuffer );\n\
 \n\
 \t\tif ( geometry.__webglLineDistanceBuffer !== undefined ) _gl.deleteBuffer( geometry.__webglLineDistanceBuffer );\n\
+\t\t// custom attributes\n\
 \n\
-\t\t// geometry groups\n\
+\t\tif ( geometry.__webglCustomAttributesList !== undefined ) {\n\
 \n\
-\t\tif ( geometry.geometryGroups !== undefined ) {\n\
+\t\t\tfor ( var id in geometry.__webglCustomAttributesList ) {\n\
 \n\
-\t\t\tfor ( var g in geometry.geometryGroups ) {\n\
-\n\
-\t\t\t\tvar geometryGroup = geometry.geometryGroups[ g ];\n\
-\n\
-\t\t\t\tif ( geometryGroup.numMorphTargets !== undefined ) {\n\
-\n\
-\t\t\t\t\tfor ( var m = 0, ml = geometryGroup.numMorphTargets; m < ml; m ++ ) {\n\
-\n\
-\t\t\t\t\t\t_gl.deleteBuffer( geometryGroup.__webglMorphTargetsBuffers[ m ] );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tif ( geometryGroup.numMorphNormals !== undefined ) {\n\
-\n\
-\t\t\t\t\tfor ( var m = 0, ml = geometryGroup.numMorphNormals; m < ml; m ++ ) {\n\
-\n\
-\t\t\t\t\t\t_gl.deleteBuffer( geometryGroup.__webglMorphNormalsBuffers[ m ] );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tdeleteCustomAttributesBuffers( geometryGroup );\n\
+\t\t\t\t_gl.deleteBuffer( geometry.__webglCustomAttributesList[ id ].buffer );\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t\tdeleteCustomAttributesBuffers( geometry );\n\
+\t\t_this.info.memory.geometries --;\n\
+\n\
+\t};\n\
+\n\
+\tvar deallocateGeometry = function ( geometry ) {\n\
+\n\
+\t\tgeometry.__webglInit = undefined;\n\
+\n\
+\t\tif ( geometry instanceof THREE.BufferGeometry ) {\n\
+\n\
+\t\t\tvar attributes = geometry.attributes;\n\
+\n\
+\t\t\tfor ( var key in attributes ) {\n\
+\n\
+\t\t\t\tif ( attributes[ key ].buffer !== undefined ) {\n\
+\n\
+\t\t\t\t\t_gl.deleteBuffer( attributes[ key ].buffer );\n\
+\t\t\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\t_this.info.memory.geometries --;\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\tif ( geometry.geometryGroups !== undefined ) {\n\
+\n\
+\t\t\t\tfor ( var g in geometry.geometryGroups ) {\n\
+\n\
+\t\t\t\t\tvar geometryGroup = geometry.geometryGroups[ g ];\n\
+\n\
+\t\t\t\t\tif ( geometryGroup.numMorphTargets !== undefined ) {\n\
+\n\
+\t\t\t\t\t\tfor ( var m = 0, ml = geometryGroup.numMorphTargets; m < ml; m ++ ) {\n\
+\n\
+\t\t\t\t\t\t\t_gl.deleteBuffer( geometryGroup.__webglMorphTargetsBuffers[ m ] );\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\tif ( geometryGroup.numMorphNormals !== undefined ) {\n\
+\n\
+\t\t\t\t\t\tfor ( var m = 0, ml = geometryGroup.numMorphNormals; m < ml; m ++ ) {\n\
+\n\
+\t\t\t\t\t\t\t_gl.deleteBuffer( geometryGroup.__webglMorphNormalsBuffers[ m ] );\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\tdeleteBuffers( geometryGroup );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tdeleteBuffers( geometry );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
 \n\
 \t};\n\
 \n\
@@ -21531,102 +24053,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\t//\n\
-\n\
-\t/*\n\
-\tfunction deleteParticleBuffers ( geometry ) {\n\
-\n\
-\t\t_gl.deleteBuffer( geometry.__webglVertexBuffer );\n\
-\t\t_gl.deleteBuffer( geometry.__webglColorBuffer );\n\
-\n\
-\t\tdeleteCustomAttributesBuffers( geometry );\n\
-\n\
-\t\t_this.info.memory.geometries --;\n\
-\n\
-\t};\n\
-\n\
-\tfunction deleteLineBuffers ( geometry ) {\n\
-\n\
-\t\t_gl.deleteBuffer( geometry.__webglVertexBuffer );\n\
-\t\t_gl.deleteBuffer( geometry.__webglColorBuffer );\n\
-\t\t_gl.deleteBuffer( geometry.__webglLineDistanceBuffer );\n\
-\n\
-\t\tdeleteCustomAttributesBuffers( geometry );\n\
-\n\
-\t\t_this.info.memory.geometries --;\n\
-\n\
-\t};\n\
-\n\
-\tfunction deleteRibbonBuffers ( geometry ) {\n\
-\n\
-\t\t_gl.deleteBuffer( geometry.__webglVertexBuffer );\n\
-\t\t_gl.deleteBuffer( geometry.__webglColorBuffer );\n\
-\t\t_gl.deleteBuffer( geometry.__webglNormalBuffer );\n\
-\n\
-\t\tdeleteCustomAttributesBuffers( geometry );\n\
-\n\
-\t\t_this.info.memory.geometries --;\n\
-\n\
-\t};\n\
-\n\
-\tfunction deleteMeshBuffers ( geometryGroup ) {\n\
-\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglVertexBuffer );\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglNormalBuffer );\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglTangentBuffer );\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglColorBuffer );\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglUVBuffer );\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglUV2Buffer );\n\
-\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglSkinIndicesBuffer );\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglSkinWeightsBuffer );\n\
-\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglFaceBuffer );\n\
-\t\t_gl.deleteBuffer( geometryGroup.__webglLineBuffer );\n\
-\n\
-\t\tvar m, ml;\n\
-\n\
-\t\tif ( geometryGroup.numMorphTargets ) {\n\
-\n\
-\t\t\tfor ( m = 0, ml = geometryGroup.numMorphTargets; m < ml; m ++ ) {\n\
-\n\
-\t\t\t\t_gl.deleteBuffer( geometryGroup.__webglMorphTargetsBuffers[ m ] );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( geometryGroup.numMorphNormals ) {\n\
-\n\
-\t\t\tfor ( m = 0, ml = geometryGroup.numMorphNormals; m < ml; m ++ ) {\n\
-\n\
-\t\t\t\t_gl.deleteBuffer( geometryGroup.__webglMorphNormalsBuffers[ m ] );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t\tdeleteCustomAttributesBuffers( geometryGroup );\n\
-\n\
-\t\t_this.info.memory.geometries --;\n\
-\n\
-\t};\n\
-\t*/\n\
-\n\
-\tfunction deleteCustomAttributesBuffers( geometry ) {\n\
-\n\
-\t\tif ( geometry.__webglCustomAttributesList ) {\n\
-\n\
-\t\t\tfor ( var id in geometry.__webglCustomAttributesList ) {\n\
-\n\
-\t\t\t\t_gl.deleteBuffer( geometry.__webglCustomAttributesList[ id ].buffer );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t};\n\
-\n\
 \t// Buffer initialization\n\
 \n\
 \tfunction initCustomAttributes ( geometry, object ) {\n\
@@ -21724,11 +24150,10 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tvar geometry = object.geometry,\n\
 \t\t\tfaces3 = geometryGroup.faces3,\n\
-\t\t\tfaces4 = geometryGroup.faces4,\n\
 \n\
-\t\t\tnvertices = faces3.length * 3 + faces4.length * 4,\n\
-\t\t\tntris     = faces3.length * 1 + faces4.length * 2,\n\
-\t\t\tnlines    = faces3.length * 3 + faces4.length * 4,\n\
+\t\t\tnvertices = faces3.length * 3,\n\
+\t\t\tntris     = faces3.length * 1,\n\
+\t\t\tnlines    = faces3.length * 3,\n\
 \n\
 \t\t\tmaterial = getBufferMaterial( object, geometryGroup ),\n\
 \n\
@@ -21736,7 +24161,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\tnormalType = bufferGuessNormalType( material ),\n\
 \t\t\tvertexColorType = bufferGuessVertexColorType( material );\n\
 \n\
-\t\t//console.log( \"uvType\", uvType, \"normalType\", normalType, \"vertexColorType\", vertexColorType, object, geometryGroup, material );\n\
+\t\t// console.log( \"uvType\", uvType, \"normalType\", normalType, \"vertexColorType\", vertexColorType, object, geometryGroup, material );\n\
 \n\
 \t\tgeometryGroup.__vertexArray = new Float32Array( nvertices * 3 );\n\
 \n\
@@ -21760,13 +24185,13 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tif ( uvType ) {\n\
 \n\
-\t\t\tif ( geometry.faceUvs.length > 0 || geometry.faceVertexUvs.length > 0 ) {\n\
+\t\t\tif ( geometry.faceVertexUvs.length > 0 ) {\n\
 \n\
 \t\t\t\tgeometryGroup.__uvArray = new Float32Array( nvertices * 2 );\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tif ( geometry.faceUvs.length > 1 || geometry.faceVertexUvs.length > 1 ) {\n\
+\t\t\tif ( geometry.faceVertexUvs.length > 1 ) {\n\
 \n\
 \t\t\t\tgeometryGroup.__uv2Array = new Float32Array( nvertices * 2 );\n\
 \n\
@@ -21908,7 +24333,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction bufferGuessVertexColorType ( material ) {\n\
+\tfunction bufferGuessVertexColorType( material ) {\n\
 \n\
 \t\tif ( material.vertexColors ) {\n\
 \n\
@@ -21920,11 +24345,16 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction bufferGuessUVType ( material ) {\n\
+\tfunction bufferGuessUVType( material ) {\n\
 \n\
 \t\t// material must use some texture to require uvs\n\
 \n\
-\t\tif ( material.map || material.lightMap || material.bumpMap || material.normalMap || material.specularMap || material instanceof THREE.ShaderMaterial ) {\n\
+\t\tif ( material.map ||\n\
+\t\t     material.lightMap ||\n\
+\t\t     material.bumpMap ||\n\
+\t\t     material.normalMap ||\n\
+\t\t     material.specularMap ||\n\
+\t\t     material instanceof THREE.ShaderMaterial ) {\n\
 \n\
 \t\t\treturn true;\n\
 \n\
@@ -21953,6 +24383,12 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t}\n\
 \n\
 \t\t\tattribute = geometry.attributes[ a ];\n\
+\n\
+\t\t\tif ( attribute.numItems === undefined ) {\n\
+\n\
+\t\t\t\tattribute.numItems = attribute.array.length;\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t\tattribute.buffer = _gl.createBuffer();\n\
 \n\
@@ -21992,14 +24428,14 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\tif ( object.sortParticles ) {\n\
 \n\
 \t\t\t_projScreenMatrixPS.copy( _projScreenMatrix );\n\
-\t\t\t_projScreenMatrixPS.multiplySelf( object.matrixWorld );\n\
+\t\t\t_projScreenMatrixPS.multiply( object.matrixWorld );\n\
 \n\
 \t\t\tfor ( v = 0; v < vl; v ++ ) {\n\
 \n\
 \t\t\t\tvertex = vertices[ v ];\n\
 \n\
 \t\t\t\t_vector3.copy( vertex );\n\
-\t\t\t\t_projScreenMatrixPS.multiplyVector3( _vector3 );\n\
+\t\t\t\t_vector3.applyProjection( _projScreenMatrixPS );\n\
 \n\
 \t\t\t\tsortArray[ v ] = [ _vector3.z, v ];\n\
 \n\
@@ -22713,7 +25149,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tvertices = geometry.vertices,\n\
 \t\tchunk_faces3 = geometryGroup.faces3,\n\
-\t\tchunk_faces4 = geometryGroup.faces4,\n\
 \t\tobj_faces = geometry.faces,\n\
 \n\
 \t\tobj_uvs  = geometry.faceVertexUvs[ 0 ],\n\
@@ -22750,35 +25185,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\tvertexArray[ offset + 8 ] = v3.z;\n\
 \n\
 \t\t\t\toffset += 9;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\tv1 = vertices[ face.a ];\n\
-\t\t\t\tv2 = vertices[ face.b ];\n\
-\t\t\t\tv3 = vertices[ face.c ];\n\
-\t\t\t\tv4 = vertices[ face.d ];\n\
-\n\
-\t\t\t\tvertexArray[ offset ]     = v1.x;\n\
-\t\t\t\tvertexArray[ offset + 1 ] = v1.y;\n\
-\t\t\t\tvertexArray[ offset + 2 ] = v1.z;\n\
-\n\
-\t\t\t\tvertexArray[ offset + 3 ] = v2.x;\n\
-\t\t\t\tvertexArray[ offset + 4 ] = v2.y;\n\
-\t\t\t\tvertexArray[ offset + 5 ] = v2.z;\n\
-\n\
-\t\t\t\tvertexArray[ offset + 6 ] = v3.x;\n\
-\t\t\t\tvertexArray[ offset + 7 ] = v3.y;\n\
-\t\t\t\tvertexArray[ offset + 8 ] = v3.z;\n\
-\n\
-\t\t\t\tvertexArray[ offset + 9 ]  = v4.x;\n\
-\t\t\t\tvertexArray[ offset + 10 ] = v4.y;\n\
-\t\t\t\tvertexArray[ offset + 11 ] = v4.z;\n\
-\n\
-\t\t\t\toffset += 12;\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -22860,84 +25266,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\tchf = chunk_faces4[ f ];\n\
-\t\t\t\t\tface = obj_faces[ chf ];\n\
-\n\
-\t\t\t\t\t// morph positions\n\
-\n\
-\t\t\t\t\tv1 = morphTargets[ vk ].vertices[ face.a ];\n\
-\t\t\t\t\tv2 = morphTargets[ vk ].vertices[ face.b ];\n\
-\t\t\t\t\tv3 = morphTargets[ vk ].vertices[ face.c ];\n\
-\t\t\t\t\tv4 = morphTargets[ vk ].vertices[ face.d ];\n\
-\n\
-\t\t\t\t\tvka = morphTargetsArrays[ vk ];\n\
-\n\
-\t\t\t\t\tvka[ offset_morphTarget ] \t  = v1.x;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 1 ] = v1.y;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 2 ] = v1.z;\n\
-\n\
-\t\t\t\t\tvka[ offset_morphTarget + 3 ] = v2.x;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 4 ] = v2.y;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 5 ] = v2.z;\n\
-\n\
-\t\t\t\t\tvka[ offset_morphTarget + 6 ] = v3.x;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 7 ] = v3.y;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 8 ] = v3.z;\n\
-\n\
-\t\t\t\t\tvka[ offset_morphTarget + 9 ]  = v4.x;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 10 ] = v4.y;\n\
-\t\t\t\t\tvka[ offset_morphTarget + 11 ] = v4.z;\n\
-\n\
-\t\t\t\t\t// morph normals\n\
-\n\
-\t\t\t\t\tif ( material.morphNormals ) {\n\
-\n\
-\t\t\t\t\t\tif ( needsSmoothNormals ) {\n\
-\n\
-\t\t\t\t\t\t\tfaceVertexNormals = morphNormals[ vk ].vertexNormals[ chf ];\n\
-\n\
-\t\t\t\t\t\t\tn1 = faceVertexNormals.a;\n\
-\t\t\t\t\t\t\tn2 = faceVertexNormals.b;\n\
-\t\t\t\t\t\t\tn3 = faceVertexNormals.c;\n\
-\t\t\t\t\t\t\tn4 = faceVertexNormals.d;\n\
-\n\
-\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\tn1 = morphNormals[ vk ].faceNormals[ chf ];\n\
-\t\t\t\t\t\t\tn2 = n1;\n\
-\t\t\t\t\t\t\tn3 = n1;\n\
-\t\t\t\t\t\t\tn4 = n1;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tnka = morphNormalsArrays[ vk ];\n\
-\n\
-\t\t\t\t\t\tnka[ offset_morphTarget ] \t  = n1.x;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 1 ] = n1.y;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 2 ] = n1.z;\n\
-\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 3 ] = n2.x;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 4 ] = n2.y;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 5 ] = n2.z;\n\
-\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 6 ] = n3.x;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 7 ] = n3.y;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 8 ] = n3.z;\n\
-\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 9 ]  = n4.x;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 10 ] = n4.y;\n\
-\t\t\t\t\t\tnka[ offset_morphTarget + 11 ] = n4.z;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t//\n\
-\n\
-\t\t\t\t\toffset_morphTarget += 12;\n\
-\n\
-\t\t\t\t}\n\
-\n\
 \t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglMorphTargetsBuffers[ vk ] );\n\
 \t\t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, morphTargetsArrays[ vk ], hint );\n\
 \n\
@@ -23004,68 +25332,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t// weights\n\
-\n\
-\t\t\t\tsw1 = obj_skinWeights[ face.a ];\n\
-\t\t\t\tsw2 = obj_skinWeights[ face.b ];\n\
-\t\t\t\tsw3 = obj_skinWeights[ face.c ];\n\
-\t\t\t\tsw4 = obj_skinWeights[ face.d ];\n\
-\n\
-\t\t\t\tskinWeightArray[ offset_skin ]     = sw1.x;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 1 ] = sw1.y;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 2 ] = sw1.z;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 3 ] = sw1.w;\n\
-\n\
-\t\t\t\tskinWeightArray[ offset_skin + 4 ] = sw2.x;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 5 ] = sw2.y;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 6 ] = sw2.z;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 7 ] = sw2.w;\n\
-\n\
-\t\t\t\tskinWeightArray[ offset_skin + 8 ]  = sw3.x;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 9 ]  = sw3.y;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 10 ] = sw3.z;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 11 ] = sw3.w;\n\
-\n\
-\t\t\t\tskinWeightArray[ offset_skin + 12 ] = sw4.x;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 13 ] = sw4.y;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 14 ] = sw4.z;\n\
-\t\t\t\tskinWeightArray[ offset_skin + 15 ] = sw4.w;\n\
-\n\
-\t\t\t\t// indices\n\
-\n\
-\t\t\t\tsi1 = obj_skinIndices[ face.a ];\n\
-\t\t\t\tsi2 = obj_skinIndices[ face.b ];\n\
-\t\t\t\tsi3 = obj_skinIndices[ face.c ];\n\
-\t\t\t\tsi4 = obj_skinIndices[ face.d ];\n\
-\n\
-\t\t\t\tskinIndexArray[ offset_skin ]     = si1.x;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 1 ] = si1.y;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 2 ] = si1.z;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 3 ] = si1.w;\n\
-\n\
-\t\t\t\tskinIndexArray[ offset_skin + 4 ] = si2.x;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 5 ] = si2.y;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 6 ] = si2.z;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 7 ] = si2.w;\n\
-\n\
-\t\t\t\tskinIndexArray[ offset_skin + 8 ]  = si3.x;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 9 ]  = si3.y;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 10 ] = si3.z;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 11 ] = si3.w;\n\
-\n\
-\t\t\t\tskinIndexArray[ offset_skin + 12 ] = si4.x;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 13 ] = si4.y;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 14 ] = si4.z;\n\
-\t\t\t\tskinIndexArray[ offset_skin + 15 ] = si4.w;\n\
-\n\
-\t\t\t\toffset_skin += 16;\n\
-\n\
-\t\t\t}\n\
-\n\
 \t\t\tif ( offset_skin > 0 ) {\n\
 \n\
 \t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglSkinIndicesBuffer );\n\
@@ -23117,49 +25383,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\tvertexColors = face.vertexColors;\n\
-\t\t\t\tfaceColor = face.color;\n\
-\n\
-\t\t\t\tif ( vertexColors.length === 4 && vertexColorType === THREE.VertexColors ) {\n\
-\n\
-\t\t\t\t\tc1 = vertexColors[ 0 ];\n\
-\t\t\t\t\tc2 = vertexColors[ 1 ];\n\
-\t\t\t\t\tc3 = vertexColors[ 2 ];\n\
-\t\t\t\t\tc4 = vertexColors[ 3 ];\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tc1 = faceColor;\n\
-\t\t\t\t\tc2 = faceColor;\n\
-\t\t\t\t\tc3 = faceColor;\n\
-\t\t\t\t\tc4 = faceColor;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tcolorArray[ offset_color ]     = c1.r;\n\
-\t\t\t\tcolorArray[ offset_color + 1 ] = c1.g;\n\
-\t\t\t\tcolorArray[ offset_color + 2 ] = c1.b;\n\
-\n\
-\t\t\t\tcolorArray[ offset_color + 3 ] = c2.r;\n\
-\t\t\t\tcolorArray[ offset_color + 4 ] = c2.g;\n\
-\t\t\t\tcolorArray[ offset_color + 5 ] = c2.b;\n\
-\n\
-\t\t\t\tcolorArray[ offset_color + 6 ] = c3.r;\n\
-\t\t\t\tcolorArray[ offset_color + 7 ] = c3.g;\n\
-\t\t\t\tcolorArray[ offset_color + 8 ] = c3.b;\n\
-\n\
-\t\t\t\tcolorArray[ offset_color + 9 ]  = c4.r;\n\
-\t\t\t\tcolorArray[ offset_color + 10 ] = c4.g;\n\
-\t\t\t\tcolorArray[ offset_color + 11 ] = c4.b;\n\
-\n\
-\t\t\t\toffset_color += 12;\n\
-\n\
-\t\t\t}\n\
-\n\
 \t\t\tif ( offset_color > 0 ) {\n\
 \n\
 \t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglColorBuffer );\n\
@@ -23197,41 +25420,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\ttangentArray[ offset_tangent + 11 ] = t3.w;\n\
 \n\
 \t\t\t\toffset_tangent += 12;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\tvertexTangents = face.vertexTangents;\n\
-\n\
-\t\t\t\tt1 = vertexTangents[ 0 ];\n\
-\t\t\t\tt2 = vertexTangents[ 1 ];\n\
-\t\t\t\tt3 = vertexTangents[ 2 ];\n\
-\t\t\t\tt4 = vertexTangents[ 3 ];\n\
-\n\
-\t\t\t\ttangentArray[ offset_tangent ]     = t1.x;\n\
-\t\t\t\ttangentArray[ offset_tangent + 1 ] = t1.y;\n\
-\t\t\t\ttangentArray[ offset_tangent + 2 ] = t1.z;\n\
-\t\t\t\ttangentArray[ offset_tangent + 3 ] = t1.w;\n\
-\n\
-\t\t\t\ttangentArray[ offset_tangent + 4 ] = t2.x;\n\
-\t\t\t\ttangentArray[ offset_tangent + 5 ] = t2.y;\n\
-\t\t\t\ttangentArray[ offset_tangent + 6 ] = t2.z;\n\
-\t\t\t\ttangentArray[ offset_tangent + 7 ] = t2.w;\n\
-\n\
-\t\t\t\ttangentArray[ offset_tangent + 8 ]  = t3.x;\n\
-\t\t\t\ttangentArray[ offset_tangent + 9 ]  = t3.y;\n\
-\t\t\t\ttangentArray[ offset_tangent + 10 ] = t3.z;\n\
-\t\t\t\ttangentArray[ offset_tangent + 11 ] = t3.w;\n\
-\n\
-\t\t\t\ttangentArray[ offset_tangent + 12 ] = t4.x;\n\
-\t\t\t\ttangentArray[ offset_tangent + 13 ] = t4.y;\n\
-\t\t\t\ttangentArray[ offset_tangent + 14 ] = t4.z;\n\
-\t\t\t\ttangentArray[ offset_tangent + 15 ] = t4.w;\n\
-\n\
-\t\t\t\toffset_tangent += 16;\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -23279,43 +25467,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\tvertexNormals = face.vertexNormals;\n\
-\t\t\t\tfaceNormal = face.normal;\n\
-\n\
-\t\t\t\tif ( vertexNormals.length === 4 && needsSmoothNormals ) {\n\
-\n\
-\t\t\t\t\tfor ( i = 0; i < 4; i ++ ) {\n\
-\n\
-\t\t\t\t\t\tvn = vertexNormals[ i ];\n\
-\n\
-\t\t\t\t\t\tnormalArray[ offset_normal ]     = vn.x;\n\
-\t\t\t\t\t\tnormalArray[ offset_normal + 1 ] = vn.y;\n\
-\t\t\t\t\t\tnormalArray[ offset_normal + 2 ] = vn.z;\n\
-\n\
-\t\t\t\t\t\toffset_normal += 3;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tfor ( i = 0; i < 4; i ++ ) {\n\
-\n\
-\t\t\t\t\t\tnormalArray[ offset_normal ]     = faceNormal.x;\n\
-\t\t\t\t\t\tnormalArray[ offset_normal + 1 ] = faceNormal.y;\n\
-\t\t\t\t\t\tnormalArray[ offset_normal + 2 ] = faceNormal.z;\n\
-\n\
-\t\t\t\t\t\toffset_normal += 3;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t}\n\
-\n\
 \t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglNormalBuffer );\n\
 \t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, normalArray, hint );\n\
 \n\
@@ -23332,27 +25483,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\tif ( uv === undefined ) continue;\n\
 \n\
 \t\t\t\tfor ( i = 0; i < 3; i ++ ) {\n\
-\n\
-\t\t\t\t\tuvi = uv[ i ];\n\
-\n\
-\t\t\t\t\tuvArray[ offset_uv ]     = uvi.x;\n\
-\t\t\t\t\tuvArray[ offset_uv + 1 ] = uvi.y;\n\
-\n\
-\t\t\t\t\toffset_uv += 2;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tfi = chunk_faces4[ f ];\n\
-\n\
-\t\t\t\tuv = obj_uvs[ fi ];\n\
-\n\
-\t\t\t\tif ( uv === undefined ) continue;\n\
-\n\
-\t\t\t\tfor ( i = 0; i < 4; i ++ ) {\n\
 \n\
 \t\t\t\t\tuvi = uv[ i ];\n\
 \n\
@@ -23385,27 +25515,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\tif ( uv2 === undefined ) continue;\n\
 \n\
 \t\t\t\tfor ( i = 0; i < 3; i ++ ) {\n\
-\n\
-\t\t\t\t\tuv2i = uv2[ i ];\n\
-\n\
-\t\t\t\t\tuv2Array[ offset_uv2 ]     = uv2i.x;\n\
-\t\t\t\t\tuv2Array[ offset_uv2 + 1 ] = uv2i.y;\n\
-\n\
-\t\t\t\t\toffset_uv2 += 2;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tfi = chunk_faces4[ f ];\n\
-\n\
-\t\t\t\tuv2 = obj_uvs2[ fi ];\n\
-\n\
-\t\t\t\tif ( uv2 === undefined ) continue;\n\
-\n\
-\t\t\t\tfor ( i = 0; i < 4; i ++ ) {\n\
 \n\
 \t\t\t\t\tuv2i = uv2[ i ];\n\
 \n\
@@ -23452,36 +25561,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\tfaceArray[ offset_face ]     = vertexIndex;\n\
-\t\t\t\tfaceArray[ offset_face + 1 ] = vertexIndex + 1;\n\
-\t\t\t\tfaceArray[ offset_face + 2 ] = vertexIndex + 3;\n\
-\n\
-\t\t\t\tfaceArray[ offset_face + 3 ] = vertexIndex + 1;\n\
-\t\t\t\tfaceArray[ offset_face + 4 ] = vertexIndex + 2;\n\
-\t\t\t\tfaceArray[ offset_face + 5 ] = vertexIndex + 3;\n\
-\n\
-\t\t\t\toffset_face += 6;\n\
-\n\
-\t\t\t\tlineArray[ offset_line ]     = vertexIndex;\n\
-\t\t\t\tlineArray[ offset_line + 1 ] = vertexIndex + 1;\n\
-\n\
-\t\t\t\tlineArray[ offset_line + 2 ] = vertexIndex;\n\
-\t\t\t\tlineArray[ offset_line + 3 ] = vertexIndex + 3;\n\
-\n\
-\t\t\t\tlineArray[ offset_line + 4 ] = vertexIndex + 1;\n\
-\t\t\t\tlineArray[ offset_line + 5 ] = vertexIndex + 2;\n\
-\n\
-\t\t\t\tlineArray[ offset_line + 6 ] = vertexIndex + 2;\n\
-\t\t\t\tlineArray[ offset_line + 7 ] = vertexIndex + 3;\n\
-\n\
-\t\t\t\toffset_line += 8;\n\
-\n\
-\t\t\t\tvertexIndex += 4;\n\
-\n\
-\t\t\t}\n\
-\n\
 \t\t\t_gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, geometryGroup.__webglFaceBuffer );\n\
 \t\t\t_gl.bufferData( _gl.ELEMENT_ARRAY_BUFFER, faceArray, hint );\n\
 \n\
@@ -23517,19 +25596,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom ] \t   = customAttribute.value[ face.a ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1 ] = customAttribute.value[ face.b ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2 ] = customAttribute.value[ face.c ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3 ] = customAttribute.value[ face.d ];\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 4;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
 \t\t\t\t\t} else if ( customAttribute.boundTo === \"faces\" ) {\n\
 \n\
 \t\t\t\t\t\tfor ( f = 0, fl = chunk_faces3.length; f < fl; f ++ ) {\n\
@@ -23541,19 +25607,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2 ] = value;\n\
 \n\
 \t\t\t\t\t\t\toffset_custom += 3;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tvalue = customAttribute.value[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom ] \t   = value;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1 ] = value;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2 ] = value;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3 ] = value;\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 4;\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
@@ -23584,31 +25637,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = customAttribute.value[ face.a ];\n\
-\t\t\t\t\t\t\tv2 = customAttribute.value[ face.b ];\n\
-\t\t\t\t\t\t\tv3 = customAttribute.value[ face.c ];\n\
-\t\t\t\t\t\t\tv4 = customAttribute.value[ face.d ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom ] \t   = v1.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1 ] = v1.y;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2 ] = v2.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3 ] = v2.y;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4 ] = v3.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5 ] = v3.y;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6 ] = v4.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7 ] = v4.y;\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 8;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
 \t\t\t\t\t} else if ( customAttribute.boundTo === \"faces\" ) {\n\
 \n\
 \t\t\t\t\t\tfor ( f = 0, fl = chunk_faces3.length; f < fl; f ++ ) {\n\
@@ -23629,31 +25657,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5 ] = v3.y;\n\
 \n\
 \t\t\t\t\t\t\toffset_custom += 6;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tvalue = customAttribute.value[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = value;\n\
-\t\t\t\t\t\t\tv2 = value;\n\
-\t\t\t\t\t\t\tv3 = value;\n\
-\t\t\t\t\t\t\tv4 = value;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom ] \t   = v1.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1 ] = v1.y;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2 ] = v2.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3 ] = v2.y;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4 ] = v3.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5 ] = v3.y;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6 ] = v4.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7 ] = v4.y;\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 8;\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
@@ -23699,35 +25702,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = customAttribute.value[ face.a ];\n\
-\t\t\t\t\t\t\tv2 = customAttribute.value[ face.b ];\n\
-\t\t\t\t\t\t\tv3 = customAttribute.value[ face.c ];\n\
-\t\t\t\t\t\t\tv4 = customAttribute.value[ face.d ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom  ] \t= v1[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1  ] = v1[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2  ] = v1[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3  ] = v2[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4  ] = v2[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5  ] = v2[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6  ] = v3[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7  ] = v3[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 8  ] = v3[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 9  ] = v4[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 10 ] = v4[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 11 ] = v4[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 12;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
 \t\t\t\t\t} else if ( customAttribute.boundTo === \"faces\" ) {\n\
 \n\
 \t\t\t\t\t\tfor ( f = 0, fl = chunk_faces3.length; f < fl; f ++ ) {\n\
@@ -23754,35 +25728,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tvalue = customAttribute.value[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = value;\n\
-\t\t\t\t\t\t\tv2 = value;\n\
-\t\t\t\t\t\t\tv3 = value;\n\
-\t\t\t\t\t\t\tv4 = value;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom  ] \t= v1[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1  ] = v1[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2  ] = v1[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3  ] = v2[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4  ] = v2[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5  ] = v2[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6  ] = v3[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7  ] = v3[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 8  ] = v3[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 9  ] = v4[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 10 ] = v4[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 11 ] = v4[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 12;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
 \t\t\t\t\t} else if ( customAttribute.boundTo === \"faceVertices\" ) {\n\
 \n\
 \t\t\t\t\t\tfor ( f = 0, fl = chunk_faces3.length; f < fl; f ++ ) {\n\
@@ -23806,35 +25751,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 8 ] = v3[ pp[ 2 ] ];\n\
 \n\
 \t\t\t\t\t\t\toffset_custom += 9;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tvalue = customAttribute.value[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = value[ 0 ];\n\
-\t\t\t\t\t\t\tv2 = value[ 1 ];\n\
-\t\t\t\t\t\t\tv3 = value[ 2 ];\n\
-\t\t\t\t\t\t\tv4 = value[ 3 ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom  ] \t= v1[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1  ] = v1[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2  ] = v1[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3  ] = v2[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4  ] = v2[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5  ] = v2[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6  ] = v3[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7  ] = v3[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 8  ] = v3[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 9  ] = v4[ pp[ 0 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 10 ] = v4[ pp[ 1 ] ];\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 11 ] = v4[ pp[ 2 ] ];\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 12;\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
@@ -23871,39 +25787,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tface = obj_faces[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = customAttribute.value[ face.a ];\n\
-\t\t\t\t\t\t\tv2 = customAttribute.value[ face.b ];\n\
-\t\t\t\t\t\t\tv3 = customAttribute.value[ face.c ];\n\
-\t\t\t\t\t\t\tv4 = customAttribute.value[ face.d ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom  ] \t= v1.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1  ] = v1.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2  ] = v1.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3  ] = v1.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4  ] = v2.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5  ] = v2.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6  ] = v2.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7  ] = v2.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 8  ] = v3.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 9  ] = v3.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 10 ] = v3.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 11 ] = v3.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 12 ] = v4.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 13 ] = v4.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 14 ] = v4.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 15 ] = v4.w;\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 16;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
 \t\t\t\t\t} else if ( customAttribute.boundTo === \"faces\" ) {\n\
 \n\
 \t\t\t\t\t\tfor ( f = 0, fl = chunk_faces3.length; f < fl; f ++ ) {\n\
@@ -23933,39 +25816,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tvalue = customAttribute.value[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = value;\n\
-\t\t\t\t\t\t\tv2 = value;\n\
-\t\t\t\t\t\t\tv3 = value;\n\
-\t\t\t\t\t\t\tv4 = value;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom  ] \t= v1.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1  ] = v1.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2  ] = v1.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3  ] = v1.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4  ] = v2.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5  ] = v2.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6  ] = v2.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7  ] = v2.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 8  ] = v3.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 9  ] = v3.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 10 ] = v3.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 11 ] = v3.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 12 ] = v4.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 13 ] = v4.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 14 ] = v4.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 15 ] = v4.w;\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 16;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
 \t\t\t\t\t} else if ( customAttribute.boundTo === \"faceVertices\" ) {\n\
 \n\
 \t\t\t\t\t\tfor ( f = 0, fl = chunk_faces3.length; f < fl; f ++ ) {\n\
@@ -23992,39 +25842,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 11 ] = v3.w;\n\
 \n\
 \t\t\t\t\t\t\toffset_custom += 12;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tfor ( f = 0, fl = chunk_faces4.length; f < fl; f ++ ) {\n\
-\n\
-\t\t\t\t\t\t\tvalue = customAttribute.value[ chunk_faces4[ f ] ];\n\
-\n\
-\t\t\t\t\t\t\tv1 = value[ 0 ];\n\
-\t\t\t\t\t\t\tv2 = value[ 1 ];\n\
-\t\t\t\t\t\t\tv3 = value[ 2 ];\n\
-\t\t\t\t\t\t\tv4 = value[ 3 ];\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom  ] \t= v1.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 1  ] = v1.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 2  ] = v1.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 3  ] = v1.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 4  ] = v2.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 5  ] = v2.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 6  ] = v2.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 7  ] = v2.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 8  ] = v3.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 9  ] = v3.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 10 ] = v3.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 11 ] = v3.w;\n\
-\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 12 ] = v4.x;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 13 ] = v4.y;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 14 ] = v4.z;\n\
-\t\t\t\t\t\t\tcustomAttribute.array[ offset_custom + 15 ] = v4.w;\n\
-\n\
-\t\t\t\t\t\t\toffset_custom += 16;\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
@@ -24061,60 +25878,33 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tvar attributes = geometry.attributes;\n\
 \n\
-\t\tvar index = attributes[ \"index\" ];\n\
-\t\tvar position = attributes[ \"position\" ];\n\
-\t\tvar normal = attributes[ \"normal\" ];\n\
-\t\tvar uv = attributes[ \"uv\" ];\n\
-\t\tvar color = attributes[ \"color\" ];\n\
-\t\tvar tangent = attributes[ \"tangent\" ];\n\
+\t\tvar attributeName, attributeItem;\n\
 \n\
-\t\tif ( geometry.elementsNeedUpdate && index !== undefined ) {\n\
+\t\tfor ( attributeName in attributes ) {\n\
 \n\
-\t\t\t_gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, index.buffer );\n\
-\t\t\t_gl.bufferData( _gl.ELEMENT_ARRAY_BUFFER, index.array, hint );\n\
+\t\t\tattributeItem = attributes[ attributeName ];\n\
 \n\
-\t\t}\n\
+\t\t\tif ( attributeItem.needsUpdate ) {\n\
 \n\
-\t\tif ( geometry.verticesNeedUpdate && position !== undefined ) {\n\
+\t\t\t\tif ( attributeName === 'index' ) {\n\
 \n\
-\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, position.buffer );\n\
-\t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, position.array, hint );\n\
+\t\t\t\t\t_gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, attributeItem.buffer );\n\
+\t\t\t\t\t_gl.bufferData( _gl.ELEMENT_ARRAY_BUFFER, attributeItem.array, hint );\n\
 \n\
-\t\t}\n\
+\t\t\t\t} else {\n\
 \n\
-\t\tif ( geometry.normalsNeedUpdate && normal !== undefined ) {\n\
+\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, attributeItem.buffer );\n\
+\t\t\t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, attributeItem.array, hint );\n\
 \n\
-\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, normal.buffer );\n\
-\t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, normal.array, hint );\n\
+\t\t\t\t}\n\
 \n\
-\t\t}\n\
+\t\t\t\tattributeItem.needsUpdate = false;\n\
 \n\
-\t\tif ( geometry.uvsNeedUpdate && uv !== undefined ) {\n\
+\t\t\t}\n\
 \n\
-\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, uv.buffer );\n\
-\t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, uv.array, hint );\n\
+\t\t\tif ( dispose && ! attributeItem.dynamic ) {\n\
 \n\
-\t\t}\n\
-\n\
-\t\tif ( geometry.colorsNeedUpdate && color !== undefined ) {\n\
-\n\
-\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, color.buffer );\n\
-\t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, color.array, hint );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( geometry.tangentsNeedUpdate && tangent !== undefined ) {\n\
-\n\
-\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, tangent.buffer );\n\
-\t\t\t_gl.bufferData( _gl.ARRAY_BUFFER, tangent.array, hint );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tif ( dispose ) {\n\
-\n\
-\t\t\tfor ( var i in geometry.attributes ) {\n\
-\n\
-\t\t\t\tdelete geometry.attributes[ i ].array;\n\
+\t\t\t\tattributeItem.array = null;\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -24221,11 +26011,13 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tif ( material.visible === false ) return;\n\
 \n\
-\t\tvar program, attributes, linewidth, primitives, a, attribute;\n\
+\t\tvar linewidth, a, attribute;\n\
+\t\tvar attributeItem, attributeName, attributePointer, attributeSize;\n\
 \n\
-\t\tprogram = setProgram( camera, lights, fog, material, object );\n\
+\t\tvar program = setProgram( camera, lights, fog, material, object );\n\
 \n\
-\t\tattributes = program.attributes;\n\
+\t\tvar programAttributes = program.attributes;\n\
+\t\tvar geometryAttributes = geometry.attributes;\n\
 \n\
 \t\tvar updateBuffers = false,\n\
 \t\t\twireframeBit = material.wireframe ? 1 : 0,\n\
@@ -24248,7 +26040,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tif ( object instanceof THREE.Mesh ) {\n\
 \n\
-\t\t\tvar index = geometry.attributes[ \"index\" ];\n\
+\t\t\tvar index = geometryAttributes[ \"index\" ];\n\
 \n\
 \t\t\t// indexed triangles\n\
 \n\
@@ -24268,68 +26060,35 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\tif ( updateBuffers ) {\n\
 \n\
-\t\t\t\t\t\t// vertices\n\
+\t\t\t\t\t\tfor ( attributeName in programAttributes ) {\n\
 \n\
-\t\t\t\t\t\tvar position = geometry.attributes[ \"position\" ];\n\
-\t\t\t\t\t\tvar positionSize = position.itemSize;\n\
+\t\t\t\t\t\t\tattributePointer = programAttributes[ attributeName ];\n\
+\t\t\t\t\t\t\tattributeItem = geometryAttributes[ attributeName ];\n\
 \n\
-\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, position.buffer );\n\
-\t\t\t\t\t\tenableAttribute( attributes.position );\n\
-\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.position, positionSize, _gl.FLOAT, false, 0, startIndex * positionSize * 4 ); // 4 bytes per Float32\n\
+\t\t\t\t\t\t\tif ( attributePointer >= 0 ) {\n\
 \n\
-\t\t\t\t\t\t// normals\n\
+\t\t\t\t\t\t\t\tif ( attributeItem ) {\n\
 \n\
-\t\t\t\t\t\tvar normal = geometry.attributes[ \"normal\" ];\n\
+\t\t\t\t\t\t\t\t\tattributeSize = attributeItem.itemSize;\n\
+\t\t\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, attributeItem.buffer );\n\
+\t\t\t\t\t\t\t\t\tenableAttribute( attributePointer );\n\
+\t\t\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributePointer, attributeSize, _gl.FLOAT, false, 0, startIndex * attributeSize * 4 ); // 4 bytes per Float32\n\
 \n\
-\t\t\t\t\t\tif ( attributes.normal >= 0 && normal ) {\n\
+\t\t\t\t\t\t\t\t} else if ( material.defaultAttributeValues ) {\n\
 \n\
-\t\t\t\t\t\t\tvar normalSize = normal.itemSize;\n\
+\t\t\t\t\t\t\t\t\tif ( material.defaultAttributeValues[ attributeName ].length === 2 ) {\n\
 \n\
-\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, normal.buffer );\n\
-\t\t\t\t\t\t\tenableAttribute( attributes.normal );\n\
-\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.normal, normalSize, _gl.FLOAT, false, 0, startIndex * normalSize * 4 );\n\
+\t\t\t\t\t\t\t\t\t\t_gl.vertexAttrib2fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
 \n\
-\t\t\t\t\t\t}\n\
+\t\t\t\t\t\t\t\t\t} else if ( material.defaultAttributeValues[ attributeName ].length === 3 ) {\n\
 \n\
-\t\t\t\t\t\t// uvs\n\
+\t\t\t\t\t\t\t\t\t\t_gl.vertexAttrib3fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
 \n\
-\t\t\t\t\t\tvar uv = geometry.attributes[ \"uv\" ];\n\
+\t\t\t\t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tif ( attributes.uv >= 0 && uv ) {\n\
+\t\t\t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\t\tvar uvSize = uv.itemSize;\n\
-\n\
-\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, uv.buffer );\n\
-\t\t\t\t\t\t\tenableAttribute( attributes.uv );\n\
-\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.uv, uvSize, _gl.FLOAT, false, 0, startIndex * uvSize * 4 );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t// colors\n\
-\n\
-\t\t\t\t\t\tvar color = geometry.attributes[ \"color\" ];\n\
-\n\
-\t\t\t\t\t\tif ( attributes.color >= 0 && color ) {\n\
-\n\
-\t\t\t\t\t\t\tvar colorSize = color.itemSize;\n\
-\n\
-\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, color.buffer );\n\
-\t\t\t\t\t\t\tenableAttribute( attributes.color );\n\
-\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.color, colorSize, _gl.FLOAT, false, 0, startIndex * colorSize * 4 );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t// tangents\n\
-\n\
-\t\t\t\t\t\tvar tangent = geometry.attributes[ \"tangent\" ];\n\
-\n\
-\t\t\t\t\t\tif ( attributes.tangent >= 0 && tangent ) {\n\
-\n\
-\t\t\t\t\t\t\tvar tangentSize = tangent.itemSize;\n\
-\n\
-\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, tangent.buffer );\n\
-\t\t\t\t\t\t\tenableAttribute( attributes.tangent );\n\
-\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.tangent, tangentSize, _gl.FLOAT, false, 0, startIndex * tangentSize * 4 );\n\
+\t\t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t\t}\n\
 \n\
@@ -24355,72 +26114,43 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\tif ( updateBuffers ) {\n\
 \n\
-\t\t\t\t\t// vertices\n\
+\t\t\t\t\tfor ( attributeName in programAttributes ) {\n\
 \n\
-\t\t\t\t\tvar position = geometry.attributes[ \"position\" ];\n\
-\t\t\t\t\tvar positionSize = position.itemSize;\n\
+\t\t\t\t\t\tif ( attributeName === 'index') continue;\n\
 \n\
-\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, position.buffer );\n\
-\t\t\t\t\tenableAttribute( attributes.position );\n\
-\t\t\t\t\t_gl.vertexAttribPointer( attributes.position, positionSize, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\t\t\tattributePointer = programAttributes[ attributeName ];\n\
+\t\t\t\t\t\tattributeItem = geometryAttributes[ attributeName ];\n\
+\t\t\t\t\t\t\n\
+\t\t\t\t\t\tif ( attributePointer >= 0 ) {\n\
 \n\
-\t\t\t\t\t// normals\n\
+\t\t\t\t\t\t\tif ( attributeItem ) {\n\
 \n\
-\t\t\t\t\tvar normal = geometry.attributes[ \"normal\" ];\n\
+\t\t\t\t\t\t\t\tattributeSize = attributeItem.itemSize;\n\
+\t\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, attributeItem.buffer );\n\
+\t\t\t\t\t\t\t\tenableAttribute( attributePointer );\n\
+\t\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributePointer, attributeSize, _gl.FLOAT, false, 0, 0 );\n\
 \n\
-\t\t\t\t\tif ( attributes.normal >= 0 && normal ) {\n\
+\t\t\t\t\t\t\t} else if ( material.defaultAttributeValues && material.defaultAttributeValues[ attributeName ] ) {\n\
 \n\
-\t\t\t\t\t\tvar normalSize = normal.itemSize;\n\
+\t\t\t\t\t\t\t\tif ( material.defaultAttributeValues[ attributeName ].length === 2 ) {\n\
 \n\
-\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, normal.buffer );\n\
-\t\t\t\t\t\tenableAttribute( attributes.normal );\n\
-\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.normal, normalSize, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\t\t\t\t\t\t_gl.vertexAttrib2fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
 \n\
-\t\t\t\t\t}\n\
+\t\t\t\t\t\t\t\t} else if ( material.defaultAttributeValues[ attributeName ].length === 3 ) {\n\
 \n\
-\t\t\t\t\t// uvs\n\
+\t\t\t\t\t\t\t\t\t_gl.vertexAttrib3fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
 \n\
-\t\t\t\t\tvar uv = geometry.attributes[ \"uv\" ];\n\
+\t\t\t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\tif ( attributes.uv >= 0 && uv ) {\n\
+\t\t\t\t\t\t\t}\n\
 \n\
-\t\t\t\t\t\tvar uvSize = uv.itemSize;\n\
-\n\
-\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, uv.buffer );\n\
-\t\t\t\t\t\tenableAttribute( attributes.uv );\n\
-\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.uv, uvSize, _gl.FLOAT, false, 0, 0 );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t// colors\n\
-\n\
-\t\t\t\t\tvar color = geometry.attributes[ \"color\" ];\n\
-\n\
-\t\t\t\t\tif ( attributes.color >= 0 && color ) {\n\
-\n\
-\t\t\t\t\t\tvar colorSize = color.itemSize;\n\
-\n\
-\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, color.buffer );\n\
-\t\t\t\t\t\tenableAttribute( attributes.color );\n\
-\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.color, colorSize, _gl.FLOAT, false, 0, 0 );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t// tangents\n\
-\n\
-\t\t\t\t\tvar tangent = geometry.attributes[ \"tangent\" ];\n\
-\n\
-\t\t\t\t\tif ( attributes.tangent >= 0 && tangent ) {\n\
-\n\
-\t\t\t\t\t\tvar tangentSize = tangent.itemSize;\n\
-\n\
-\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, tangent.buffer );\n\
-\t\t\t\t\t\tenableAttribute( attributes.tangent );\n\
-\t\t\t\t\t\t_gl.vertexAttribPointer( attributes.tangent, tangentSize, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\t\t\t}\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
 \t\t\t\t}\n\
+\n\
+\t\t\t\tvar position = geometry.attributes[ \"position\" ];\n\
 \n\
 \t\t\t\t// render non-indexed triangles\n\
 \n\
@@ -24438,28 +26168,39 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tif ( updateBuffers ) {\n\
 \n\
-\t\t\t\t// vertices\n\
+\t\t\t\tfor ( attributeName in programAttributes ) {\n\
 \n\
-\t\t\t\tvar position = geometry.attributes[ \"position\" ];\n\
-\t\t\t\tvar positionSize = position.itemSize;\n\
+\t\t\t\t\tattributePointer = programAttributes[ attributeName ];\n\
+\t\t\t\t\tattributeItem = geometryAttributes[ attributeName ];\n\
+\t\t\t\t\t\n\
+\t\t\t\t\tif ( attributePointer >= 0 ) {\n\
 \n\
-\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, position.buffer );\n\
-\t\t\t\tenableAttribute( attributes.position );\n\
-\t\t\t\t_gl.vertexAttribPointer( attributes.position, positionSize, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\t\t\tif ( attributeItem ) {\n\
 \n\
-\t\t\t\t// colors\n\
+\t\t\t\t\t\t\tattributeSize = attributeItem.itemSize;\n\
+\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, attributeItem.buffer );\n\
+\t\t\t\t\t\t\tenableAttribute( attributePointer );\n\
+\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributePointer, attributeSize, _gl.FLOAT, false, 0, 0 );\n\
 \n\
-\t\t\t\tvar color = geometry.attributes[ \"color\" ];\n\
+\t\t\t\t\t\t} else if ( material.defaultAttributeValues && material.defaultAttributeValues[ attributeName ] ) {\n\
 \n\
-\t\t\t\tif ( attributes.color >= 0 && color ) {\n\
+\t\t\t\t\t\t\tif ( material.defaultAttributeValues[ attributeName ].length === 2 ) {\n\
 \n\
-\t\t\t\t\tvar colorSize = color.itemSize;\n\
+\t\t\t\t\t\t\t\t_gl.vertexAttrib2fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
 \n\
-\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, color.buffer );\n\
-\t\t\t\t\tenableAttribute( attributes.color );\n\
-\t\t\t\t\t_gl.vertexAttribPointer( attributes.color, colorSize, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\t\t\t\t} else if ( material.defaultAttributeValues[ attributeName ].length === 3 ) {\n\
+\n\
+\t\t\t\t\t\t\t\t_gl.vertexAttrib3fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t}\n\
 \n\
 \t\t\t\t}\n\
+\n\
+\t\t\t\tvar position = geometryAttributes[ \"position\" ];\n\
 \n\
 \t\t\t\t// render particles\n\
 \n\
@@ -24470,7 +26211,58 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t}\n\
+\t\t} else if ( object instanceof THREE.Line ) {\n\
+\n\
+\t\t\tif ( updateBuffers ) {\n\
+\n\
+\t\t\t\tfor ( attributeName in programAttributes ) {\n\
+\n\
+\t\t\t\t\tattributePointer = programAttributes[ attributeName ];\n\
+\t\t\t\t\tattributeItem = geometryAttributes[ attributeName ];\n\
+\t\t\t\t\t\n\
+\t\t\t\t\tif ( attributePointer >= 0 ) {\n\
+\n\
+\t\t\t\t\t\tif ( attributeItem ) {\n\
+\n\
+\t\t\t\t\t\t\tattributeSize = attributeItem.itemSize;\n\
+\t\t\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, attributeItem.buffer );\n\
+\t\t\t\t\t\t\tenableAttribute( attributePointer );\n\
+\t\t\t\t\t\t\t_gl.vertexAttribPointer( attributePointer, attributeSize, _gl.FLOAT, false, 0, 0 );\n\
+\n\
+\t\t\t\t\t\t} else if ( material.defaultAttributeValues && material.defaultAttributeValues[ attributeName ] ) {\n\
+\n\
+\t\t\t\t\t\t\tif ( material.defaultAttributeValues[ attributeName ].length === 2 ) {\n\
+\n\
+\t\t\t\t\t\t\t\t_gl.vertexAttrib2fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
+\n\
+\t\t\t\t\t\t\t} else if ( material.defaultAttributeValues[ attributeName ].length === 3 ) {\n\
+\n\
+\t\t\t\t\t\t\t\t_gl.vertexAttrib3fv( attributePointer, material.defaultAttributeValues[ attributeName ] );\n\
+\n\
+\t\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t\t}\n\
+\n\
+\t\t\t\t\t}\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\t// render lines\n\
+\n\
+\t\t\t\tvar primitives = ( object.type === THREE.LineStrip ) ? _gl.LINE_STRIP : _gl.LINES;\n\
+\n\
+\t\t\t\tsetLineWidth( material.linewidth );\n\
+\n\
+\t\t\t\tvar position = geometryAttributes[ \"position\" ];\n\
+\n\
+\t\t\t\t_gl.drawArrays( primitives, 0, position.numItems / 3 );\n\
+\n\
+\t\t\t\t_this.info.render.calls ++;\n\
+\t\t\t\t_this.info.render.points += position.numItems;\n\
+\n\
+\t\t\t}\n\
+\n\
+    \t}\n\
 \n\
 \t};\n\
 \n\
@@ -24478,11 +26270,11 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tif ( material.visible === false ) return;\n\
 \n\
-\t\tvar program, attributes, linewidth, primitives, a, attribute, i, il;\n\
+\t\tvar linewidth, a, attribute, i, il;\n\
 \n\
-\t\tprogram = setProgram( camera, lights, fog, material, object );\n\
+\t\tvar program = setProgram( camera, lights, fog, material, object );\n\
 \n\
-\t\tattributes = program.attributes;\n\
+\t\tvar attributes = program.attributes;\n\
 \n\
 \t\tvar updateBuffers = false,\n\
 \t\t\twireframeBit = material.wireframe ? 1 : 0,\n\
@@ -24553,9 +26345,18 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tif ( attributes.color >= 0 ) {\n\
 \n\
-\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglColorBuffer );\n\
-\t\t\t\tenableAttribute( attributes.color );\n\
-\t\t\t\t_gl.vertexAttribPointer( attributes.color, 3, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\tif ( object.geometry.colors.length > 0 || object.geometry.faces.length > 0 ) {\n\
+\n\
+\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglColorBuffer );\n\
+\t\t\t\t\tenableAttribute( attributes.color );\n\
+\t\t\t\t\t_gl.vertexAttribPointer( attributes.color, 3, _gl.FLOAT, false, 0, 0 );\n\
+\n\
+\t\t\t\t} else if ( material.defaultAttributeValues ) {\n\
+\n\
+\n\
+\t\t\t\t\t_gl.vertexAttrib3fv( attributes.color, material.defaultAttributeValues.color );\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -24583,17 +26384,35 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tif ( attributes.uv >= 0 ) {\n\
 \n\
-\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglUVBuffer );\n\
-\t\t\t\tenableAttribute( attributes.uv );\n\
-\t\t\t\t_gl.vertexAttribPointer( attributes.uv, 2, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\tif ( object.geometry.faceVertexUvs[0] ) {\n\
+\n\
+\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglUVBuffer );\n\
+\t\t\t\t\tenableAttribute( attributes.uv );\n\
+\t\t\t\t\t_gl.vertexAttribPointer( attributes.uv, 2, _gl.FLOAT, false, 0, 0 );\n\
+\n\
+\t\t\t\t} else if ( material.defaultAttributeValues ) {\n\
+\n\
+\n\
+\t\t\t\t\t_gl.vertexAttrib2fv( attributes.uv, material.defaultAttributeValues.uv );\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t\tif ( attributes.uv2 >= 0 ) {\n\
 \n\
-\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglUV2Buffer );\n\
-\t\t\t\tenableAttribute( attributes.uv2 );\n\
-\t\t\t\t_gl.vertexAttribPointer( attributes.uv2, 2, _gl.FLOAT, false, 0, 0 );\n\
+\t\t\t\tif ( object.geometry.faceVertexUvs[1] ) {\n\
+\n\
+\t\t\t\t\t_gl.bindBuffer( _gl.ARRAY_BUFFER, geometryGroup.__webglUV2Buffer );\n\
+\t\t\t\t\tenableAttribute( attributes.uv2 );\n\
+\t\t\t\t\t_gl.vertexAttribPointer( attributes.uv2, 2, _gl.FLOAT, false, 0, 0 );\n\
+\n\
+\t\t\t\t} else if ( material.defaultAttributeValues ) {\n\
+\n\
+\n\
+\t\t\t\t\t_gl.vertexAttrib2fv( attributes.uv2, material.defaultAttributeValues.uv2 );\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -24652,7 +26471,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t} else if ( object instanceof THREE.Line ) {\n\
 \n\
-\t\t\tprimitives = ( object.type === THREE.LineStrip ) ? _gl.LINE_STRIP : _gl.LINES;\n\
+\t\t\tvar primitives = ( object.type === THREE.LineStrip ) ? _gl.LINE_STRIP : _gl.LINES;\n\
 \n\
 \t\t\tsetLineWidth( material.linewidth );\n\
 \n\
@@ -24862,7 +26681,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t} else {\n\
 \n\
-\t\t\treturn b.id - a.id;\n\
+\t\t\treturn a.id - b.id;\n\
 \n\
 \t\t}\n\
 \n\
@@ -24901,7 +26720,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t// update scene graph\n\
 \n\
-\t\tif ( this.autoUpdateScene ) scene.updateMatrixWorld();\n\
+\t\tif ( scene.autoUpdate === true ) scene.updateMatrixWorld();\n\
 \n\
 \t\t// update camera matrices and frustum\n\
 \n\
@@ -24909,7 +26728,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tcamera.matrixWorldInverse.getInverse( camera.matrixWorld );\n\
 \n\
-\t\t_projScreenMatrix.multiply( camera.projectionMatrix, camera.matrixWorldInverse );\n\
+\t\t_projScreenMatrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );\n\
 \t\t_frustum.setFromMatrix( _projScreenMatrix );\n\
 \n\
 \t\t// update WebGL objects\n\
@@ -24944,11 +26763,12 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\twebglObject = renderList[ i ];\n\
 \t\t\tobject = webglObject.object;\n\
 \n\
+\t\t\twebglObject.id = i;\n\
 \t\t\twebglObject.render = false;\n\
 \n\
 \t\t\tif ( object.visible ) {\n\
 \n\
-\t\t\t\tif ( ! ( object instanceof THREE.Mesh || object instanceof THREE.ParticleSystem ) || ! ( object.frustumCulled ) || _frustum.contains( object ) ) {\n\
+\t\t\t\tif ( ! ( object instanceof THREE.Mesh || object instanceof THREE.ParticleSystem ) || ! ( object.frustumCulled ) || _frustum.intersectsObject( object ) ) {\n\
 \n\
 \t\t\t\t\tsetupMatrices( object, camera );\n\
 \n\
@@ -24964,14 +26784,12 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\t\t} else {\n\
 \n\
-\t\t\t\t\t\t\t_vector3.copy( object.matrixWorld.getPosition() );\n\
-\t\t\t\t\t\t\t_projScreenMatrix.multiplyVector3( _vector3 );\n\
+\t\t\t\t\t\t\t_vector3.getPositionFromMatrix( object.matrixWorld );\n\
+\t\t\t\t\t\t\t_vector3.applyProjection( _projScreenMatrix );\n\
 \n\
 \t\t\t\t\t\t\twebglObject.z = _vector3.z;\n\
 \n\
 \t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\twebglObject.id = object.id;\n\
 \n\
 \t\t\t\t\t}\n\
 \n\
@@ -25317,11 +27135,11 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tif ( geometry.geometryGroups[ groupHash ] === undefined ) {\n\
 \n\
-\t\t\t\tgeometry.geometryGroups[ groupHash ] = { 'faces3': [], 'faces4': [], 'materialIndex': materialIndex, 'vertices': 0, 'numMorphTargets': numMorphTargets, 'numMorphNormals': numMorphNormals };\n\
+\t\t\t\tgeometry.geometryGroups[ groupHash ] = { 'faces3': [], 'materialIndex': materialIndex, 'vertices': 0, 'numMorphTargets': numMorphTargets, 'numMorphNormals': numMorphNormals };\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tvertices = face instanceof THREE.Face3 ? 3 : 4;\n\
+\t\t\tvertices = 3;\n\
 \n\
 \t\t\tif ( geometry.geometryGroups[ groupHash ].vertices + vertices > 65535 ) {\n\
 \n\
@@ -25330,22 +27148,13 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\tif ( geometry.geometryGroups[ groupHash ] === undefined ) {\n\
 \n\
-\t\t\t\t\tgeometry.geometryGroups[ groupHash ] = { 'faces3': [], 'faces4': [], 'materialIndex': materialIndex, 'vertices': 0, 'numMorphTargets': numMorphTargets, 'numMorphNormals': numMorphNormals };\n\
+\t\t\t\t\tgeometry.geometryGroups[ groupHash ] = { 'faces3': [], 'materialIndex': materialIndex, 'vertices': 0, 'numMorphTargets': numMorphTargets, 'numMorphNormals': numMorphNormals };\n\
 \n\
 \t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\tgeometry.geometryGroups[ groupHash ].faces3.push( f );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tgeometry.geometryGroups[ groupHash ].faces4.push( f );\n\
-\n\
-\t\t\t}\n\
-\n\
+\t\t\tgeometry.geometryGroups[ groupHash ].faces3.push( f );\n\
 \t\t\tgeometry.geometryGroups[ groupHash ].vertices += vertices;\n\
 \n\
 \t\t}\n\
@@ -25393,7 +27202,23 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\tfor ( var o = 0, ol = scene.__webglObjects.length; o < ol; o ++ ) {\n\
 \n\
-\t\t\tupdateObject( scene.__webglObjects[ o ].object );\n\
+\t\t\tvar object = scene.__webglObjects[ o ].object;\n\
+\n\
+\t\t\t// TODO: Remove this hack (WebGLRenderer refactoring)\n\
+\n\
+\t\t\tif ( object.__webglInit === undefined ) {\n\
+\n\
+\t\t\t\tif ( object.__webglActive !== undefined ) {\n\
+\n\
+\t\t\t\t\tremoveObject( object, scene );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\taddObject( object, scene );\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t\tupdateObject( object );\n\
 \n\
 \t\t}\n\
 \n\
@@ -25401,11 +27226,11 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Objects adding\n\
 \n\
-\tfunction addObject ( object, scene ) {\n\
+\tfunction addObject( object, scene ) {\n\
 \n\
 \t\tvar g, geometry, material, geometryGroup;\n\
 \n\
-\t\tif ( ! object.__webglInit ) {\n\
+\t\tif ( object.__webglInit === undefined ) {\n\
 \n\
 \t\t\tobject.__webglInit = true;\n\
 \n\
@@ -25419,53 +27244,52 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tif ( object instanceof THREE.Mesh ) {\n\
+\t\t\tgeometry = object.geometry;\n\
 \n\
-\t\t\t\tgeometry = object.geometry;\n\
+\t\t\tif ( geometry === undefined ) {\n\
+\n\
+\t\t\t\t// fail silently for now\n\
+\n\
+\t\t\t} else if ( geometry instanceof THREE.BufferGeometry ) {\n\
+\n\
+\t\t\t\tinitDirectBuffers( geometry );\n\
+\n\
+\t\t\t} else if ( object instanceof THREE.Mesh ) {\n\
+\n\
 \t\t\t\tmaterial = object.material;\n\
 \n\
-\t\t\t\tif ( geometry instanceof THREE.Geometry ) {\n\
+\t\t\t\tif ( geometry.geometryGroups === undefined ) {\n\
 \n\
-\t\t\t\t\tif ( geometry.geometryGroups === undefined ) {\n\
+\t\t\t\t\tsortFacesByMaterial( geometry, material );\n\
 \n\
-\t\t\t\t\t\tsortFacesByMaterial( geometry, material );\n\
+\t\t\t\t}\n\
 \n\
-\t\t\t\t\t}\n\
+\t\t\t\t// create separate VBOs per geometry chunk\n\
 \n\
-\t\t\t\t\t// create separate VBOs per geometry chunk\n\
+\t\t\t\tfor ( g in geometry.geometryGroups ) {\n\
 \n\
-\t\t\t\t\tfor ( g in geometry.geometryGroups ) {\n\
+\t\t\t\t\tgeometryGroup = geometry.geometryGroups[ g ];\n\
 \n\
-\t\t\t\t\t\tgeometryGroup = geometry.geometryGroups[ g ];\n\
+\t\t\t\t\t// initialise VBO on the first access\n\
 \n\
-\t\t\t\t\t\t// initialise VBO on the first access\n\
+\t\t\t\t\tif ( ! geometryGroup.__webglVertexBuffer ) {\n\
 \n\
-\t\t\t\t\t\tif ( ! geometryGroup.__webglVertexBuffer ) {\n\
+\t\t\t\t\t\tcreateMeshBuffers( geometryGroup );\n\
+\t\t\t\t\t\tinitMeshBuffers( geometryGroup, object );\n\
 \n\
-\t\t\t\t\t\t\tcreateMeshBuffers( geometryGroup );\n\
-\t\t\t\t\t\t\tinitMeshBuffers( geometryGroup, object );\n\
-\n\
-\t\t\t\t\t\t\tgeometry.verticesNeedUpdate = true;\n\
-\t\t\t\t\t\t\tgeometry.morphTargetsNeedUpdate = true;\n\
-\t\t\t\t\t\t\tgeometry.elementsNeedUpdate = true;\n\
-\t\t\t\t\t\t\tgeometry.uvsNeedUpdate = true;\n\
-\t\t\t\t\t\t\tgeometry.normalsNeedUpdate = true;\n\
-\t\t\t\t\t\t\tgeometry.tangentsNeedUpdate = true;\n\
-\t\t\t\t\t\t\tgeometry.colorsNeedUpdate = true;\n\
-\n\
-\t\t\t\t\t\t}\n\
+\t\t\t\t\t\tgeometry.verticesNeedUpdate = true;\n\
+\t\t\t\t\t\tgeometry.morphTargetsNeedUpdate = true;\n\
+\t\t\t\t\t\tgeometry.elementsNeedUpdate = true;\n\
+\t\t\t\t\t\tgeometry.uvsNeedUpdate = true;\n\
+\t\t\t\t\t\tgeometry.normalsNeedUpdate = true;\n\
+\t\t\t\t\t\tgeometry.tangentsNeedUpdate = true;\n\
+\t\t\t\t\t\tgeometry.colorsNeedUpdate = true;\n\
 \n\
 \t\t\t\t\t}\n\
-\n\
-\t\t\t\t} else if ( geometry instanceof THREE.BufferGeometry ) {\n\
-\n\
-\t\t\t\t\tinitDirectBuffers( geometry );\n\
 \n\
 \t\t\t\t}\n\
 \n\
 \t\t\t} else if ( object instanceof THREE.Ribbon ) {\n\
-\n\
-\t\t\t\tgeometry = object.geometry;\n\
 \n\
 \t\t\t\tif ( ! geometry.__webglVertexBuffer ) {\n\
 \n\
@@ -25480,8 +27304,6 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t} else if ( object instanceof THREE.Line ) {\n\
 \n\
-\t\t\t\tgeometry = object.geometry;\n\
-\n\
 \t\t\t\tif ( ! geometry.__webglVertexBuffer ) {\n\
 \n\
 \t\t\t\t\tcreateLineBuffers( geometry );\n\
@@ -25495,24 +27317,13 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t} else if ( object instanceof THREE.ParticleSystem ) {\n\
 \n\
-\t\t\t\tgeometry = object.geometry;\n\
-\n\
 \t\t\t\tif ( ! geometry.__webglVertexBuffer ) {\n\
 \n\
-\t\t\t\t\tif ( geometry instanceof THREE.Geometry ) {\n\
+\t\t\t\t\tcreateParticleBuffers( geometry );\n\
+\t\t\t\t\tinitParticleBuffers( geometry, object );\n\
 \n\
-\t\t\t\t\t\tcreateParticleBuffers( geometry );\n\
-\t\t\t\t\t\tinitParticleBuffers( geometry, object );\n\
-\n\
-\t\t\t\t\t\tgeometry.verticesNeedUpdate = true;\n\
-\t\t\t\t\t\tgeometry.colorsNeedUpdate = true;\n\
-\n\
-\t\t\t\t\t} else if ( geometry instanceof THREE.BufferGeometry ) {\n\
-\n\
-\t\t\t\t\t\tinitDirectBuffers( geometry );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
+\t\t\t\t\tgeometry.verticesNeedUpdate = true;\n\
+\t\t\t\t\tgeometry.colorsNeedUpdate = true;\n\
 \n\
 \t\t\t\t}\n\
 \n\
@@ -25520,7 +27331,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t}\n\
 \n\
-\t\tif ( ! object.__webglActive ) {\n\
+\t\tif ( object.__webglActive === undefined ) {\n\
 \n\
 \t\t\tif ( object instanceof THREE.Mesh ) {\n\
 \n\
@@ -25530,7 +27341,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t\taddBuffer( scene.__webglObjects, geometry, object );\n\
 \n\
-\t\t\t\t} else {\n\
+\t\t\t\t} else if ( geometry instanceof THREE.Geometry ) {\n\
 \n\
 \t\t\t\t\tfor ( g in geometry.geometryGroups ) {\n\
 \n\
@@ -25569,26 +27380,30 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction addBuffer ( objlist, buffer, object ) {\n\
+\tfunction addBuffer( objlist, buffer, object ) {\n\
 \n\
 \t\tobjlist.push(\n\
 \t\t\t{\n\
+\t\t\t\tid: null,\n\
 \t\t\t\tbuffer: buffer,\n\
 \t\t\t\tobject: object,\n\
 \t\t\t\topaque: null,\n\
-\t\t\t\ttransparent: null\n\
+\t\t\t\ttransparent: null,\n\
+\t\t\t\tz: 0\n\
 \t\t\t}\n\
 \t\t);\n\
 \n\
 \t};\n\
 \n\
-\tfunction addBufferImmediate ( objlist, object ) {\n\
+\tfunction addBufferImmediate( objlist, object ) {\n\
 \n\
 \t\tobjlist.push(\n\
 \t\t\t{\n\
+\t\t\t\tid: null,\n\
 \t\t\t\tobject: object,\n\
 \t\t\t\topaque: null,\n\
-\t\t\t\ttransparent: null\n\
+\t\t\t\ttransparent: null,\n\
+\t\t\t\tz: 0\n\
 \t\t\t}\n\
 \t\t);\n\
 \n\
@@ -25596,71 +27411,54 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Objects updates\n\
 \n\
-\tfunction updateObject ( object ) {\n\
+\tfunction updateObject( object ) {\n\
 \n\
 \t\tvar geometry = object.geometry,\n\
 \t\t\tgeometryGroup, customAttributesDirty, material;\n\
 \n\
-\t\tif ( object instanceof THREE.Mesh ) {\n\
+\t\tif ( geometry instanceof THREE.BufferGeometry ) {\n\
 \n\
-\t\t\tif ( geometry instanceof THREE.BufferGeometry ) {\n\
+\t\t\tsetDirectBuffers( geometry, _gl.DYNAMIC_DRAW, !geometry.dynamic );\n\
 \n\
-\t\t\t\tif ( geometry.verticesNeedUpdate || geometry.elementsNeedUpdate ||\n\
+\t\t} else if ( object instanceof THREE.Mesh ) {\n\
+\n\
+\t\t\t// check all geometry groups\n\
+\n\
+\t\t\tfor( var i = 0, il = geometry.geometryGroupsList.length; i < il; i ++ ) {\n\
+\n\
+\t\t\t\tgeometryGroup = geometry.geometryGroupsList[ i ];\n\
+\n\
+\t\t\t\tmaterial = getBufferMaterial( object, geometryGroup );\n\
+\n\
+\t\t\t\tif ( geometry.buffersNeedUpdate ) {\n\
+\n\
+\t\t\t\t\tinitMeshBuffers( geometryGroup, object );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t\tcustomAttributesDirty = material.attributes && areCustomAttributesDirty( material );\n\
+\n\
+\t\t\t\tif ( geometry.verticesNeedUpdate || geometry.morphTargetsNeedUpdate || geometry.elementsNeedUpdate ||\n\
 \t\t\t\t\t geometry.uvsNeedUpdate || geometry.normalsNeedUpdate ||\n\
-\t\t\t\t\t geometry.colorsNeedUpdate || geometry.tangentsNeedUpdate ) {\n\
+\t\t\t\t\t geometry.colorsNeedUpdate || geometry.tangentsNeedUpdate || customAttributesDirty ) {\n\
 \n\
-\t\t\t\t\tsetDirectBuffers( geometry, _gl.DYNAMIC_DRAW, !geometry.dynamic );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tgeometry.verticesNeedUpdate = false;\n\
-\t\t\t\tgeometry.elementsNeedUpdate = false;\n\
-\t\t\t\tgeometry.uvsNeedUpdate = false;\n\
-\t\t\t\tgeometry.normalsNeedUpdate = false;\n\
-\t\t\t\tgeometry.colorsNeedUpdate = false;\n\
-\t\t\t\tgeometry.tangentsNeedUpdate = false;\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\t// check all geometry groups\n\
-\n\
-\t\t\t\tfor( var i = 0, il = geometry.geometryGroupsList.length; i < il; i ++ ) {\n\
-\n\
-\t\t\t\t\tgeometryGroup = geometry.geometryGroupsList[ i ];\n\
-\n\
-\t\t\t\t\tmaterial = getBufferMaterial( object, geometryGroup );\n\
-\n\
-\t\t\t\t\tif ( geometry.buffersNeedUpdate ) {\n\
-\n\
-\t\t\t\t\t\tinitMeshBuffers( geometryGroup, object );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\tcustomAttributesDirty = material.attributes && areCustomAttributesDirty( material );\n\
-\n\
-\t\t\t\t\tif ( geometry.verticesNeedUpdate || geometry.morphTargetsNeedUpdate || geometry.elementsNeedUpdate ||\n\
-\t\t\t\t\t\t geometry.uvsNeedUpdate || geometry.normalsNeedUpdate ||\n\
-\t\t\t\t\t\t geometry.colorsNeedUpdate || geometry.tangentsNeedUpdate || customAttributesDirty ) {\n\
-\n\
-\t\t\t\t\t\tsetMeshBuffers( geometryGroup, object, _gl.DYNAMIC_DRAW, !geometry.dynamic, material );\n\
-\n\
-\t\t\t\t\t}\n\
+\t\t\t\t\tsetMeshBuffers( geometryGroup, object, _gl.DYNAMIC_DRAW, !geometry.dynamic, material );\n\
 \n\
 \t\t\t\t}\n\
-\n\
-\t\t\t\tgeometry.verticesNeedUpdate = false;\n\
-\t\t\t\tgeometry.morphTargetsNeedUpdate = false;\n\
-\t\t\t\tgeometry.elementsNeedUpdate = false;\n\
-\t\t\t\tgeometry.uvsNeedUpdate = false;\n\
-\t\t\t\tgeometry.normalsNeedUpdate = false;\n\
-\t\t\t\tgeometry.colorsNeedUpdate = false;\n\
-\t\t\t\tgeometry.tangentsNeedUpdate = false;\n\
-\n\
-\t\t\t\tgeometry.buffersNeedUpdate = false;\n\
-\n\
-\t\t\t\tmaterial.attributes && clearCustomAttributes( material );\n\
 \n\
 \t\t\t}\n\
+\n\
+\t\t\tgeometry.verticesNeedUpdate = false;\n\
+\t\t\tgeometry.morphTargetsNeedUpdate = false;\n\
+\t\t\tgeometry.elementsNeedUpdate = false;\n\
+\t\t\tgeometry.uvsNeedUpdate = false;\n\
+\t\t\tgeometry.normalsNeedUpdate = false;\n\
+\t\t\tgeometry.colorsNeedUpdate = false;\n\
+\t\t\tgeometry.tangentsNeedUpdate = false;\n\
+\n\
+\t\t\tgeometry.buffersNeedUpdate = false;\n\
+\n\
+\t\t\tmaterial.attributes && clearCustomAttributes( material );\n\
 \n\
 \t\t} else if ( object instanceof THREE.Ribbon ) {\n\
 \n\
@@ -25698,37 +27496,23 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tmaterial.attributes && clearCustomAttributes( material );\n\
 \n\
+\n\
 \t\t} else if ( object instanceof THREE.ParticleSystem ) {\n\
 \n\
-\t\t\tif ( geometry instanceof THREE.BufferGeometry ) {\n\
+\t\t\tmaterial = getBufferMaterial( object, geometry );\n\
 \n\
-\t\t\t\tif ( geometry.verticesNeedUpdate || geometry.colorsNeedUpdate ) {\n\
+\t\t\tcustomAttributesDirty = material.attributes && areCustomAttributesDirty( material );\n\
 \n\
-\t\t\t\t\tsetDirectBuffers( geometry, _gl.DYNAMIC_DRAW, !geometry.dynamic );\n\
+\t\t\tif ( geometry.verticesNeedUpdate || geometry.colorsNeedUpdate || object.sortParticles || customAttributesDirty ) {\n\
 \n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tgeometry.verticesNeedUpdate = false;\n\
-\t\t\t\tgeometry.colorsNeedUpdate = false;\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tmaterial = getBufferMaterial( object, geometry );\n\
-\n\
-\t\t\t\tcustomAttributesDirty = material.attributes && areCustomAttributesDirty( material );\n\
-\n\
-\t\t\t\tif ( geometry.verticesNeedUpdate || geometry.colorsNeedUpdate || object.sortParticles || customAttributesDirty ) {\n\
-\n\
-\t\t\t\t\tsetParticleBuffers( geometry, _gl.DYNAMIC_DRAW, object );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tgeometry.verticesNeedUpdate = false;\n\
-\t\t\t\tgeometry.colorsNeedUpdate = false;\n\
-\n\
-\t\t\t\tmaterial.attributes && clearCustomAttributes( material );\n\
+\t\t\t\tsetParticleBuffers( geometry, _gl.DYNAMIC_DRAW, object );\n\
 \n\
 \t\t\t}\n\
+\n\
+\t\t\tgeometry.verticesNeedUpdate = false;\n\
+\t\t\tgeometry.colorsNeedUpdate = false;\n\
+\n\
+\t\t\tmaterial.attributes && clearCustomAttributes( material );\n\
 \n\
 \t\t}\n\
 \n\
@@ -25736,7 +27520,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Objects updates - custom attributes check\n\
 \n\
-\tfunction areCustomAttributesDirty ( material ) {\n\
+\tfunction areCustomAttributesDirty( material ) {\n\
 \n\
 \t\tfor ( var a in material.attributes ) {\n\
 \n\
@@ -25748,7 +27532,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction clearCustomAttributes ( material ) {\n\
+\tfunction clearCustomAttributes( material ) {\n\
 \n\
 \t\tfor ( var a in material.attributes ) {\n\
 \n\
@@ -25760,7 +27544,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Objects removal\n\
 \n\
-\tfunction removeObject ( object, scene ) {\n\
+\tfunction removeObject( object, scene ) {\n\
 \n\
 \t\tif ( object instanceof THREE.Mesh  ||\n\
 \t\t\t object instanceof THREE.ParticleSystem ||\n\
@@ -25783,11 +27567,11 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t}\n\
 \n\
-\t\tobject.__webglActive = false;\n\
+\t\tdelete object.__webglActive;\n\
 \n\
 \t};\n\
 \n\
-\tfunction removeInstances ( objlist, object ) {\n\
+\tfunction removeInstances( objlist, object ) {\n\
 \n\
 \t\tfor ( var o = objlist.length - 1; o >= 0; o -- ) {\n\
 \n\
@@ -25801,7 +27585,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction removeInstancesDirect ( objlist, object ) {\n\
+\tfunction removeInstancesDirect( objlist, object ) {\n\
 \n\
 \t\tfor ( var o = objlist.length - 1; o >= 0; o -- ) {\n\
 \n\
@@ -25920,7 +27704,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t};\n\
 \n\
-\t\tmaterial.program = buildProgram( shaderID, material.fragmentShader, material.vertexShader, material.uniforms, material.attributes, material.defines, parameters );\n\
+\t\tmaterial.program = buildProgram( shaderID, material.fragmentShader, material.vertexShader, material.uniforms, material.attributes, material.defines, parameters, material.index0AttributeName );\n\
 \n\
 \t\tvar attributes = material.program.attributes;\n\
 \n\
@@ -26151,8 +27935,8 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\tif ( p_uniforms.cameraPosition !== null ) {\n\
 \n\
-\t\t\t\t\tvar position = camera.matrixWorld.getPosition();\n\
-\t\t\t\t\t_gl.uniform3f( p_uniforms.cameraPosition, position.x, position.y, position.z );\n\
+\t\t\t\t\t_vector3.getPositionFromMatrix( camera.matrixWorld );\n\
+\t\t\t\t\t_gl.uniform3f( p_uniforms.cameraPosition, _vector3.x, _vector3.y, _vector3.z );\n\
 \n\
 \t\t\t\t}\n\
 \n\
@@ -26642,6 +28426,10 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t}\n\
 \n\
+\t\t\t} else {\n\
+\n\
+\t\t\t\tconsole.warn( 'THREE.WebGLRenderer: Unknown uniform type: ' + type );\n\
+\n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
@@ -26650,10 +28438,8 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \tfunction setupMatrices ( object, camera ) {\n\
 \n\
-\t\tobject._modelViewMatrix.multiply( camera.matrixWorldInverse, object.matrixWorld );\n\
-\n\
-\t\tobject._normalMatrix.getInverse( object._modelViewMatrix );\n\
-\t\tobject._normalMatrix.transpose();\n\
+\t\tobject._modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );\n\
+\t\tobject._normalMatrix.getNormalMatrix( object._modelViewMatrix );\n\
 \n\
 \t};\n\
 \n\
@@ -26753,8 +28539,9 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\tif ( ! light.visible ) continue;\n\
 \n\
-\t\t\t\t_direction.copy( light.matrixWorld.getPosition() );\n\
-\t\t\t\t_direction.subSelf( light.target.matrixWorld.getPosition() );\n\
+\t\t\t\t_direction.getPositionFromMatrix( light.matrixWorld );\n\
+\t\t\t\t_vector3.getPositionFromMatrix( light.target.matrixWorld );\n\
+\t\t\t\t_direction.sub( _vector3 );\n\
 \t\t\t\t_direction.normalize();\n\
 \n\
 \t\t\t\t// skip lights with undefined direction\n\
@@ -26798,11 +28585,11 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\tposition = light.matrixWorld.getPosition();\n\
+\t\t\t\t_vector3.getPositionFromMatrix( light.matrixWorld );\n\
 \n\
-\t\t\t\tpointPositions[ pointOffset ]     = position.x;\n\
-\t\t\t\tpointPositions[ pointOffset + 1 ] = position.y;\n\
-\t\t\t\tpointPositions[ pointOffset + 2 ] = position.z;\n\
+\t\t\t\tpointPositions[ pointOffset ]     = _vector3.x;\n\
+\t\t\t\tpointPositions[ pointOffset + 1 ] = _vector3.y;\n\
+\t\t\t\tpointPositions[ pointOffset + 2 ] = _vector3.z;\n\
 \n\
 \t\t\t\tpointDistances[ pointLength ] = distance;\n\
 \n\
@@ -26826,16 +28613,17 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\t}\n\
 \n\
-\t\t\t\tposition = light.matrixWorld.getPosition();\n\
+\t\t\t\t_vector3.getPositionFromMatrix( light.matrixWorld );\n\
 \n\
-\t\t\t\tspotPositions[ spotOffset ]     = position.x;\n\
-\t\t\t\tspotPositions[ spotOffset + 1 ] = position.y;\n\
-\t\t\t\tspotPositions[ spotOffset + 2 ] = position.z;\n\
+\t\t\t\tspotPositions[ spotOffset ]     = _vector3.x;\n\
+\t\t\t\tspotPositions[ spotOffset + 1 ] = _vector3.y;\n\
+\t\t\t\tspotPositions[ spotOffset + 2 ] = _vector3.z;\n\
 \n\
 \t\t\t\tspotDistances[ spotLength ] = distance;\n\
 \n\
-\t\t\t\t_direction.copy( position );\n\
-\t\t\t\t_direction.subSelf( light.target.matrixWorld.getPosition() );\n\
+\t\t\t\t_direction.copy( _vector3 );\n\
+\t\t\t\t_vector3.getPositionFromMatrix( light.target.matrixWorld );\n\
+\t\t\t\t_direction.sub( _vector3 );\n\
 \t\t\t\t_direction.normalize();\n\
 \n\
 \t\t\t\tspotDirections[ spotOffset ]     = _direction.x;\n\
@@ -26853,7 +28641,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\t\tif ( ! light.visible ) continue;\n\
 \n\
-\t\t\t\t_direction.copy( light.matrixWorld.getPosition() );\n\
+\t\t\t\t_direction.getPositionFromMatrix( light.matrixWorld );\n\
 \t\t\t\t_direction.normalize();\n\
 \n\
 \t\t\t\t// skip lights with undefined direction\n\
@@ -27157,7 +28945,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Shaders\n\
 \n\
-\tfunction buildProgram ( shaderID, fragmentShader, vertexShader, uniforms, attributes, defines, parameters ) {\n\
+\tfunction buildProgram ( shaderID, fragmentShader, vertexShader, uniforms, attributes, defines, parameters, index0AttributeName ) {\n\
 \n\
 \t\tvar p, pl, d, program, code;\n\
 \t\tvar chunks = [];\n\
@@ -27199,7 +28987,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tif ( programInfo.code === code ) {\n\
 \n\
-\t\t\t\t//console.log( \"Code already compiled.\" /*: \\n\
+\t\t\t\t// console.log( \"Code already compiled.\" /*: \\n\
 \\n\
 \" + code*/ );\n\
 \n\
@@ -27223,7 +29011,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t}\n\
 \n\
-\t\t//console.log( \"building new program \" );\n\
+\t\t// console.log( \"building new program \" );\n\
 \n\
 \t\t//\n\
 \n\
@@ -27236,6 +29024,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\tvar prefix_vertex = [\n\
 \n\
 \t\t\t\"precision \" + _precision + \" float;\",\n\
+\t\t\t\"precision \" + _precision + \" int;\",\n\
 \n\
 \t\t\tcustomDefines,\n\
 \n\
@@ -27339,6 +29128,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\tvar prefix_fragment = [\n\
 \n\
 \t\t\t\"precision \" + _precision + \" float;\",\n\
+\t\t\t\"precision \" + _precision + \" int;\",\n\
 \n\
 \t\t\t( parameters.bumpMap || parameters.normalMap ) ? \"#extension GL_OES_standard_derivatives : enable\" : \"\",\n\
 \n\
@@ -27386,11 +29176,18 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t].join(\"\\n\
 \");\n\
 \n\
-\t\tvar glFragmentShader = getShader( \"fragment\", prefix_fragment + fragmentShader );\n\
 \t\tvar glVertexShader = getShader( \"vertex\", prefix_vertex + vertexShader );\n\
+\t\tvar glFragmentShader = getShader( \"fragment\", prefix_fragment + fragmentShader );\n\
 \n\
 \t\t_gl.attachShader( program, glVertexShader );\n\
 \t\t_gl.attachShader( program, glFragmentShader );\n\
+\n\
+\t\t//Force a particular attribute to index 0.\n\
+\t\t// because potentially expensive emulation is done by browser if attribute 0 is disabled.\n\
+\t\t//And, color, for example is often automatically bound to index 0 so disabling it\n\
+\t\tif ( index0AttributeName ) {\n\
+\t\t\t_gl.bindAttribLocation( program, 0, index0AttributeName );\n\
+\t\t}\n\
 \n\
 \t\t_gl.linkProgram( program );\n\
 \n\
@@ -27398,7 +29195,7 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tconsole.error( \"Could not initialise shader\\n\
 \" + \"VALIDATE_STATUS: \" + _gl.getProgramParameter( program, _gl.VALIDATE_STATUS ) + \", gl error [\" + _gl.getError() + \"]\" );\n\
-\n\
+\t\t\tconsole.error( \"Program Info Log: \" + _gl.getProgramInfoLog( program ) );\n\
 \t\t}\n\
 \n\
 \t\t// clean up\n\
@@ -27406,8 +29203,8 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t_gl.deleteShader( glFragmentShader );\n\
 \t\t_gl.deleteShader( glVertexShader );\n\
 \n\
-\t\t//console.log( prefix_fragment + fragmentShader );\n\
-\t\t//console.log( prefix_vertex + vertexShader );\n\
+\t\t// console.log( prefix_fragment + fragmentShader );\n\
+\t\t// console.log( prefix_vertex + vertexShader );\n\
 \n\
 \t\tprogram.uniforms = {};\n\
 \t\tprogram.attributes = {};\n\
@@ -27738,6 +29535,8 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t\tif ( texture.needsUpdate ) {\n\
 \n\
 \t\t\t\tif ( ! texture.image.__webglTextureCube ) {\n\
+\n\
+\t\t\t\t\ttexture.addEventListener( 'dispose', onTextureDispose );\n\
 \n\
 \t\t\t\t\ttexture.image.__webglTextureCube = _gl.createTexture();\n\
 \n\
@@ -28147,15 +29946,16 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction allocateLights ( lights ) {\n\
+\tfunction allocateLights( lights ) {\n\
 \n\
-\t\tvar l, ll, light, dirLights, pointLights, spotLights, hemiLights;\n\
+\t\tvar dirLights = 0;\n\
+\t\tvar pointLights = 0;\n\
+\t\tvar spotLights = 0;\n\
+\t\tvar hemiLights = 0;\n\
 \n\
-\t\tdirLights = pointLights = spotLights = hemiLights = 0;\n\
+\t\tfor ( var l = 0, ll = lights.length; l < ll; l ++ ) {\n\
 \n\
-\t\tfor ( l = 0, ll = lights.length; l < ll; l ++ ) {\n\
-\n\
-\t\t\tlight = lights[ l ];\n\
+\t\t\tvar light = lights[ l ];\n\
 \n\
 \t\t\tif ( light.onlyShadow ) continue;\n\
 \n\
@@ -28170,13 +29970,13 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction allocateShadows ( lights ) {\n\
+\tfunction allocateShadows( lights ) {\n\
 \n\
-\t\tvar l, ll, light, maxShadows = 0;\n\
+\t\tvar maxShadows = 0;\n\
 \n\
-\t\tfor ( l = 0, ll = lights.length; l < ll; l++ ) {\n\
+\t\tfor ( var l = 0, ll = lights.length; l < ll; l++ ) {\n\
 \n\
-\t\t\tlight = lights[ l ];\n\
+\t\t\tvar light = lights[ l ];\n\
 \n\
 \t\t\tif ( ! light.castShadow ) continue;\n\
 \n\
@@ -28191,11 +29991,21 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t// Initialization\n\
 \n\
-\tfunction initGL () {\n\
+\tfunction initGL() {\n\
 \n\
 \t\ttry {\n\
 \n\
-\t\t\tif ( ! ( _gl = _canvas.getContext( 'experimental-webgl', { alpha: _alpha, premultipliedAlpha: _premultipliedAlpha, antialias: _antialias, stencil: _stencil, preserveDrawingBuffer: _preserveDrawingBuffer } ) ) ) {\n\
+\t\t\tvar attributes = {\n\
+\t\t\t\talpha: _alpha,\n\
+\t\t\t\tpremultipliedAlpha: _premultipliedAlpha,\n\
+\t\t\t\tantialias: _antialias,\n\
+\t\t\t\tstencil: _stencil,\n\
+\t\t\t\tpreserveDrawingBuffer: _preserveDrawingBuffer\n\
+\t\t\t};\n\
+\n\
+\t\t\t_gl = _canvas.getContext( 'webgl', attributes ) || _canvas.getContext( 'experimental-webgl', attributes );\n\
+\n\
+\t\t\tif ( _gl === null ) {\n\
 \n\
 \t\t\t\tthrow 'Error creating WebGL context.';\n\
 \n\
@@ -28208,16 +30018,12 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \t\t}\n\
 \n\
 \t\t_glExtensionTextureFloat = _gl.getExtension( 'OES_texture_float' );\n\
+\t\t_glExtensionTextureFloatLinear = _gl.getExtension( 'OES_texture_float_linear' );\n\
 \t\t_glExtensionStandardDerivatives = _gl.getExtension( 'OES_standard_derivatives' );\n\
 \n\
-\t\t_glExtensionTextureFilterAnisotropic = _gl.getExtension( 'EXT_texture_filter_anisotropic' ) ||\n\
-\t\t\t\t\t\t\t\t\t\t\t   _gl.getExtension( 'MOZ_EXT_texture_filter_anisotropic' ) ||\n\
-\t\t\t\t\t\t\t\t\t\t\t   _gl.getExtension( 'WEBKIT_EXT_texture_filter_anisotropic' );\n\
+\t\t_glExtensionTextureFilterAnisotropic = _gl.getExtension( 'EXT_texture_filter_anisotropic' ) || _gl.getExtension( 'MOZ_EXT_texture_filter_anisotropic' ) || _gl.getExtension( 'WEBKIT_EXT_texture_filter_anisotropic' );\n\
 \n\
-\n\
-\t\t_glExtensionCompressedTextureS3TC = _gl.getExtension( 'WEBGL_compressed_texture_s3tc' ) ||\n\
-\t\t\t\t\t\t\t\t\t\t\t_gl.getExtension( 'MOZ_WEBGL_compressed_texture_s3tc' ) ||\n\
-\t\t\t\t\t\t\t\t\t\t\t_gl.getExtension( 'WEBKIT_WEBGL_compressed_texture_s3tc' );\n\
+\t\t_glExtensionCompressedTextureS3TC = _gl.getExtension( 'WEBGL_compressed_texture_s3tc' ) || _gl.getExtension( 'MOZ_WEBGL_compressed_texture_s3tc' ) || _gl.getExtension( 'WEBKIT_WEBGL_compressed_texture_s3tc' );\n\
 \n\
 \t\tif ( ! _glExtensionTextureFloat ) {\n\
 \n\
@@ -28241,6 +30047,19 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \n\
 \t\t\tconsole.log( 'THREE.WebGLRenderer: S3TC compressed textures not supported.' );\n\
 \n\
+\t\t}\n\
+\n\
+\t\tif ( _gl.getShaderPrecisionFormat === undefined ) {\n\
+\n\
+\t\t\t_gl.getShaderPrecisionFormat = function() {\n\
+\n\
+\t\t\t\treturn {\n\
+\t\t\t\t\t\"rangeMin\"  : 1,\n\
+\t\t\t\t\t\"rangeMax\"  : 1,\n\
+\t\t\t\t\t\"precision\" : 1\n\
+\t\t\t\t};\n\
+\n\
+\t\t\t}\n\
 \t\t}\n\
 \n\
 \t};\n\
@@ -28275,14 +30094,13 @@ THREE.WebGLRenderer = function ( parameters ) {\n\
 \tthis.addPostPlugin( new THREE.LensFlarePlugin() );\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author szimek / https://github.com/szimek/\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
 THREE.WebGLRenderTarget = function ( width, height, options ) {\n\
-\n\
-\tTHREE.EventDispatcher.call( this );\n\
 \n\
 \tthis.width = width;\n\
 \tthis.height = height;\n\
@@ -28312,40 +30130,49 @@ THREE.WebGLRenderTarget = function ( width, height, options ) {\n\
 \n\
 };\n\
 \n\
-THREE.WebGLRenderTarget.prototype.clone = function() {\n\
+THREE.WebGLRenderTarget.prototype = {\n\
 \n\
-\tvar tmp = new THREE.WebGLRenderTarget( this.width, this.height );\n\
+\tconstructor: THREE.WebGLRenderTarget,\n\
 \n\
-\ttmp.wrapS = this.wrapS;\n\
-\ttmp.wrapT = this.wrapT;\n\
+\tclone: function () {\n\
 \n\
-\ttmp.magFilter = this.magFilter;\n\
-\ttmp.minFilter = this.minFilter;\n\
+\t\tvar tmp = new THREE.WebGLRenderTarget( this.width, this.height );\n\
 \n\
-\ttmp.anisotropy = this.anisotropy;\n\
+\t\ttmp.wrapS = this.wrapS;\n\
+\t\ttmp.wrapT = this.wrapT;\n\
 \n\
-\ttmp.offset.copy( this.offset );\n\
-\ttmp.repeat.copy( this.repeat );\n\
+\t\ttmp.magFilter = this.magFilter;\n\
+\t\ttmp.minFilter = this.minFilter;\n\
 \n\
-\ttmp.format = this.format;\n\
-\ttmp.type = this.type;\n\
+\t\ttmp.anisotropy = this.anisotropy;\n\
 \n\
-\ttmp.depthBuffer = this.depthBuffer;\n\
-\ttmp.stencilBuffer = this.stencilBuffer;\n\
+\t\ttmp.offset.copy( this.offset );\n\
+\t\ttmp.repeat.copy( this.repeat );\n\
 \n\
-\ttmp.generateMipmaps = this.generateMipmaps;\n\
+\t\ttmp.format = this.format;\n\
+\t\ttmp.type = this.type;\n\
 \n\
-\ttmp.shareDepthFrom = this.shareDepthFrom;\n\
+\t\ttmp.depthBuffer = this.depthBuffer;\n\
+\t\ttmp.stencilBuffer = this.stencilBuffer;\n\
 \n\
-\treturn tmp;\n\
+\t\ttmp.generateMipmaps = this.generateMipmaps;\n\
+\n\
+\t\ttmp.shareDepthFrom = this.shareDepthFrom;\n\
+\n\
+\t\treturn tmp;\n\
+\n\
+\t},\n\
+\n\
+\tdispose: function () {\n\
+\n\
+\t\tthis.dispatchEvent( { type: 'dispose' } );\n\
+\n\
+\t}\n\
 \n\
 };\n\
 \n\
-THREE.WebGLRenderTarget.prototype.dispose = function () {\n\
+THREE.EventDispatcher.prototype.apply( THREE.WebGLRenderTarget.prototype );\n\
 \n\
-\tthis.dispatchEvent( { type: 'dispose' } );\n\
-\n\
-};\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com\n\
  */\n\
@@ -28359,6 +30186,7 @@ THREE.WebGLRenderTargetCube = function ( width, height, options ) {\n\
 };\n\
 \n\
 THREE.WebGLRenderTargetCube.prototype = Object.create( THREE.WebGLRenderTarget.prototype );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -28377,77 +30205,63 @@ THREE.RenderableVertex.prototype.copy = function ( vertex ) {\n\
 \tthis.positionWorld.copy( vertex.positionWorld );\n\
 \tthis.positionScreen.copy( vertex.positionScreen );\n\
 \n\
-}\n\
+};\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
 THREE.RenderableFace3 = function () {\n\
 \n\
+\tthis.id = 0;\n\
+\n\
 \tthis.v1 = new THREE.RenderableVertex();\n\
 \tthis.v2 = new THREE.RenderableVertex();\n\
 \tthis.v3 = new THREE.RenderableVertex();\n\
 \n\
-\tthis.centroidWorld = new THREE.Vector3();\n\
-\tthis.centroidScreen = new THREE.Vector3();\n\
+\tthis.centroidModel = new THREE.Vector3();\n\
 \n\
-\tthis.normalWorld = new THREE.Vector3();\n\
-\tthis.vertexNormalsWorld = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];\n\
+\tthis.normalModel = new THREE.Vector3();\n\
+\tthis.normalModelView = new THREE.Vector3();\n\
+\n\
 \tthis.vertexNormalsLength = 0;\n\
+\tthis.vertexNormalsModel = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];\n\
+\tthis.vertexNormalsModelView = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];\n\
 \n\
 \tthis.color = null;\n\
 \tthis.material = null;\n\
 \tthis.uvs = [[]];\n\
 \n\
-\tthis.z = null;\n\
+\tthis.z = 0;\n\
 \n\
 };\n\
-/**\n\
- * @author mrdoob / http://mrdoob.com/\n\
- */\n\
 \n\
-THREE.RenderableFace4 = function () {\n\
-\n\
-\tthis.v1 = new THREE.RenderableVertex();\n\
-\tthis.v2 = new THREE.RenderableVertex();\n\
-\tthis.v3 = new THREE.RenderableVertex();\n\
-\tthis.v4 = new THREE.RenderableVertex();\n\
-\n\
-\tthis.centroidWorld = new THREE.Vector3();\n\
-\tthis.centroidScreen = new THREE.Vector3();\n\
-\n\
-\tthis.normalWorld = new THREE.Vector3();\n\
-\tthis.vertexNormalsWorld = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];\n\
-\tthis.vertexNormalsLength = 0;\n\
-\n\
-\tthis.color = null;\n\
-\tthis.material = null;\n\
-\tthis.uvs = [[]];\n\
-\n\
-\tthis.z = null;\n\
-\n\
-};\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
 THREE.RenderableObject = function () {\n\
 \n\
+\tthis.id = 0;\n\
+\n\
 \tthis.object = null;\n\
-\tthis.z = null;\n\
+\tthis.z = 0;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
 THREE.RenderableParticle = function () {\n\
 \n\
+\tthis.id = 0;\n\
+\n\
 \tthis.object = null;\n\
 \n\
-\tthis.x = null;\n\
-\tthis.y = null;\n\
-\tthis.z = null;\n\
+\tthis.x = 0;\n\
+\tthis.y = 0;\n\
+\tthis.z = 0;\n\
 \n\
 \tthis.rotation = null;\n\
 \tthis.scale = new THREE.Vector2();\n\
@@ -28455,43 +30269,26 @@ THREE.RenderableParticle = function () {\n\
 \tthis.material = null;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
 THREE.RenderableLine = function () {\n\
 \n\
-\tthis.z = null;\n\
+\tthis.id = 0;\n\
 \n\
 \tthis.v1 = new THREE.RenderableVertex();\n\
 \tthis.v2 = new THREE.RenderableVertex();\n\
 \n\
+\tthis.vertexColors = [ new THREE.Color(), new THREE.Color() ];\n\
 \tthis.material = null;\n\
 \n\
+\tthis.z = 0;\n\
+\n\
 };\n\
+\n\
 /**\n\
- * @author alteredq / http://alteredqualia.com/\n\
- */\n\
-\n\
-THREE.ColorUtils = {\n\
-\n\
-\tadjustHSV : function ( color, h, s, v ) {\n\
-\n\
-\t\tvar hsv = THREE.ColorUtils.__hsv;\n\
-\n\
-\t\tcolor.getHSV( hsv );\n\
-\n\
-\t\thsv.h = THREE.Math.clamp( hsv.h + h, 0, 1 );\n\
-\t\thsv.s = THREE.Math.clamp( hsv.s + s, 0, 1 );\n\
-\t\thsv.v = THREE.Math.clamp( hsv.v + v, 0, 1 );\n\
-\n\
-\t\tcolor.setHSV( hsv.h, hsv.s, hsv.v );\n\
-\n\
-\t}\n\
-\n\
-};\n\
-\n\
-THREE.ColorUtils.__hsv = { h: 0, s: 0, v: 0 };/**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -28500,9 +30297,9 @@ THREE.GeometryUtils = {\n\
 \n\
 \t// Merge two geometries or geometry and geometry from object (using object's transform)\n\
 \n\
-\tmerge: function ( geometry1, object2 /* mesh | geometry */ ) {\n\
+\tmerge: function ( geometry1, object2 /* mesh | geometry */, materialIndexOffset ) {\n\
 \n\
-\t\tvar matrix, matrixRotation,\n\
+\t\tvar matrix, normalMatrix,\n\
 \t\tvertexOffset = geometry1.vertices.length,\n\
 \t\tuvPosition = geometry1.faceVertexUvs[ 0 ].length,\n\
 \t\tgeometry2 = object2 instanceof THREE.Mesh ? object2.geometry : object2,\n\
@@ -28513,13 +30310,15 @@ THREE.GeometryUtils = {\n\
 \t\tuvs1 = geometry1.faceVertexUvs[ 0 ],\n\
 \t\tuvs2 = geometry2.faceVertexUvs[ 0 ];\n\
 \n\
+\t\tif ( materialIndexOffset === undefined ) materialIndexOffset = 0;\n\
+\n\
 \t\tif ( object2 instanceof THREE.Mesh ) {\n\
 \n\
 \t\t\tobject2.matrixAutoUpdate && object2.updateMatrix();\n\
 \n\
 \t\t\tmatrix = object2.matrix;\n\
-\t\t\tmatrixRotation = new THREE.Matrix4();\n\
-\t\t\tmatrixRotation.extractRotation( matrix, object2.scale );\n\
+\n\
+\t\t\tnormalMatrix = new THREE.Matrix3().getNormalMatrix( matrix );\n\
 \n\
 \t\t}\n\
 \n\
@@ -28531,7 +30330,7 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\t\tvar vertexCopy = vertex.clone();\n\
 \n\
-\t\t\tif ( matrix ) matrix.multiplyVector3( vertexCopy );\n\
+\t\t\tif ( matrix ) vertexCopy.applyMatrix4( matrix );\n\
 \n\
 \t\t\tvertices1.push( vertexCopy );\n\
 \n\
@@ -28545,25 +30344,24 @@ THREE.GeometryUtils = {\n\
 \t\t\tfaceVertexNormals = face.vertexNormals,\n\
 \t\t\tfaceVertexColors = face.vertexColors;\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\tfaceCopy = new THREE.Face3( face.a + vertexOffset, face.b + vertexOffset, face.c + vertexOffset );\n\
-\n\
-\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\tfaceCopy = new THREE.Face4( face.a + vertexOffset, face.b + vertexOffset, face.c + vertexOffset, face.d + vertexOffset );\n\
-\n\
-\t\t\t}\n\
-\n\
+\t\t\tfaceCopy = new THREE.Face3( face.a + vertexOffset, face.b + vertexOffset, face.c + vertexOffset );\n\
 \t\t\tfaceCopy.normal.copy( face.normal );\n\
 \n\
-\t\t\tif ( matrixRotation ) matrixRotation.multiplyVector3( faceCopy.normal );\n\
+\t\t\tif ( normalMatrix ) {\n\
+\n\
+\t\t\t\tfaceCopy.normal.applyMatrix3( normalMatrix ).normalize();\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t\tfor ( var j = 0, jl = faceVertexNormals.length; j < jl; j ++ ) {\n\
 \n\
 \t\t\t\tnormal = faceVertexNormals[ j ].clone();\n\
 \n\
-\t\t\t\tif ( matrixRotation ) matrixRotation.multiplyVector3( normal );\n\
+\t\t\t\tif ( normalMatrix ) {\n\
+\n\
+\t\t\t\t\tnormal.applyMatrix3( normalMatrix ).normalize();\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \t\t\t\tfaceCopy.vertexNormals.push( normal );\n\
 \n\
@@ -28578,10 +30376,15 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\t\t}\n\
 \n\
-\t\t\tfaceCopy.materialIndex = face.materialIndex;\n\
+\t\t\tfaceCopy.materialIndex = face.materialIndex + materialIndexOffset;\n\
 \n\
 \t\t\tfaceCopy.centroid.copy( face.centroid );\n\
-\t\t\tif ( matrix ) matrix.multiplyVector3( faceCopy.centroid );\n\
+\n\
+\t\t\tif ( matrix ) {\n\
+\n\
+\t\t\t\tfaceCopy.centroid.applyMatrix4( matrix );\n\
+\n\
+\t\t\t}\n\
 \n\
 \t\t\tfaces1.push( faceCopy );\n\
 \n\
@@ -28605,67 +30408,48 @@ THREE.GeometryUtils = {\n\
 \n\
 \t},\n\
 \n\
-\tremoveMaterials: function ( geometry, materialIndexArray ) {\n\
-\n\
-\t\tvar materialIndexMap = {};\n\
-\n\
-\t\tfor ( var i = 0, il = materialIndexArray.length; i < il; i ++ ) {\n\
-\n\
-\t\t\tmaterialIndexMap[ materialIndexArray[i] ] = true;\n\
-\n\
-\t\t}\n\
-\n\
-\t\tvar face, newFaces = [];\n\
-\n\
-\t\tfor ( var i = 0, il = geometry.faces.length; i < il; i ++ ) {\n\
-\n\
-\t\t\tface = geometry.faces[ i ];\n\
-\t\t\tif ( ! ( face.materialIndex in materialIndexMap ) ) newFaces.push( face );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tgeometry.faces = newFaces;\n\
-\n\
-\t},\n\
-\n\
 \t// Get random point in triangle (via barycentric coordinates)\n\
 \t// \t(uniform distribution)\n\
 \t// \thttp://www.cgafaq.info/wiki/Random_Point_In_Triangle\n\
 \n\
-\trandomPointInTriangle: function ( vectorA, vectorB, vectorC ) {\n\
+\trandomPointInTriangle: function () {\n\
 \n\
-\t\tvar a, b, c,\n\
-\t\t\tpoint = new THREE.Vector3(),\n\
-\t\t\ttmp = THREE.GeometryUtils.__v1;\n\
+\t\tvar vector = new THREE.Vector3();\n\
 \n\
-\t\ta = THREE.GeometryUtils.random();\n\
-\t\tb = THREE.GeometryUtils.random();\n\
+\t\treturn function ( vectorA, vectorB, vectorC ) {\n\
 \n\
-\t\tif ( ( a + b ) > 1 ) {\n\
+\t\t\tvar point = new THREE.Vector3();\n\
 \n\
-\t\t\ta = 1 - a;\n\
-\t\t\tb = 1 - b;\n\
+\t\t\tvar a = THREE.Math.random16();\n\
+\t\t\tvar b = THREE.Math.random16();\n\
 \n\
-\t\t}\n\
+\t\t\tif ( ( a + b ) > 1 ) {\n\
 \n\
-\t\tc = 1 - a - b;\n\
+\t\t\t\ta = 1 - a;\n\
+\t\t\t\tb = 1 - b;\n\
 \n\
-\t\tpoint.copy( vectorA );\n\
-\t\tpoint.multiplyScalar( a );\n\
+\t\t\t}\n\
 \n\
-\t\ttmp.copy( vectorB );\n\
-\t\ttmp.multiplyScalar( b );\n\
+\t\t\tvar c = 1 - a - b;\n\
 \n\
-\t\tpoint.addSelf( tmp );\n\
+\t\t\tpoint.copy( vectorA );\n\
+\t\t\tpoint.multiplyScalar( a );\n\
 \n\
-\t\ttmp.copy( vectorC );\n\
-\t\ttmp.multiplyScalar( c );\n\
+\t\t\tvector.copy( vectorB );\n\
+\t\t\tvector.multiplyScalar( b );\n\
 \n\
-\t\tpoint.addSelf( tmp );\n\
+\t\t\tpoint.add( vector );\n\
 \n\
-\t\treturn point;\n\
+\t\t\tvector.copy( vectorC );\n\
+\t\t\tvector.multiplyScalar( c );\n\
 \n\
-\t},\n\
+\t\t\tpoint.add( vector );\n\
+\n\
+\t\t\treturn point;\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \t// Get random point in face (triangle / quad)\n\
 \t// (uniform distribution)\n\
@@ -28674,60 +30458,11 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\tvar vA, vB, vC, vD;\n\
 \n\
-\t\tif ( face instanceof THREE.Face3 ) {\n\
+\t\tvA = geometry.vertices[ face.a ];\n\
+\t\tvB = geometry.vertices[ face.b ];\n\
+\t\tvC = geometry.vertices[ face.c ];\n\
 \n\
-\t\t\tvA = geometry.vertices[ face.a ];\n\
-\t\t\tvB = geometry.vertices[ face.b ];\n\
-\t\t\tvC = geometry.vertices[ face.c ];\n\
-\n\
-\t\t\treturn THREE.GeometryUtils.randomPointInTriangle( vA, vB, vC );\n\
-\n\
-\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\tvA = geometry.vertices[ face.a ];\n\
-\t\t\tvB = geometry.vertices[ face.b ];\n\
-\t\t\tvC = geometry.vertices[ face.c ];\n\
-\t\t\tvD = geometry.vertices[ face.d ];\n\
-\n\
-\t\t\tvar area1, area2;\n\
-\n\
-\t\t\tif ( useCachedAreas ) {\n\
-\n\
-\t\t\t\tif ( face._area1 && face._area2 ) {\n\
-\n\
-\t\t\t\t\tarea1 = face._area1;\n\
-\t\t\t\t\tarea2 = face._area2;\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tarea1 = THREE.GeometryUtils.triangleArea( vA, vB, vD );\n\
-\t\t\t\t\tarea2 = THREE.GeometryUtils.triangleArea( vB, vC, vD );\n\
-\n\
-\t\t\t\t\tface._area1 = area1;\n\
-\t\t\t\t\tface._area2 = area2;\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tarea1 = THREE.GeometryUtils.triangleArea( vA, vB, vD ),\n\
-\t\t\t\tarea2 = THREE.GeometryUtils.triangleArea( vB, vC, vD );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t\tvar r = THREE.GeometryUtils.random() * ( area1 + area2 );\n\
-\n\
-\t\t\tif ( r < area1 ) {\n\
-\n\
-\t\t\t\treturn THREE.GeometryUtils.randomPointInTriangle( vA, vB, vD );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\treturn THREE.GeometryUtils.randomPointInTriangle( vB, vC, vD );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
+\t\treturn THREE.GeometryUtils.randomPointInTriangle( vA, vB, vC );\n\
 \n\
 \t},\n\
 \n\
@@ -28753,27 +30488,11 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\t\tface = faces[ i ];\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
+\t\t\tvA = vertices[ face.a ];\n\
+\t\t\tvB = vertices[ face.b ];\n\
+\t\t\tvC = vertices[ face.c ];\n\
 \n\
-\t\t\t\tvA = vertices[ face.a ];\n\
-\t\t\t\tvB = vertices[ face.b ];\n\
-\t\t\t\tvC = vertices[ face.c ];\n\
-\n\
-\t\t\t\tface._area = THREE.GeometryUtils.triangleArea( vA, vB, vC );\n\
-\n\
-\t\t\t} else if ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\tvA = vertices[ face.a ];\n\
-\t\t\t\tvB = vertices[ face.b ];\n\
-\t\t\t\tvC = vertices[ face.c ];\n\
-\t\t\t\tvD = vertices[ face.d ];\n\
-\n\
-\t\t\t\tface._area1 = THREE.GeometryUtils.triangleArea( vA, vB, vD );\n\
-\t\t\t\tface._area2 = THREE.GeometryUtils.triangleArea( vB, vC, vD );\n\
-\n\
-\t\t\t\tface._area = face._area1 + face._area2;\n\
-\n\
-\t\t\t}\n\
+\t\t\tface._area = THREE.GeometryUtils.triangleArea( vA, vB, vC );\n\
 \n\
 \t\t\ttotalArea += face._area;\n\
 \n\
@@ -28825,7 +30544,7 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\tfor ( i = 0; i < n; i ++ ) {\n\
 \n\
-\t\t\tr = THREE.GeometryUtils.random() * totalArea;\n\
+\t\t\tr = THREE.Math.random16() * totalArea;\n\
 \n\
 \t\t\tindex = binarySearchIndices( r );\n\
 \n\
@@ -28850,18 +30569,22 @@ THREE.GeometryUtils = {\n\
 \t// Get triangle area (half of parallelogram)\n\
 \t//\thttp://mathworld.wolfram.com/TriangleArea.html\n\
 \n\
-\ttriangleArea: function ( vectorA, vectorB, vectorC ) {\n\
+\ttriangleArea: function () {\n\
 \n\
-\t\tvar tmp1 = THREE.GeometryUtils.__v1,\n\
-\t\t\ttmp2 = THREE.GeometryUtils.__v2;\n\
+\t\tvar vector1 = new THREE.Vector3();\n\
+\t\tvar vector2 = new THREE.Vector3();\n\
 \n\
-\t\ttmp1.sub( vectorB, vectorA );\n\
-\t\ttmp2.sub( vectorC, vectorA );\n\
-\t\ttmp1.crossSelf( tmp2 );\n\
+\t\treturn function ( vectorA, vectorB, vectorC ) {\n\
 \n\
-\t\treturn 0.5 * tmp1.length();\n\
+\t\t\tvector1.subVectors( vectorB, vectorA );\n\
+\t\t\tvector2.subVectors( vectorC, vectorA );\n\
+\t\t\tvector1.cross( vector2 );\n\
 \n\
-\t},\n\
+\t\t\treturn 0.5 * vector1.length();\n\
+\n\
+\t\t};\n\
+\n\
+\t}(),\n\
 \n\
 \t// Center geometry so that 0,0,0 is in center of bounding box\n\
 \n\
@@ -28873,37 +30596,13 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\tvar offset = new THREE.Vector3();\n\
 \n\
-\t\toffset.add( bb.min, bb.max );\n\
+\t\toffset.addVectors( bb.min, bb.max );\n\
 \t\toffset.multiplyScalar( -0.5 );\n\
 \n\
-\t\tgeometry.applyMatrix( new THREE.Matrix4().makeTranslation( offset ) );\n\
+\t\tgeometry.applyMatrix( new THREE.Matrix4().makeTranslation( offset.x, offset.y, offset.z ) );\n\
 \t\tgeometry.computeBoundingBox();\n\
 \n\
 \t\treturn offset;\n\
-\n\
-\t},\n\
-\n\
-\t// Normalize UVs to be from <0,1>\n\
-\t// (for now just the first set of UVs)\n\
-\n\
-\tnormalizeUVs: function ( geometry ) {\n\
-\n\
-\t\tvar uvSet = geometry.faceVertexUvs[ 0 ];\n\
-\n\
-\t\tfor ( var i = 0, il = uvSet.length; i < il; i ++ ) {\n\
-\n\
-\t\t\tvar uvs = uvSet[ i ];\n\
-\n\
-\t\t\tfor ( var j = 0, jl = uvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t// texture repeat\n\
-\n\
-\t\t\t\tif( uvs[ j ].x !== 1.0 ) uvs[ j ].x = uvs[ j ].x - Math.floor( uvs[ j ].x );\n\
-\t\t\t\tif( uvs[ j ].y !== 1.0 ) uvs[ j ].y = uvs[ j ].y - Math.floor( uvs[ j ].y );\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
 \n\
 \t},\n\
 \n\
@@ -28912,14 +30611,7 @@ THREE.GeometryUtils = {\n\
 \t\tvar i, il, j, jl;\n\
 \n\
 \t\tvar faces = [];\n\
-\t\tvar faceUvs = [];\n\
 \t\tvar faceVertexUvs = [];\n\
-\n\
-\t\tfor ( i = 0, il = geometry.faceUvs.length; i < il; i ++ ) {\n\
-\n\
-\t\t\tfaceUvs[ i ] = [];\n\
-\n\
-\t\t}\n\
 \n\
 \t\tfor ( i = 0, il = geometry.faceVertexUvs.length; i < il; i ++ ) {\n\
 \n\
@@ -28931,98 +30623,17 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\t\tvar face = geometry.faces[ i ];\n\
 \n\
-\t\t\tif ( face instanceof THREE.Face4 ) {\n\
+\t\t\tfaces.push( face );\n\
 \n\
-\t\t\t\tvar a = face.a;\n\
-\t\t\t\tvar b = face.b;\n\
-\t\t\t\tvar c = face.c;\n\
-\t\t\t\tvar d = face.d;\n\
+\t\t\tfor ( j = 0, jl = geometry.faceVertexUvs.length; j < jl; j ++ ) {\n\
 \n\
-\t\t\t\tvar triA = new THREE.Face3();\n\
-\t\t\t\tvar triB = new THREE.Face3();\n\
-\n\
-\t\t\t\ttriA.color.copy( face.color );\n\
-\t\t\t\ttriB.color.copy( face.color );\n\
-\n\
-\t\t\t\ttriA.materialIndex = face.materialIndex;\n\
-\t\t\t\ttriB.materialIndex = face.materialIndex;\n\
-\n\
-\t\t\t\ttriA.a = a;\n\
-\t\t\t\ttriA.b = b;\n\
-\t\t\t\ttriA.c = d;\n\
-\n\
-\t\t\t\ttriB.a = b;\n\
-\t\t\t\ttriB.b = c;\n\
-\t\t\t\ttriB.c = d;\n\
-\n\
-\t\t\t\tif ( face.vertexColors.length === 4 ) {\n\
-\n\
-\t\t\t\t\ttriA.vertexColors[ 0 ] = face.vertexColors[ 0 ].clone();\n\
-\t\t\t\t\ttriA.vertexColors[ 1 ] = face.vertexColors[ 1 ].clone();\n\
-\t\t\t\t\ttriA.vertexColors[ 2 ] = face.vertexColors[ 3 ].clone();\n\
-\n\
-\t\t\t\t\ttriB.vertexColors[ 0 ] = face.vertexColors[ 1 ].clone();\n\
-\t\t\t\t\ttriB.vertexColors[ 1 ] = face.vertexColors[ 2 ].clone();\n\
-\t\t\t\t\ttriB.vertexColors[ 2 ] = face.vertexColors[ 3 ].clone();\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tfaces.push( triA, triB );\n\
-\n\
-\t\t\t\tfor ( j = 0, jl = geometry.faceVertexUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\tif ( geometry.faceVertexUvs[ j ].length ) {\n\
-\n\
-\t\t\t\t\t\tvar uvs = geometry.faceVertexUvs[ j ][ i ];\n\
-\n\
-\t\t\t\t\t\tvar uvA = uvs[ 0 ];\n\
-\t\t\t\t\t\tvar uvB = uvs[ 1 ];\n\
-\t\t\t\t\t\tvar uvC = uvs[ 2 ];\n\
-\t\t\t\t\t\tvar uvD = uvs[ 3 ];\n\
-\n\
-\t\t\t\t\t\tvar uvsTriA = [ uvA.clone(), uvB.clone(), uvD.clone() ];\n\
-\t\t\t\t\t\tvar uvsTriB = [ uvB.clone(), uvC.clone(), uvD.clone() ];\n\
-\n\
-\t\t\t\t\t\tfaceVertexUvs[ j ].push( uvsTriA, uvsTriB );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tfor ( j = 0, jl = geometry.faceUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\tif ( geometry.faceUvs[ j ].length ) {\n\
-\n\
-\t\t\t\t\t\tvar faceUv = geometry.faceUvs[ j ][ i ];\n\
-\n\
-\t\t\t\t\t\tfaceUvs[ j ].push( faceUv, faceUv );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tfaces.push( face );\n\
-\n\
-\t\t\t\tfor ( j = 0, jl = geometry.faceUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\tfaceUvs[ j ].push( geometry.faceUvs[ j ][ i ] );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tfor ( j = 0, jl = geometry.faceVertexUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\tfaceVertexUvs[ j ].push( geometry.faceVertexUvs[ j ][ i ] );\n\
-\n\
-\t\t\t\t}\n\
+\t\t\t\tfaceVertexUvs[ j ].push( geometry.faceVertexUvs[ j ][ i ] );\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
 \t\tgeometry.faces = faces;\n\
-\t\tgeometry.faceUvs = faceUvs;\n\
 \t\tgeometry.faceVertexUvs = faceVertexUvs;\n\
 \n\
 \t\tgeometry.computeCentroids();\n\
@@ -29031,521 +30642,10 @@ THREE.GeometryUtils = {\n\
 \n\
 \t\tif ( geometry.hasTangents ) geometry.computeTangents();\n\
 \n\
-\t},\n\
-\n\
-\t// Make all faces use unique vertices\n\
-\t// so that each face can be separated from others\n\
-\n\
-\texplode: function( geometry ) {\n\
-\n\
-\t\tvar vertices = [];\n\
-\n\
-\t\tfor ( var i = 0, il = geometry.faces.length; i < il; i ++ ) {\n\
-\n\
-\t\t\tvar n = vertices.length;\n\
-\n\
-\t\t\tvar face = geometry.faces[ i ];\n\
-\n\
-\t\t\tif ( face instanceof THREE.Face4 ) {\n\
-\n\
-\t\t\t\tvar a = face.a;\n\
-\t\t\t\tvar b = face.b;\n\
-\t\t\t\tvar c = face.c;\n\
-\t\t\t\tvar d = face.d;\n\
-\n\
-\t\t\t\tvar va = geometry.vertices[ a ];\n\
-\t\t\t\tvar vb = geometry.vertices[ b ];\n\
-\t\t\t\tvar vc = geometry.vertices[ c ];\n\
-\t\t\t\tvar vd = geometry.vertices[ d ];\n\
-\n\
-\t\t\t\tvertices.push( va.clone() );\n\
-\t\t\t\tvertices.push( vb.clone() );\n\
-\t\t\t\tvertices.push( vc.clone() );\n\
-\t\t\t\tvertices.push( vd.clone() );\n\
-\n\
-\t\t\t\tface.a = n;\n\
-\t\t\t\tface.b = n + 1;\n\
-\t\t\t\tface.c = n + 2;\n\
-\t\t\t\tface.d = n + 3;\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tvar a = face.a;\n\
-\t\t\t\tvar b = face.b;\n\
-\t\t\t\tvar c = face.c;\n\
-\n\
-\t\t\t\tvar va = geometry.vertices[ a ];\n\
-\t\t\t\tvar vb = geometry.vertices[ b ];\n\
-\t\t\t\tvar vc = geometry.vertices[ c ];\n\
-\n\
-\t\t\t\tvertices.push( va.clone() );\n\
-\t\t\t\tvertices.push( vb.clone() );\n\
-\t\t\t\tvertices.push( vc.clone() );\n\
-\n\
-\t\t\t\tface.a = n;\n\
-\t\t\t\tface.b = n + 1;\n\
-\t\t\t\tface.c = n + 2;\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t\tgeometry.vertices = vertices;\n\
-\t\tdelete geometry.__tmpVertices;\n\
-\n\
-\t},\n\
-\n\
-\t// Break faces with edges longer than maxEdgeLength\n\
-\t// - not recursive\n\
-\n\
-\ttessellate: function ( geometry, maxEdgeLength ) {\n\
-\n\
-\t\tvar i, il, face,\n\
-\t\ta, b, c, d,\n\
-\t\tva, vb, vc, vd,\n\
-\t\tdab, dbc, dac, dcd, dad,\n\
-\t\tm, m1, m2,\n\
-\t\tvm, vm1, vm2,\n\
-\t\tvnm, vnm1, vnm2,\n\
-\t\tvcm, vcm1, vcm2,\n\
-\t\ttriA, triB,\n\
-\t\tquadA, quadB,\n\
-\t\tedge;\n\
-\n\
-\t\tvar faces = [];\n\
-\t\tvar faceVertexUvs = [];\n\
-\n\
-\t\tfor ( i = 0, il = geometry.faceVertexUvs.length; i < il; i ++ ) {\n\
-\n\
-\t\t\tfaceVertexUvs[ i ] = [];\n\
-\n\
-\t\t}\n\
-\n\
-\t\tfor ( i = 0, il = geometry.faces.length; i < il; i ++ ) {\n\
-\n\
-\t\t\tface = geometry.faces[ i ];\n\
-\n\
-\t\t\tif ( face instanceof THREE.Face3 ) {\n\
-\n\
-\t\t\t\ta = face.a;\n\
-\t\t\t\tb = face.b;\n\
-\t\t\t\tc = face.c;\n\
-\n\
-\t\t\t\tva = geometry.vertices[ a ];\n\
-\t\t\t\tvb = geometry.vertices[ b ];\n\
-\t\t\t\tvc = geometry.vertices[ c ];\n\
-\n\
-\t\t\t\tdab = va.distanceTo( vb );\n\
-\t\t\t\tdbc = vb.distanceTo( vc );\n\
-\t\t\t\tdac = va.distanceTo( vc );\n\
-\n\
-\t\t\t\tif ( dab > maxEdgeLength || dbc > maxEdgeLength || dac > maxEdgeLength ) {\n\
-\n\
-\t\t\t\t\tm = geometry.vertices.length;\n\
-\n\
-\t\t\t\t\ttriA = face.clone();\n\
-\t\t\t\t\ttriB = face.clone();\n\
-\n\
-\t\t\t\t\tif ( dab >= dbc && dab >= dac ) {\n\
-\n\
-\t\t\t\t\t\tvm = va.clone();\n\
-\t\t\t\t\t\tvm.lerpSelf( vb, 0.5 );\n\
-\n\
-\t\t\t\t\t\ttriA.a = a;\n\
-\t\t\t\t\t\ttriA.b = m;\n\
-\t\t\t\t\t\ttriA.c = c;\n\
-\n\
-\t\t\t\t\t\ttriB.a = m;\n\
-\t\t\t\t\t\ttriB.b = b;\n\
-\t\t\t\t\t\ttriB.c = c;\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexNormals.length === 3 ) {\n\
-\n\
-\t\t\t\t\t\t\tvnm = face.vertexNormals[ 0 ].clone();\n\
-\t\t\t\t\t\t\tvnm.lerpSelf( face.vertexNormals[ 1 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\ttriA.vertexNormals[ 1 ].copy( vnm );\n\
-\t\t\t\t\t\t\ttriB.vertexNormals[ 0 ].copy( vnm );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexColors.length === 3 ) {\n\
-\n\
-\t\t\t\t\t\t\tvcm = face.vertexColors[ 0 ].clone();\n\
-\t\t\t\t\t\t\tvcm.lerpSelf( face.vertexColors[ 1 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\ttriA.vertexColors[ 1 ].copy( vcm );\n\
-\t\t\t\t\t\t\ttriB.vertexColors[ 0 ].copy( vcm );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tedge = 0;\n\
-\n\
-\t\t\t\t\t} else if ( dbc >= dab && dbc >= dac ) {\n\
-\n\
-\t\t\t\t\t\tvm = vb.clone();\n\
-\t\t\t\t\t\tvm.lerpSelf( vc, 0.5 );\n\
-\n\
-\t\t\t\t\t\ttriA.a = a;\n\
-\t\t\t\t\t\ttriA.b = b;\n\
-\t\t\t\t\t\ttriA.c = m;\n\
-\n\
-\t\t\t\t\t\ttriB.a = m;\n\
-\t\t\t\t\t\ttriB.b = c;\n\
-\t\t\t\t\t\ttriB.c = a;\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexNormals.length === 3 ) {\n\
-\n\
-\t\t\t\t\t\t\tvnm = face.vertexNormals[ 1 ].clone();\n\
-\t\t\t\t\t\t\tvnm.lerpSelf( face.vertexNormals[ 2 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\ttriA.vertexNormals[ 2 ].copy( vnm );\n\
-\n\
-\t\t\t\t\t\t\ttriB.vertexNormals[ 0 ].copy( vnm );\n\
-\t\t\t\t\t\t\ttriB.vertexNormals[ 1 ].copy( face.vertexNormals[ 2 ] );\n\
-\t\t\t\t\t\t\ttriB.vertexNormals[ 2 ].copy( face.vertexNormals[ 0 ] );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexColors.length === 3 ) {\n\
-\n\
-\t\t\t\t\t\t\tvcm = face.vertexColors[ 1 ].clone();\n\
-\t\t\t\t\t\t\tvcm.lerpSelf( face.vertexColors[ 2 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\ttriA.vertexColors[ 2 ].copy( vcm );\n\
-\n\
-\t\t\t\t\t\t\ttriB.vertexColors[ 0 ].copy( vcm );\n\
-\t\t\t\t\t\t\ttriB.vertexColors[ 1 ].copy( face.vertexColors[ 2 ] );\n\
-\t\t\t\t\t\t\ttriB.vertexColors[ 2 ].copy( face.vertexColors[ 0 ] );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tedge = 1;\n\
-\n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\tvm = va.clone();\n\
-\t\t\t\t\t\tvm.lerpSelf( vc, 0.5 );\n\
-\n\
-\t\t\t\t\t\ttriA.a = a;\n\
-\t\t\t\t\t\ttriA.b = b;\n\
-\t\t\t\t\t\ttriA.c = m;\n\
-\n\
-\t\t\t\t\t\ttriB.a = m;\n\
-\t\t\t\t\t\ttriB.b = b;\n\
-\t\t\t\t\t\ttriB.c = c;\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexNormals.length === 3 ) {\n\
-\n\
-\t\t\t\t\t\t\tvnm = face.vertexNormals[ 0 ].clone();\n\
-\t\t\t\t\t\t\tvnm.lerpSelf( face.vertexNormals[ 2 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\ttriA.vertexNormals[ 2 ].copy( vnm );\n\
-\t\t\t\t\t\t\ttriB.vertexNormals[ 0 ].copy( vnm );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexColors.length === 3 ) {\n\
-\n\
-\t\t\t\t\t\t\tvcm = face.vertexColors[ 0 ].clone();\n\
-\t\t\t\t\t\t\tvcm.lerpSelf( face.vertexColors[ 2 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\ttriA.vertexColors[ 2 ].copy( vcm );\n\
-\t\t\t\t\t\t\ttriB.vertexColors[ 0 ].copy( vcm );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tedge = 2;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\tfaces.push( triA, triB );\n\
-\t\t\t\t\tgeometry.vertices.push( vm );\n\
-\n\
-\t\t\t\t\tvar j, jl, uvs, uvA, uvB, uvC, uvM, uvsTriA, uvsTriB;\n\
-\n\
-\t\t\t\t\tfor ( j = 0, jl = geometry.faceVertexUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\t\tif ( geometry.faceVertexUvs[ j ].length ) {\n\
-\n\
-\t\t\t\t\t\t\tuvs = geometry.faceVertexUvs[ j ][ i ];\n\
-\n\
-\t\t\t\t\t\t\tuvA = uvs[ 0 ];\n\
-\t\t\t\t\t\t\tuvB = uvs[ 1 ];\n\
-\t\t\t\t\t\t\tuvC = uvs[ 2 ];\n\
-\n\
-\t\t\t\t\t\t\t// AB\n\
-\n\
-\t\t\t\t\t\t\tif ( edge === 0 ) {\n\
-\n\
-\t\t\t\t\t\t\t\tuvM = uvA.clone();\n\
-\t\t\t\t\t\t\t\tuvM.lerpSelf( uvB, 0.5 );\n\
-\n\
-\t\t\t\t\t\t\t\tuvsTriA = [ uvA.clone(), uvM.clone(), uvC.clone() ];\n\
-\t\t\t\t\t\t\t\tuvsTriB = [ uvM.clone(), uvB.clone(), uvC.clone() ];\n\
-\n\
-\t\t\t\t\t\t\t// BC\n\
-\n\
-\t\t\t\t\t\t\t} else if ( edge === 1 ) {\n\
-\n\
-\t\t\t\t\t\t\t\tuvM = uvB.clone();\n\
-\t\t\t\t\t\t\t\tuvM.lerpSelf( uvC, 0.5 );\n\
-\n\
-\t\t\t\t\t\t\t\tuvsTriA = [ uvA.clone(), uvB.clone(), uvM.clone() ];\n\
-\t\t\t\t\t\t\t\tuvsTriB = [ uvM.clone(), uvC.clone(), uvA.clone() ];\n\
-\n\
-\t\t\t\t\t\t\t// AC\n\
-\n\
-\t\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\t\tuvM = uvA.clone();\n\
-\t\t\t\t\t\t\t\tuvM.lerpSelf( uvC, 0.5 );\n\
-\n\
-\t\t\t\t\t\t\t\tuvsTriA = [ uvA.clone(), uvB.clone(), uvM.clone() ];\n\
-\t\t\t\t\t\t\t\tuvsTriB = [ uvM.clone(), uvB.clone(), uvC.clone() ];\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t\tfaceVertexUvs[ j ].push( uvsTriA, uvsTriB );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tfaces.push( face );\n\
-\n\
-\t\t\t\t\tfor ( j = 0, jl = geometry.faceVertexUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\t\tfaceVertexUvs[ j ].push( geometry.faceVertexUvs[ j ][ i ] );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\ta = face.a;\n\
-\t\t\t\tb = face.b;\n\
-\t\t\t\tc = face.c;\n\
-\t\t\t\td = face.d;\n\
-\n\
-\t\t\t\tva = geometry.vertices[ a ];\n\
-\t\t\t\tvb = geometry.vertices[ b ];\n\
-\t\t\t\tvc = geometry.vertices[ c ];\n\
-\t\t\t\tvd = geometry.vertices[ d ];\n\
-\n\
-\t\t\t\tdab = va.distanceTo( vb );\n\
-\t\t\t\tdbc = vb.distanceTo( vc );\n\
-\t\t\t\tdcd = vc.distanceTo( vd );\n\
-\t\t\t\tdad = va.distanceTo( vd );\n\
-\n\
-\t\t\t\tif ( dab > maxEdgeLength || dbc > maxEdgeLength || dcd > maxEdgeLength || dad > maxEdgeLength ) {\n\
-\n\
-\t\t\t\t\tm1 = geometry.vertices.length;\n\
-\t\t\t\t\tm2 = geometry.vertices.length + 1;\n\
-\n\
-\t\t\t\t\tquadA = face.clone();\n\
-\t\t\t\t\tquadB = face.clone();\n\
-\n\
-\t\t\t\t\tif ( ( dab >= dbc && dab >= dcd && dab >= dad ) || ( dcd >= dbc && dcd >= dab && dcd >= dad ) ) {\n\
-\n\
-\t\t\t\t\t\tvm1 = va.clone();\n\
-\t\t\t\t\t\tvm1.lerpSelf( vb, 0.5 );\n\
-\n\
-\t\t\t\t\t\tvm2 = vc.clone();\n\
-\t\t\t\t\t\tvm2.lerpSelf( vd, 0.5 );\n\
-\n\
-\t\t\t\t\t\tquadA.a = a;\n\
-\t\t\t\t\t\tquadA.b = m1;\n\
-\t\t\t\t\t\tquadA.c = m2;\n\
-\t\t\t\t\t\tquadA.d = d;\n\
-\n\
-\t\t\t\t\t\tquadB.a = m1;\n\
-\t\t\t\t\t\tquadB.b = b;\n\
-\t\t\t\t\t\tquadB.c = c;\n\
-\t\t\t\t\t\tquadB.d = m2;\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexNormals.length === 4 ) {\n\
-\n\
-\t\t\t\t\t\t\tvnm1 = face.vertexNormals[ 0 ].clone();\n\
-\t\t\t\t\t\t\tvnm1.lerpSelf( face.vertexNormals[ 1 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tvnm2 = face.vertexNormals[ 2 ].clone();\n\
-\t\t\t\t\t\t\tvnm2.lerpSelf( face.vertexNormals[ 3 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tquadA.vertexNormals[ 1 ].copy( vnm1 );\n\
-\t\t\t\t\t\t\tquadA.vertexNormals[ 2 ].copy( vnm2 );\n\
-\n\
-\t\t\t\t\t\t\tquadB.vertexNormals[ 0 ].copy( vnm1 );\n\
-\t\t\t\t\t\t\tquadB.vertexNormals[ 3 ].copy( vnm2 );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexColors.length === 4 ) {\n\
-\n\
-\t\t\t\t\t\t\tvcm1 = face.vertexColors[ 0 ].clone();\n\
-\t\t\t\t\t\t\tvcm1.lerpSelf( face.vertexColors[ 1 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tvcm2 = face.vertexColors[ 2 ].clone();\n\
-\t\t\t\t\t\t\tvcm2.lerpSelf( face.vertexColors[ 3 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tquadA.vertexColors[ 1 ].copy( vcm1 );\n\
-\t\t\t\t\t\t\tquadA.vertexColors[ 2 ].copy( vcm2 );\n\
-\n\
-\t\t\t\t\t\t\tquadB.vertexColors[ 0 ].copy( vcm1 );\n\
-\t\t\t\t\t\t\tquadB.vertexColors[ 3 ].copy( vcm2 );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tedge = 0;\n\
-\n\
-\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\tvm1 = vb.clone();\n\
-\t\t\t\t\t\tvm1.lerpSelf( vc, 0.5 );\n\
-\n\
-\t\t\t\t\t\tvm2 = vd.clone();\n\
-\t\t\t\t\t\tvm2.lerpSelf( va, 0.5 );\n\
-\n\
-\t\t\t\t\t\tquadA.a = a;\n\
-\t\t\t\t\t\tquadA.b = b;\n\
-\t\t\t\t\t\tquadA.c = m1;\n\
-\t\t\t\t\t\tquadA.d = m2;\n\
-\n\
-\t\t\t\t\t\tquadB.a = m2;\n\
-\t\t\t\t\t\tquadB.b = m1;\n\
-\t\t\t\t\t\tquadB.c = c;\n\
-\t\t\t\t\t\tquadB.d = d;\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexNormals.length === 4 ) {\n\
-\n\
-\t\t\t\t\t\t\tvnm1 = face.vertexNormals[ 1 ].clone();\n\
-\t\t\t\t\t\t\tvnm1.lerpSelf( face.vertexNormals[ 2 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tvnm2 = face.vertexNormals[ 3 ].clone();\n\
-\t\t\t\t\t\t\tvnm2.lerpSelf( face.vertexNormals[ 0 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tquadA.vertexNormals[ 2 ].copy( vnm1 );\n\
-\t\t\t\t\t\t\tquadA.vertexNormals[ 3 ].copy( vnm2 );\n\
-\n\
-\t\t\t\t\t\t\tquadB.vertexNormals[ 0 ].copy( vnm2 );\n\
-\t\t\t\t\t\t\tquadB.vertexNormals[ 1 ].copy( vnm1 );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tif ( face.vertexColors.length === 4 ) {\n\
-\n\
-\t\t\t\t\t\t\tvcm1 = face.vertexColors[ 1 ].clone();\n\
-\t\t\t\t\t\t\tvcm1.lerpSelf( face.vertexColors[ 2 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tvcm2 = face.vertexColors[ 3 ].clone();\n\
-\t\t\t\t\t\t\tvcm2.lerpSelf( face.vertexColors[ 0 ], 0.5 );\n\
-\n\
-\t\t\t\t\t\t\tquadA.vertexColors[ 2 ].copy( vcm1 );\n\
-\t\t\t\t\t\t\tquadA.vertexColors[ 3 ].copy( vcm2 );\n\
-\n\
-\t\t\t\t\t\t\tquadB.vertexColors[ 0 ].copy( vcm2 );\n\
-\t\t\t\t\t\t\tquadB.vertexColors[ 1 ].copy( vcm1 );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\tedge = 1;\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\tfaces.push( quadA, quadB );\n\
-\t\t\t\t\tgeometry.vertices.push( vm1, vm2 );\n\
-\n\
-\t\t\t\t\tvar j, jl, uvs, uvA, uvB, uvC, uvD, uvM1, uvM2, uvsQuadA, uvsQuadB;\n\
-\n\
-\t\t\t\t\tfor ( j = 0, jl = geometry.faceVertexUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\t\tif ( geometry.faceVertexUvs[ j ].length ) {\n\
-\n\
-\t\t\t\t\t\t\tuvs = geometry.faceVertexUvs[ j ][ i ];\n\
-\n\
-\t\t\t\t\t\t\tuvA = uvs[ 0 ];\n\
-\t\t\t\t\t\t\tuvB = uvs[ 1 ];\n\
-\t\t\t\t\t\t\tuvC = uvs[ 2 ];\n\
-\t\t\t\t\t\t\tuvD = uvs[ 3 ];\n\
-\n\
-\t\t\t\t\t\t\t// AB + CD\n\
-\n\
-\t\t\t\t\t\t\tif ( edge === 0 ) {\n\
-\n\
-\t\t\t\t\t\t\t\tuvM1 = uvA.clone();\n\
-\t\t\t\t\t\t\t\tuvM1.lerpSelf( uvB, 0.5 );\n\
-\n\
-\t\t\t\t\t\t\t\tuvM2 = uvC.clone();\n\
-\t\t\t\t\t\t\t\tuvM2.lerpSelf( uvD, 0.5 );\n\
-\n\
-\t\t\t\t\t\t\t\tuvsQuadA = [ uvA.clone(), uvM1.clone(), uvM2.clone(), uvD.clone() ];\n\
-\t\t\t\t\t\t\t\tuvsQuadB = [ uvM1.clone(), uvB.clone(), uvC.clone(), uvM2.clone() ];\n\
-\n\
-\t\t\t\t\t\t\t// BC + AD\n\
-\n\
-\t\t\t\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\t\t\t\tuvM1 = uvB.clone();\n\
-\t\t\t\t\t\t\t\tuvM1.lerpSelf( uvC, 0.5 );\n\
-\n\
-\t\t\t\t\t\t\t\tuvM2 = uvD.clone();\n\
-\t\t\t\t\t\t\t\tuvM2.lerpSelf( uvA, 0.5 );\n\
-\n\
-\t\t\t\t\t\t\t\tuvsQuadA = [ uvA.clone(), uvB.clone(), uvM1.clone(), uvM2.clone() ];\n\
-\t\t\t\t\t\t\t\tuvsQuadB = [ uvM2.clone(), uvM1.clone(), uvC.clone(), uvD.clone() ];\n\
-\n\
-\t\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t\t\tfaceVertexUvs[ j ].push( uvsQuadA, uvsQuadB );\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t} else {\n\
-\n\
-\t\t\t\t\tfaces.push( face );\n\
-\n\
-\t\t\t\t\tfor ( j = 0, jl = geometry.faceVertexUvs.length; j < jl; j ++ ) {\n\
-\n\
-\t\t\t\t\t\tfaceVertexUvs[ j ].push( geometry.faceVertexUvs[ j ][ i ] );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t}\n\
-\n\
-\t\t}\n\
-\n\
-\t\tgeometry.faces = faces;\n\
-\t\tgeometry.faceVertexUvs = faceVertexUvs;\n\
-\n\
-\t},\n\
-\t\n\
-\tsetMaterialIndex: function ( geometry, index, startFace, endFace ){\n\
-\t\t\n\
-\t\tvar faces = geometry.faces;\n\
-\t\tvar start = startFace || 0;\n\
-\t\tvar end = endFace || faces.length - 1;\n\
-\t\t\n\
-\t\tfor ( var i = start; i <= end; i ++ ) {\n\
-\t\t\n\
-\t\t\tfaces[i].materialIndex = index;\n\
-\n\
-\t\t}\n\
-\t\t\n\
-    }\n\
+\t}\n\
 \n\
 };\n\
 \n\
-THREE.GeometryUtils.random = THREE.Math.random16;\n\
-\n\
-THREE.GeometryUtils.__v1 = new THREE.Vector3();\n\
-THREE.GeometryUtils.__v2 = new THREE.Vector3();\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -29561,24 +30661,15 @@ THREE.ImageUtils = {\n\
 \t\tvar texture = new THREE.Texture( image, mapping );\n\
 \n\
 \t\tvar loader = new THREE.ImageLoader();\n\
+\t\tloader.crossOrigin = this.crossOrigin;\n\
+\t\tloader.load( url, function ( image ) {\n\
 \n\
-\t\tloader.addEventListener( 'load', function ( event ) {\n\
-\n\
-\t\t\ttexture.image = event.content;\n\
+\t\t\ttexture.image = image;\n\
 \t\t\ttexture.needsUpdate = true;\n\
 \n\
 \t\t\tif ( onLoad ) onLoad( texture );\n\
 \n\
 \t\t} );\n\
-\n\
-\t\tloader.addEventListener( 'error', function ( event ) {\n\
-\n\
-\t\t\tif ( onError ) onError( event.message );\n\
-\n\
-\t\t} );\n\
-\n\
-\t\tloader.crossOrigin = this.crossOrigin;\n\
-\t\tloader.load( url, image );\n\
 \n\
 \t\ttexture.sourceFile = url;\n\
 \n\
@@ -30099,6 +31190,7 @@ THREE.ImageUtils = {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -30139,789 +31231,7 @@ THREE.SceneUtils = {\n\
 \t}\n\
 \n\
 };\n\
-/**\n\
- * @author alteredq / http://alteredqualia.com/\n\
- * @author mrdoob / http://mrdoob.com/\n\
- *\n\
- * ShaderUtils currently contains:\n\
- *\n\
- *\tfresnel\n\
- *\tnormal\n\
- * \tcube\n\
- *\n\
- */\n\
 \n\
-THREE.ShaderUtils = {\n\
-\n\
-\tlib: {\n\
-\n\
-\t\t/* -------------------------------------------------------------------------\n\
-\t\t//\tFresnel shader\n\
-\t\t//\t- based on Nvidia Cg tutorial\n\
-\t\t ------------------------------------------------------------------------- */\n\
-\n\
-\t\t'fresnel': {\n\
-\n\
-\t\t\tuniforms: {\n\
-\n\
-\t\t\t\t\"mRefractionRatio\": { type: \"f\", value: 1.02 },\n\
-\t\t\t\t\"mFresnelBias\": { type: \"f\", value: 0.1 },\n\
-\t\t\t\t\"mFresnelPower\": { type: \"f\", value: 2.0 },\n\
-\t\t\t\t\"mFresnelScale\": { type: \"f\", value: 1.0 },\n\
-\t\t\t\t\"tCube\": { type: \"t\", value: null }\n\
-\n\
-\t\t\t},\n\
-\n\
-\t\t\tfragmentShader: [\n\
-\n\
-\t\t\t\t\"uniform samplerCube tCube;\",\n\
-\n\
-\t\t\t\t\"varying vec3 vReflect;\",\n\
-\t\t\t\t\"varying vec3 vRefract[3];\",\n\
-\t\t\t\t\"varying float vReflectionFactor;\",\n\
-\n\
-\t\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\t\"vec4 reflectedColor = textureCube( tCube, vec3( -vReflect.x, vReflect.yz ) );\",\n\
-\t\t\t\t\t\"vec4 refractedColor = vec4( 1.0 );\",\n\
-\n\
-\t\t\t\t\t\"refractedColor.r = textureCube( tCube, vec3( -vRefract[0].x, vRefract[0].yz ) ).r;\",\n\
-\t\t\t\t\t\"refractedColor.g = textureCube( tCube, vec3( -vRefract[1].x, vRefract[1].yz ) ).g;\",\n\
-\t\t\t\t\t\"refractedColor.b = textureCube( tCube, vec3( -vRefract[2].x, vRefract[2].yz ) ).b;\",\n\
-\n\
-\t\t\t\t\t\"gl_FragColor = mix( refractedColor, reflectedColor, clamp( vReflectionFactor, 0.0, 1.0 ) );\",\n\
-\n\
-\t\t\t\t\"}\"\n\
-\n\
-\t\t\t].join(\"\\n\
-\"),\n\
-\n\
-\t\t\tvertexShader: [\n\
-\n\
-\t\t\t\t\"uniform float mRefractionRatio;\",\n\
-\t\t\t\t\"uniform float mFresnelBias;\",\n\
-\t\t\t\t\"uniform float mFresnelScale;\",\n\
-\t\t\t\t\"uniform float mFresnelPower;\",\n\
-\n\
-\t\t\t\t\"varying vec3 vReflect;\",\n\
-\t\t\t\t\"varying vec3 vRefract[3];\",\n\
-\t\t\t\t\"varying float vReflectionFactor;\",\n\
-\n\
-\t\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\t\"vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );\",\n\
-\t\t\t\t\t\"vec4 worldPosition = modelMatrix * vec4( position, 1.0 );\",\n\
-\n\
-\t\t\t\t\t\"vec3 worldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );\",\n\
-\n\
-\t\t\t\t\t\"vec3 I = worldPosition.xyz - cameraPosition;\",\n\
-\n\
-\t\t\t\t\t\"vReflect = reflect( I, worldNormal );\",\n\
-\t\t\t\t\t\"vRefract[0] = refract( normalize( I ), worldNormal, mRefractionRatio );\",\n\
-\t\t\t\t\t\"vRefract[1] = refract( normalize( I ), worldNormal, mRefractionRatio * 0.99 );\",\n\
-\t\t\t\t\t\"vRefract[2] = refract( normalize( I ), worldNormal, mRefractionRatio * 0.98 );\",\n\
-\t\t\t\t\t\"vReflectionFactor = mFresnelBias + mFresnelScale * pow( 1.0 + dot( normalize( I ), worldNormal ), mFresnelPower );\",\n\
-\n\
-\t\t\t\t\t\"gl_Position = projectionMatrix * mvPosition;\",\n\
-\n\
-\t\t\t\t\"}\"\n\
-\n\
-\t\t\t].join(\"\\n\
-\")\n\
-\n\
-\t\t},\n\
-\n\
-\t\t/* -------------------------------------------------------------------------\n\
-\t\t//\tNormal map shader\n\
-\t\t//\t\t- Blinn-Phong\n\
-\t\t//\t\t- normal + diffuse + specular + AO + displacement + reflection + shadow maps\n\
-\t\t//\t\t- point and directional lights (use with \"lights: true\" material option)\n\
-\t\t ------------------------------------------------------------------------- */\n\
-\n\
-\t\t'normal' : {\n\
-\n\
-\t\t\tuniforms: THREE.UniformsUtils.merge( [\n\
-\n\
-\t\t\t\tTHREE.UniformsLib[ \"fog\" ],\n\
-\t\t\t\tTHREE.UniformsLib[ \"lights\" ],\n\
-\t\t\t\tTHREE.UniformsLib[ \"shadowmap\" ],\n\
-\n\
-\t\t\t\t{\n\
-\n\
-\t\t\t\t\"enableAO\"\t\t  : { type: \"i\", value: 0 },\n\
-\t\t\t\t\"enableDiffuse\"\t  : { type: \"i\", value: 0 },\n\
-\t\t\t\t\"enableSpecular\"  : { type: \"i\", value: 0 },\n\
-\t\t\t\t\"enableReflection\": { type: \"i\", value: 0 },\n\
-\t\t\t\t\"enableDisplacement\": { type: \"i\", value: 0 },\n\
-\n\
-\t\t\t\t\"tDisplacement\": { type: \"t\", value: null }, // must go first as this is vertex texture\n\
-\t\t\t\t\"tDiffuse\"\t   : { type: \"t\", value: null },\n\
-\t\t\t\t\"tCube\"\t\t   : { type: \"t\", value: null },\n\
-\t\t\t\t\"tNormal\"\t   : { type: \"t\", value: null },\n\
-\t\t\t\t\"tSpecular\"\t   : { type: \"t\", value: null },\n\
-\t\t\t\t\"tAO\"\t\t   : { type: \"t\", value: null },\n\
-\n\
-\t\t\t\t\"uNormalScale\": { type: \"v2\", value: new THREE.Vector2( 1, 1 ) },\n\
-\n\
-\t\t\t\t\"uDisplacementBias\": { type: \"f\", value: 0.0 },\n\
-\t\t\t\t\"uDisplacementScale\": { type: \"f\", value: 1.0 },\n\
-\n\
-\t\t\t\t\"uDiffuseColor\": { type: \"c\", value: new THREE.Color( 0xffffff ) },\n\
-\t\t\t\t\"uSpecularColor\": { type: \"c\", value: new THREE.Color( 0x111111 ) },\n\
-\t\t\t\t\"uAmbientColor\": { type: \"c\", value: new THREE.Color( 0xffffff ) },\n\
-\t\t\t\t\"uShininess\": { type: \"f\", value: 30 },\n\
-\t\t\t\t\"uOpacity\": { type: \"f\", value: 1 },\n\
-\n\
-\t\t\t\t\"useRefract\": { type: \"i\", value: 0 },\n\
-\t\t\t\t\"uRefractionRatio\": { type: \"f\", value: 0.98 },\n\
-\t\t\t\t\"uReflectivity\": { type: \"f\", value: 0.5 },\n\
-\n\
-\t\t\t\t\"uOffset\" : { type: \"v2\", value: new THREE.Vector2( 0, 0 ) },\n\
-\t\t\t\t\"uRepeat\" : { type: \"v2\", value: new THREE.Vector2( 1, 1 ) },\n\
-\n\
-\t\t\t\t\"wrapRGB\"  : { type: \"v3\", value: new THREE.Vector3( 1, 1, 1 ) }\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t] ),\n\
-\n\
-\t\t\tfragmentShader: [\n\
-\n\
-\t\t\t\t\"uniform vec3 uAmbientColor;\",\n\
-\t\t\t\t\"uniform vec3 uDiffuseColor;\",\n\
-\t\t\t\t\"uniform vec3 uSpecularColor;\",\n\
-\t\t\t\t\"uniform float uShininess;\",\n\
-\t\t\t\t\"uniform float uOpacity;\",\n\
-\n\
-\t\t\t\t\"uniform bool enableDiffuse;\",\n\
-\t\t\t\t\"uniform bool enableSpecular;\",\n\
-\t\t\t\t\"uniform bool enableAO;\",\n\
-\t\t\t\t\"uniform bool enableReflection;\",\n\
-\n\
-\t\t\t\t\"uniform sampler2D tDiffuse;\",\n\
-\t\t\t\t\"uniform sampler2D tNormal;\",\n\
-\t\t\t\t\"uniform sampler2D tSpecular;\",\n\
-\t\t\t\t\"uniform sampler2D tAO;\",\n\
-\n\
-\t\t\t\t\"uniform samplerCube tCube;\",\n\
-\n\
-\t\t\t\t\"uniform vec2 uNormalScale;\",\n\
-\n\
-\t\t\t\t\"uniform bool useRefract;\",\n\
-\t\t\t\t\"uniform float uRefractionRatio;\",\n\
-\t\t\t\t\"uniform float uReflectivity;\",\n\
-\n\
-\t\t\t\t\"varying vec3 vTangent;\",\n\
-\t\t\t\t\"varying vec3 vBinormal;\",\n\
-\t\t\t\t\"varying vec3 vNormal;\",\n\
-\t\t\t\t\"varying vec2 vUv;\",\n\
-\n\
-\t\t\t\t\"uniform vec3 ambientLightColor;\",\n\
-\n\
-\t\t\t\t\"#if MAX_DIR_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\"uniform vec3 directionalLightColor[ MAX_DIR_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform vec3 directionalLightDirection[ MAX_DIR_LIGHTS ];\",\n\
-\n\
-\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\"#if MAX_HEMI_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\"uniform vec3 hemisphereLightSkyColor[ MAX_HEMI_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform vec3 hemisphereLightGroundColor[ MAX_HEMI_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform vec3 hemisphereLightDirection[ MAX_HEMI_LIGHTS ];\",\n\
-\n\
-\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\"#if MAX_POINT_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\"uniform vec3 pointLightColor[ MAX_POINT_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform vec3 pointLightPosition[ MAX_POINT_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform float pointLightDistance[ MAX_POINT_LIGHTS ];\",\n\
-\n\
-\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\"#if MAX_SPOT_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\"uniform vec3 spotLightColor[ MAX_SPOT_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform vec3 spotLightPosition[ MAX_SPOT_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform vec3 spotLightDirection[ MAX_SPOT_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform float spotLightAngleCos[ MAX_SPOT_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform float spotLightExponent[ MAX_SPOT_LIGHTS ];\",\n\
-\t\t\t\t\t\"uniform float spotLightDistance[ MAX_SPOT_LIGHTS ];\",\n\
-\n\
-\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\"#ifdef WRAP_AROUND\",\n\
-\n\
-\t\t\t\t\t\"uniform vec3 wrapRGB;\",\n\
-\n\
-\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\"varying vec3 vWorldPosition;\",\n\
-\t\t\t\t\"varying vec3 vViewPosition;\",\n\
-\n\
-\t\t\t\tTHREE.ShaderChunk[ \"shadowmap_pars_fragment\" ],\n\
-\t\t\t\tTHREE.ShaderChunk[ \"fog_pars_fragment\" ],\n\
-\n\
-\t\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\t\"gl_FragColor = vec4( vec3( 1.0 ), uOpacity );\",\n\
-\n\
-\t\t\t\t\t\"vec3 specularTex = vec3( 1.0 );\",\n\
-\n\
-\t\t\t\t\t\"vec3 normalTex = texture2D( tNormal, vUv ).xyz * 2.0 - 1.0;\",\n\
-\t\t\t\t\t\"normalTex.xy *= uNormalScale;\",\n\
-\t\t\t\t\t\"normalTex = normalize( normalTex );\",\n\
-\n\
-\t\t\t\t\t\"if( enableDiffuse ) {\",\n\
-\n\
-\t\t\t\t\t\t\"#ifdef GAMMA_INPUT\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 texelColor = texture2D( tDiffuse, vUv );\",\n\
-\t\t\t\t\t\t\t\"texelColor.xyz *= texelColor.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\t\"gl_FragColor = gl_FragColor * texelColor;\",\n\
-\n\
-\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\"gl_FragColor = gl_FragColor * texture2D( tDiffuse, vUv );\",\n\
-\n\
-\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"if( enableAO ) {\",\n\
-\n\
-\t\t\t\t\t\t\"#ifdef GAMMA_INPUT\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 aoColor = texture2D( tAO, vUv );\",\n\
-\t\t\t\t\t\t\t\"aoColor.xyz *= aoColor.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * aoColor.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * texture2D( tAO, vUv ).xyz;\",\n\
-\n\
-\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"if( enableSpecular )\",\n\
-\t\t\t\t\t\t\"specularTex = texture2D( tSpecular, vUv ).xyz;\",\n\
-\n\
-\t\t\t\t\t\"mat3 tsb = mat3( normalize( vTangent ), normalize( vBinormal ), normalize( vNormal ) );\",\n\
-\t\t\t\t\t\"vec3 finalNormal = tsb * normalTex;\",\n\
-\n\
-\t\t\t\t\t\"#ifdef FLIP_SIDED\",\n\
-\n\
-\t\t\t\t\t\t\"finalNormal = -finalNormal;\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"vec3 normal = normalize( finalNormal );\",\n\
-\t\t\t\t\t\"vec3 viewPosition = normalize( vViewPosition );\",\n\
-\n\
-\t\t\t\t\t// point lights\n\
-\n\
-\t\t\t\t\t\"#if MAX_POINT_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"vec3 pointDiffuse = vec3( 0.0 );\",\n\
-\t\t\t\t\t\t\"vec3 pointSpecular = vec3( 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\"for ( int i = 0; i < MAX_POINT_LIGHTS; i ++ ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 lPosition = viewMatrix * vec4( pointLightPosition[ i ], 1.0 );\",\n\
-\t\t\t\t\t\t\t\"vec3 pointVector = lPosition.xyz + vViewPosition.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\t\"float pointDistance = 1.0;\",\n\
-\t\t\t\t\t\t\t\"if ( pointLightDistance[ i ] > 0.0 )\",\n\
-\t\t\t\t\t\t\t\t\"pointDistance = 1.0 - min( ( length( pointVector ) / pointLightDistance[ i ] ), 1.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"pointVector = normalize( pointVector );\",\n\
-\n\
-\t\t\t\t\t\t\t// diffuse\n\
-\n\
-\t\t\t\t\t\t\t\"#ifdef WRAP_AROUND\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"float pointDiffuseWeightFull = max( dot( normal, pointVector ), 0.0 );\",\n\
-\t\t\t\t\t\t\t\t\"float pointDiffuseWeightHalf = max( 0.5 * dot( normal, pointVector ) + 0.5, 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec3 pointDiffuseWeight = mix( vec3 ( pointDiffuseWeightFull ), vec3( pointDiffuseWeightHalf ), wrapRGB );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"float pointDiffuseWeight = max( dot( normal, pointVector ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\t\"pointDiffuse += pointDistance * pointLightColor[ i ] * uDiffuseColor * pointDiffuseWeight;\",\n\
-\n\
-\t\t\t\t\t\t\t// specular\n\
-\n\
-\t\t\t\t\t\t\t\"vec3 pointHalfVector = normalize( pointVector + viewPosition );\",\n\
-\t\t\t\t\t\t\t\"float pointDotNormalHalf = max( dot( normal, pointHalfVector ), 0.0 );\",\n\
-\t\t\t\t\t\t\t\"float pointSpecularWeight = specularTex.r * max( pow( pointDotNormalHalf, uShininess ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
-\n\
-\t\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
-\n\
-\t\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec3 schlick = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( pointVector, pointHalfVector ), 5.0 );\",\n\
-\t\t\t\t\t\t\t\t\"pointSpecular += schlick * pointLightColor[ i ] * pointSpecularWeight * pointDiffuseWeight * pointDistance * specularNormalization;\",\n\
-\n\
-\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"pointSpecular += pointDistance * pointLightColor[ i ] * uSpecularColor * pointSpecularWeight * pointDiffuseWeight;\",\n\
-\n\
-\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t// spot lights\n\
-\n\
-\t\t\t\t\t\"#if MAX_SPOT_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"vec3 spotDiffuse = vec3( 0.0 );\",\n\
-\t\t\t\t\t\t\"vec3 spotSpecular = vec3( 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\"for ( int i = 0; i < MAX_SPOT_LIGHTS; i ++ ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 lPosition = viewMatrix * vec4( spotLightPosition[ i ], 1.0 );\",\n\
-\t\t\t\t\t\t\t\"vec3 spotVector = lPosition.xyz + vViewPosition.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\t\"float spotDistance = 1.0;\",\n\
-\t\t\t\t\t\t\t\"if ( spotLightDistance[ i ] > 0.0 )\",\n\
-\t\t\t\t\t\t\t\t\"spotDistance = 1.0 - min( ( length( spotVector ) / spotLightDistance[ i ] ), 1.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"spotVector = normalize( spotVector );\",\n\
-\n\
-\t\t\t\t\t\t\t\"float spotEffect = dot( spotLightDirection[ i ], normalize( spotLightPosition[ i ] - vWorldPosition ) );\",\n\
-\n\
-\t\t\t\t\t\t\t\"if ( spotEffect > spotLightAngleCos[ i ] ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"spotEffect = max( pow( spotEffect, spotLightExponent[ i ] ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\t// diffuse\n\
-\n\
-\t\t\t\t\t\t\t\t\"#ifdef WRAP_AROUND\",\n\
-\n\
-\t\t\t\t\t\t\t\t\t\"float spotDiffuseWeightFull = max( dot( normal, spotVector ), 0.0 );\",\n\
-\t\t\t\t\t\t\t\t\t\"float spotDiffuseWeightHalf = max( 0.5 * dot( normal, spotVector ) + 0.5, 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\t\t\"vec3 spotDiffuseWeight = mix( vec3 ( spotDiffuseWeightFull ), vec3( spotDiffuseWeightHalf ), wrapRGB );\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\t\"float spotDiffuseWeight = max( dot( normal, spotVector ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"spotDiffuse += spotDistance * spotLightColor[ i ] * uDiffuseColor * spotDiffuseWeight * spotEffect;\",\n\
-\n\
-\t\t\t\t\t\t\t\t// specular\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec3 spotHalfVector = normalize( spotVector + viewPosition );\",\n\
-\t\t\t\t\t\t\t\t\"float spotDotNormalHalf = max( dot( normal, spotHalfVector ), 0.0 );\",\n\
-\t\t\t\t\t\t\t\t\"float spotSpecularWeight = specularTex.r * max( pow( spotDotNormalHalf, uShininess ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
-\n\
-\t\t\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
-\n\
-\t\t\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
-\n\
-\t\t\t\t\t\t\t\t\t\"vec3 schlick = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( spotVector, spotHalfVector ), 5.0 );\",\n\
-\t\t\t\t\t\t\t\t\t\"spotSpecular += schlick * spotLightColor[ i ] * spotSpecularWeight * spotDiffuseWeight * spotDistance * specularNormalization * spotEffect;\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\t\"spotSpecular += spotDistance * spotLightColor[ i ] * uSpecularColor * spotSpecularWeight * spotDiffuseWeight * spotEffect;\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t// directional lights\n\
-\n\
-\t\t\t\t\t\"#if MAX_DIR_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"vec3 dirDiffuse = vec3( 0.0 );\",\n\
-\t\t\t\t\t\t\"vec3 dirSpecular = vec3( 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\"for( int i = 0; i < MAX_DIR_LIGHTS; i++ ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 lDirection = viewMatrix * vec4( directionalLightDirection[ i ], 0.0 );\",\n\
-\t\t\t\t\t\t\t\"vec3 dirVector = normalize( lDirection.xyz );\",\n\
-\n\
-\t\t\t\t\t\t\t// diffuse\n\
-\n\
-\t\t\t\t\t\t\t\"#ifdef WRAP_AROUND\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"float directionalLightWeightingFull = max( dot( normal, dirVector ), 0.0 );\",\n\
-\t\t\t\t\t\t\t\t\"float directionalLightWeightingHalf = max( 0.5 * dot( normal, dirVector ) + 0.5, 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec3 dirDiffuseWeight = mix( vec3( directionalLightWeightingFull ), vec3( directionalLightWeightingHalf ), wrapRGB );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"float dirDiffuseWeight = max( dot( normal, dirVector ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\t\"dirDiffuse += directionalLightColor[ i ] * uDiffuseColor * dirDiffuseWeight;\",\n\
-\n\
-\t\t\t\t\t\t\t// specular\n\
-\n\
-\t\t\t\t\t\t\t\"vec3 dirHalfVector = normalize( dirVector + viewPosition );\",\n\
-\t\t\t\t\t\t\t\"float dirDotNormalHalf = max( dot( normal, dirHalfVector ), 0.0 );\",\n\
-\t\t\t\t\t\t\t\"float dirSpecularWeight = specularTex.r * max( pow( dirDotNormalHalf, uShininess ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
-\n\
-\t\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
-\n\
-\t\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec3 schlick = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( dirVector, dirHalfVector ), 5.0 );\",\n\
-\t\t\t\t\t\t\t\t\"dirSpecular += schlick * directionalLightColor[ i ] * dirSpecularWeight * dirDiffuseWeight * specularNormalization;\",\n\
-\n\
-\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"dirSpecular += directionalLightColor[ i ] * uSpecularColor * dirSpecularWeight * dirDiffuseWeight;\",\n\
-\n\
-\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t// hemisphere lights\n\
-\n\
-\t\t\t\t\t\"#if MAX_HEMI_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"vec3 hemiDiffuse  = vec3( 0.0 );\",\n\
-\t\t\t\t\t\t\"vec3 hemiSpecular = vec3( 0.0 );\" ,\n\
-\n\
-\t\t\t\t\t\t\"for( int i = 0; i < MAX_HEMI_LIGHTS; i ++ ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 lDirection = viewMatrix * vec4( hemisphereLightDirection[ i ], 0.0 );\",\n\
-\t\t\t\t\t\t\t\"vec3 lVector = normalize( lDirection.xyz );\",\n\
-\n\
-\t\t\t\t\t\t\t// diffuse\n\
-\n\
-\t\t\t\t\t\t\t\"float dotProduct = dot( normal, lVector );\",\n\
-\t\t\t\t\t\t\t\"float hemiDiffuseWeight = 0.5 * dotProduct + 0.5;\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec3 hemiColor = mix( hemisphereLightGroundColor[ i ], hemisphereLightSkyColor[ i ], hemiDiffuseWeight );\",\n\
-\n\
-\t\t\t\t\t\t\t\"hemiDiffuse += uDiffuseColor * hemiColor;\",\n\
-\n\
-\t\t\t\t\t\t\t// specular (sky light)\n\
-\n\
-\n\
-\t\t\t\t\t\t\t\"vec3 hemiHalfVectorSky = normalize( lVector + viewPosition );\",\n\
-\t\t\t\t\t\t\t\"float hemiDotNormalHalfSky = 0.5 * dot( normal, hemiHalfVectorSky ) + 0.5;\",\n\
-\t\t\t\t\t\t\t\"float hemiSpecularWeightSky = specularTex.r * max( pow( hemiDotNormalHalfSky, uShininess ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t// specular (ground light)\n\
-\n\
-\t\t\t\t\t\t\t\"vec3 lVectorGround = -lVector;\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec3 hemiHalfVectorGround = normalize( lVectorGround + viewPosition );\",\n\
-\t\t\t\t\t\t\t\"float hemiDotNormalHalfGround = 0.5 * dot( normal, hemiHalfVectorGround ) + 0.5;\",\n\
-\t\t\t\t\t\t\t\"float hemiSpecularWeightGround = specularTex.r * max( pow( hemiDotNormalHalfGround, uShininess ), 0.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#ifdef PHYSICALLY_BASED_SHADING\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"float dotProductGround = dot( normal, lVectorGround );\",\n\
-\n\
-\t\t\t\t\t\t\t\t// 2.0 => 2.0001 is hack to work around ANGLE bug\n\
-\n\
-\t\t\t\t\t\t\t\t\"float specularNormalization = ( uShininess + 2.0001 ) / 8.0;\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec3 schlickSky = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( lVector, hemiHalfVectorSky ), 5.0 );\",\n\
-\t\t\t\t\t\t\t\t\"vec3 schlickGround = uSpecularColor + vec3( 1.0 - uSpecularColor ) * pow( 1.0 - dot( lVectorGround, hemiHalfVectorGround ), 5.0 );\",\n\
-\t\t\t\t\t\t\t\t\"hemiSpecular += hemiColor * specularNormalization * ( schlickSky * hemiSpecularWeightSky * max( dotProduct, 0.0 ) + schlickGround * hemiSpecularWeightGround * max( dotProductGround, 0.0 ) );\",\n\
-\n\
-\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"hemiSpecular += uSpecularColor * hemiColor * ( hemiSpecularWeightSky + hemiSpecularWeightGround ) * hemiDiffuseWeight;\",\n\
-\n\
-\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t// all lights contribution summation\n\
-\n\
-\t\t\t\t\t\"vec3 totalDiffuse = vec3( 0.0 );\",\n\
-\t\t\t\t\t\"vec3 totalSpecular = vec3( 0.0 );\",\n\
-\n\
-\t\t\t\t\t\"#if MAX_DIR_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"totalDiffuse += dirDiffuse;\",\n\
-\t\t\t\t\t\t\"totalSpecular += dirSpecular;\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"#if MAX_HEMI_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"totalDiffuse += hemiDiffuse;\",\n\
-\t\t\t\t\t\t\"totalSpecular += hemiSpecular;\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"#if MAX_POINT_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"totalDiffuse += pointDiffuse;\",\n\
-\t\t\t\t\t\t\"totalSpecular += pointSpecular;\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"#if MAX_SPOT_LIGHTS > 0\",\n\
-\n\
-\t\t\t\t\t\t\"totalDiffuse += spotDiffuse;\",\n\
-\t\t\t\t\t\t\"totalSpecular += spotSpecular;\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"#ifdef METAL\",\n\
-\n\
-\t\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * ( totalDiffuse + ambientLightColor * uAmbientColor + totalSpecular );\",\n\
-\n\
-\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\"gl_FragColor.xyz = gl_FragColor.xyz * ( totalDiffuse + ambientLightColor * uAmbientColor ) + totalSpecular;\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"if ( enableReflection ) {\",\n\
-\n\
-\t\t\t\t\t\t\"vec3 vReflect;\",\n\
-\t\t\t\t\t\t\"vec3 cameraToVertex = normalize( vWorldPosition - cameraPosition );\",\n\
-\n\
-\t\t\t\t\t\t\"if ( useRefract ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vReflect = refract( cameraToVertex, normal, uRefractionRatio );\",\n\
-\n\
-\t\t\t\t\t\t\"} else {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vReflect = reflect( cameraToVertex, normal );\",\n\
-\n\
-\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\t\"vec4 cubeColor = textureCube( tCube, vec3( -vReflect.x, vReflect.yz ) );\",\n\
-\n\
-\t\t\t\t\t\t\"#ifdef GAMMA_INPUT\",\n\
-\n\
-\t\t\t\t\t\t\t\"cubeColor.xyz *= cubeColor.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\"gl_FragColor.xyz = mix( gl_FragColor.xyz, cubeColor.xyz, specularTex.r * uReflectivity );\",\n\
-\n\
-\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\tTHREE.ShaderChunk[ \"shadowmap_fragment\" ],\n\
-\t\t\t\t\tTHREE.ShaderChunk[ \"linear_to_gamma_fragment\" ],\n\
-\t\t\t\t\tTHREE.ShaderChunk[ \"fog_fragment\" ],\n\
-\n\
-\t\t\t\t\"}\"\n\
-\n\
-\t\t\t].join(\"\\n\
-\"),\n\
-\n\
-\t\t\tvertexShader: [\n\
-\n\
-\t\t\t\t\"attribute vec4 tangent;\",\n\
-\n\
-\t\t\t\t\"uniform vec2 uOffset;\",\n\
-\t\t\t\t\"uniform vec2 uRepeat;\",\n\
-\n\
-\t\t\t\t\"uniform bool enableDisplacement;\",\n\
-\n\
-\t\t\t\t\"#ifdef VERTEX_TEXTURES\",\n\
-\n\
-\t\t\t\t\t\"uniform sampler2D tDisplacement;\",\n\
-\t\t\t\t\t\"uniform float uDisplacementScale;\",\n\
-\t\t\t\t\t\"uniform float uDisplacementBias;\",\n\
-\n\
-\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\"varying vec3 vTangent;\",\n\
-\t\t\t\t\"varying vec3 vBinormal;\",\n\
-\t\t\t\t\"varying vec3 vNormal;\",\n\
-\t\t\t\t\"varying vec2 vUv;\",\n\
-\n\
-\t\t\t\t\"varying vec3 vWorldPosition;\",\n\
-\t\t\t\t\"varying vec3 vViewPosition;\",\n\
-\n\
-\t\t\t\tTHREE.ShaderChunk[ \"skinning_pars_vertex\" ],\n\
-\t\t\t\tTHREE.ShaderChunk[ \"shadowmap_pars_vertex\" ],\n\
-\n\
-\t\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\tTHREE.ShaderChunk[ \"skinbase_vertex\" ],\n\
-\t\t\t\t\tTHREE.ShaderChunk[ \"skinnormal_vertex\" ],\n\
-\n\
-\t\t\t\t\t// normal, tangent and binormal vectors\n\
-\n\
-\t\t\t\t\t\"#ifdef USE_SKINNING\",\n\
-\n\
-\t\t\t\t\t\t\"vNormal = normalize( normalMatrix * skinnedNormal.xyz );\",\n\
-\n\
-\t\t\t\t\t\t\"vec4 skinnedTangent = skinMatrix * vec4( tangent.xyz, 0.0 );\",\n\
-\t\t\t\t\t\t\"vTangent = normalize( normalMatrix * skinnedTangent.xyz );\",\n\
-\n\
-\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\"vNormal = normalize( normalMatrix * normal );\",\n\
-\t\t\t\t\t\t\"vTangent = normalize( normalMatrix * tangent.xyz );\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"vBinormal = normalize( cross( vNormal, vTangent ) * tangent.w );\",\n\
-\n\
-\t\t\t\t\t\"vUv = uv * uRepeat + uOffset;\",\n\
-\n\
-\t\t\t\t\t// displacement mapping\n\
-\n\
-\t\t\t\t\t\"vec3 displacedPosition;\",\n\
-\n\
-\t\t\t\t\t\"#ifdef VERTEX_TEXTURES\",\n\
-\n\
-\t\t\t\t\t\t\"if ( enableDisplacement ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec3 dv = texture2D( tDisplacement, uv ).xyz;\",\n\
-\t\t\t\t\t\t\t\"float df = uDisplacementScale * dv.x + uDisplacementBias;\",\n\
-\t\t\t\t\t\t\t\"displacedPosition = position + normalize( normal ) * df;\",\n\
-\n\
-\t\t\t\t\t\t\"} else {\",\n\
-\n\
-\t\t\t\t\t\t\t\"#ifdef USE_SKINNING\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec4 skinVertex = vec4( position, 1.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"vec4 skinned  = boneMatX * skinVertex * skinWeight.x;\",\n\
-\t\t\t\t\t\t\t\t\"skinned \t  += boneMatY * skinVertex * skinWeight.y;\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"displacedPosition  = skinned.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\t\"displacedPosition = position;\",\n\
-\n\
-\t\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\"#ifdef USE_SKINNING\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 skinVertex = vec4( position, 1.0 );\",\n\
-\n\
-\t\t\t\t\t\t\t\"vec4 skinned  = boneMatX * skinVertex * skinWeight.x;\",\n\
-\t\t\t\t\t\t\t\"skinned \t  += boneMatY * skinVertex * skinWeight.y;\",\n\
-\n\
-\t\t\t\t\t\t\t\"displacedPosition  = skinned.xyz;\",\n\
-\n\
-\t\t\t\t\t\t\"#else\",\n\
-\n\
-\t\t\t\t\t\t\t\"displacedPosition = position;\",\n\
-\n\
-\t\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\t//\n\
-\n\
-\t\t\t\t\t\"vec4 mvPosition = modelViewMatrix * vec4( displacedPosition, 1.0 );\",\n\
-\t\t\t\t\t\"vec4 worldPosition = modelMatrix * vec4( displacedPosition, 1.0 );\",\n\
-\n\
-\t\t\t\t\t\"gl_Position = projectionMatrix * mvPosition;\",\n\
-\n\
-\t\t\t\t\t//\n\
-\n\
-\t\t\t\t\t\"vWorldPosition = worldPosition.xyz;\",\n\
-\t\t\t\t\t\"vViewPosition = -mvPosition.xyz;\",\n\
-\n\
-\t\t\t\t\t// shadows\n\
-\n\
-\t\t\t\t\t\"#ifdef USE_SHADOWMAP\",\n\
-\n\
-\t\t\t\t\t\t\"for( int i = 0; i < MAX_SHADOWS; i ++ ) {\",\n\
-\n\
-\t\t\t\t\t\t\t\"vShadowCoord[ i ] = shadowMatrix[ i ] * worldPosition;\",\n\
-\n\
-\t\t\t\t\t\t\"}\",\n\
-\n\
-\t\t\t\t\t\"#endif\",\n\
-\n\
-\t\t\t\t\"}\"\n\
-\n\
-\t\t\t].join(\"\\n\
-\")\n\
-\n\
-\t\t},\n\
-\n\
-\t\t/* -------------------------------------------------------------------------\n\
-\t\t//\tCube map shader\n\
-\t\t ------------------------------------------------------------------------- */\n\
-\n\
-\t\t'cube': {\n\
-\n\
-\t\t\tuniforms: { \"tCube\": { type: \"t\", value: null },\n\
-\t\t\t\t\t\t\"tFlip\": { type: \"f\", value: -1 } },\n\
-\n\
-\t\t\tvertexShader: [\n\
-\n\
-\t\t\t\t\"varying vec3 vWorldPosition;\",\n\
-\n\
-\t\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\t\"vec4 worldPosition = modelMatrix * vec4( position, 1.0 );\",\n\
-\t\t\t\t\t\"vWorldPosition = worldPosition.xyz;\",\n\
-\n\
-\t\t\t\t\t\"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\",\n\
-\n\
-\t\t\t\t\"}\"\n\
-\n\
-\t\t\t].join(\"\\n\
-\"),\n\
-\n\
-\t\t\tfragmentShader: [\n\
-\n\
-\t\t\t\t\"uniform samplerCube tCube;\",\n\
-\t\t\t\t\"uniform float tFlip;\",\n\
-\n\
-\t\t\t\t\"varying vec3 vWorldPosition;\",\n\
-\n\
-\t\t\t\t\"void main() {\",\n\
-\n\
-\t\t\t\t\t\"gl_FragColor = textureCube( tCube, vec3( tFlip * vWorldPosition.x, vWorldPosition.yz ) );\",\n\
-\n\
-\t\t\t\t\"}\"\n\
-\n\
-\t\t\t].join(\"\\n\
-\")\n\
-\n\
-\t\t}\n\
-\n\
-\t}\n\
-\n\
-};\n\
 /**\n\
  * @author zz85 / http://www.lab4games.net/zz85/blog\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -31363,7 +31673,7 @@ THREE.FontUtils.generateShapes = function( text, parameters ) {\n\
 \t\t\tcCROSSap = cX*apy - cY*apx;\n\
 \t\t\tbCROSScp = bX*cpy - bY*cpx;\n\
 \n\
-\t\t\tif ( (aCROSSbp >= 0.0) && (bCROSScp >= 0.0) && (cCROSSap >= 0.0) ) return false;\n\
+\t\t\tif ( (aCROSSbp >= -EPSILON) && (bCROSScp >= -EPSILON) && (cCROSSap >= -EPSILON) ) return false;\n\
 \n\
 \t\t}\n\
 \n\
@@ -31380,7 +31690,10 @@ THREE.FontUtils.generateShapes = function( text, parameters ) {\n\
 })(THREE.FontUtils);\n\
 \n\
 // To use the typeface.js face files, hook up the API\n\
-self._typeface_js = { faces: THREE.FontUtils.faces, loadFace: THREE.FontUtils.loadFace };/**\n\
+self._typeface_js = { faces: THREE.FontUtils.faces, loadFace: THREE.FontUtils.loadFace };\n\
+THREE.typeface_js = self._typeface_js;\n\
+\n\
+/**\n\
  * @author zz85 / http://www.lab4games.net/zz85/blog\n\
  * Extensible curve object\n\
  *\n\
@@ -31391,10 +31704,9 @@ self._typeface_js = { faces: THREE.FontUtils.faces, loadFace: THREE.FontUtils.lo
  * .getLength()\n\
  * .updateArcLengths()\n\
  *\n\
- * This file contains following classes:\n\
+ * This following classes subclasses THREE.Curve:\n\
  *\n\
  * -- 2d classes --\n\
- * THREE.Curve\n\
  * THREE.LineCurve\n\
  * THREE.QuadraticBezierCurve\n\
  * THREE.CubicBezierCurve\n\
@@ -31632,7 +31944,7 @@ THREE.Curve.prototype.getTangent = function( t ) {\n\
 \tvar pt1 = this.getPoint( t1 );\n\
 \tvar pt2 = this.getPoint( t2 );\n\
 \n\
-\tvar vec = pt2.clone().subSelf(pt1);\n\
+\tvar vec = pt2.clone().sub(pt1);\n\
 \treturn vec.normalize();\n\
 \n\
 };\n\
@@ -31645,216 +31957,8 @@ THREE.Curve.prototype.getTangentAt = function ( u ) {\n\
 \n\
 };\n\
 \n\
-/**************************************************************\n\
- *\tLine\n\
- **************************************************************/\n\
 \n\
-THREE.LineCurve = function ( v1, v2 ) {\n\
 \n\
-\tthis.v1 = v1;\n\
-\tthis.v2 = v2;\n\
-\n\
-};\n\
-\n\
-THREE.LineCurve.prototype = Object.create( THREE.Curve.prototype );\n\
-\n\
-THREE.LineCurve.prototype.getPoint = function ( t ) {\n\
-\n\
-\tvar point = this.v2.clone().subSelf(this.v1);\n\
-\tpoint.multiplyScalar( t ).addSelf( this.v1 );\n\
-\n\
-\treturn point;\n\
-\n\
-};\n\
-\n\
-// Line curve is linear, so we can overwrite default getPointAt\n\
-\n\
-THREE.LineCurve.prototype.getPointAt = function ( u ) {\n\
-\n\
-\treturn this.getPoint( u );\n\
-\n\
-};\n\
-\n\
-THREE.LineCurve.prototype.getTangent = function( t ) {\n\
-\n\
-\tvar tangent = this.v2.clone().subSelf(this.v1);\n\
-\n\
-\treturn tangent.normalize();\n\
-\n\
-};\n\
-\n\
-/**************************************************************\n\
- *\tQuadratic Bezier curve\n\
- **************************************************************/\n\
-\n\
-\n\
-THREE.QuadraticBezierCurve = function ( v0, v1, v2 ) {\n\
-\n\
-\tthis.v0 = v0;\n\
-\tthis.v1 = v1;\n\
-\tthis.v2 = v2;\n\
-\n\
-};\n\
-\n\
-THREE.QuadraticBezierCurve.prototype = Object.create( THREE.Curve.prototype );\n\
-\n\
-\n\
-THREE.QuadraticBezierCurve.prototype.getPoint = function ( t ) {\n\
-\n\
-\tvar tx, ty;\n\
-\n\
-\ttx = THREE.Shape.Utils.b2( t, this.v0.x, this.v1.x, this.v2.x );\n\
-\tty = THREE.Shape.Utils.b2( t, this.v0.y, this.v1.y, this.v2.y );\n\
-\n\
-\treturn new THREE.Vector2( tx, ty );\n\
-\n\
-};\n\
-\n\
-\n\
-THREE.QuadraticBezierCurve.prototype.getTangent = function( t ) {\n\
-\n\
-\tvar tx, ty;\n\
-\n\
-\ttx = THREE.Curve.Utils.tangentQuadraticBezier( t, this.v0.x, this.v1.x, this.v2.x );\n\
-\tty = THREE.Curve.Utils.tangentQuadraticBezier( t, this.v0.y, this.v1.y, this.v2.y );\n\
-\n\
-\t// returns unit vector\n\
-\n\
-\tvar tangent = new THREE.Vector2( tx, ty );\n\
-\ttangent.normalize();\n\
-\n\
-\treturn tangent;\n\
-\n\
-};\n\
-\n\
-\n\
-/**************************************************************\n\
- *\tCubic Bezier curve\n\
- **************************************************************/\n\
-\n\
-THREE.CubicBezierCurve = function ( v0, v1, v2, v3 ) {\n\
-\n\
-\tthis.v0 = v0;\n\
-\tthis.v1 = v1;\n\
-\tthis.v2 = v2;\n\
-\tthis.v3 = v3;\n\
-\n\
-};\n\
-\n\
-THREE.CubicBezierCurve.prototype = Object.create( THREE.Curve.prototype );\n\
-\n\
-THREE.CubicBezierCurve.prototype.getPoint = function ( t ) {\n\
-\n\
-\tvar tx, ty;\n\
-\n\
-\ttx = THREE.Shape.Utils.b3( t, this.v0.x, this.v1.x, this.v2.x, this.v3.x );\n\
-\tty = THREE.Shape.Utils.b3( t, this.v0.y, this.v1.y, this.v2.y, this.v3.y );\n\
-\n\
-\treturn new THREE.Vector2( tx, ty );\n\
-\n\
-};\n\
-\n\
-THREE.CubicBezierCurve.prototype.getTangent = function( t ) {\n\
-\n\
-\tvar tx, ty;\n\
-\n\
-\ttx = THREE.Curve.Utils.tangentCubicBezier( t, this.v0.x, this.v1.x, this.v2.x, this.v3.x );\n\
-\tty = THREE.Curve.Utils.tangentCubicBezier( t, this.v0.y, this.v1.y, this.v2.y, this.v3.y );\n\
-\n\
-\tvar tangent = new THREE.Vector2( tx, ty );\n\
-\ttangent.normalize();\n\
-\n\
-\treturn tangent;\n\
-\n\
-};\n\
-\n\
-\n\
-/**************************************************************\n\
- *\tSpline curve\n\
- **************************************************************/\n\
-\n\
-THREE.SplineCurve = function ( points /* array of Vector2 */ ) {\n\
-\n\
-\tthis.points = (points == undefined) ? [] : points;\n\
-\n\
-};\n\
-\n\
-THREE.SplineCurve.prototype = Object.create( THREE.Curve.prototype );\n\
-\n\
-THREE.SplineCurve.prototype.getPoint = function ( t ) {\n\
-\n\
-\tvar v = new THREE.Vector2();\n\
-\tvar c = [];\n\
-\tvar points = this.points, point, intPoint, weight;\n\
-\tpoint = ( points.length - 1 ) * t;\n\
-\n\
-\tintPoint = Math.floor( point );\n\
-\tweight = point - intPoint;\n\
-\n\
-\tc[ 0 ] = intPoint == 0 ? intPoint : intPoint - 1;\n\
-\tc[ 1 ] = intPoint;\n\
-\tc[ 2 ] = intPoint  > points.length - 2 ? points.length -1 : intPoint + 1;\n\
-\tc[ 3 ] = intPoint  > points.length - 3 ? points.length -1 : intPoint + 2;\n\
-\n\
-\tv.x = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].x, points[ c[ 1 ] ].x, points[ c[ 2 ] ].x, points[ c[ 3 ] ].x, weight );\n\
-\tv.y = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].y, points[ c[ 1 ] ].y, points[ c[ 2 ] ].y, points[ c[ 3 ] ].y, weight );\n\
-\n\
-\treturn v;\n\
-\n\
-};\n\
-\n\
-/**************************************************************\n\
- *\tEllipse curve\n\
- **************************************************************/\n\
-\n\
-THREE.EllipseCurve = function ( aX, aY, xRadius, yRadius,\n\
-\t\t\t\t\t\t\taStartAngle, aEndAngle,\n\
-\t\t\t\t\t\t\taClockwise ) {\n\
-\n\
-\tthis.aX = aX;\n\
-\tthis.aY = aY;\n\
-\n\
-\tthis.xRadius = xRadius;\n\
-\tthis.yRadius = yRadius;\n\
-\n\
-\tthis.aStartAngle = aStartAngle;\n\
-\tthis.aEndAngle = aEndAngle;\n\
-\n\
-\tthis.aClockwise = aClockwise;\n\
-\n\
-};\n\
-\n\
-THREE.EllipseCurve.prototype = Object.create( THREE.Curve.prototype );\n\
-\n\
-THREE.EllipseCurve.prototype.getPoint = function ( t ) {\n\
-\n\
-\tvar deltaAngle = this.aEndAngle - this.aStartAngle;\n\
-\n\
-\tif ( !this.aClockwise ) {\n\
-\n\
-\t\tt = 1 - t;\n\
-\n\
-\t}\n\
-\n\
-\tvar angle = this.aStartAngle + t * deltaAngle;\n\
-\n\
-\tvar tx = this.aX + this.xRadius * Math.cos( angle );\n\
-\tvar ty = this.aY + this.yRadius * Math.sin( angle );\n\
-\n\
-\treturn new THREE.Vector2( tx, ty );\n\
-\n\
-};\n\
-\n\
-/**************************************************************\n\
- *\tArc curve\n\
- **************************************************************/\n\
-\n\
-THREE.ArcCurve = function ( aX, aY, aRadius, aStartAngle, aEndAngle, aClockwise ) {\n\
-\n\
-\tTHREE.EllipseCurve.call( this, aX, aY, aRadius, aRadius, aStartAngle, aEndAngle, aClockwise );\n\
-};\n\
-\n\
-THREE.ArcCurve.prototype = Object.create( THREE.EllipseCurve.prototype );\n\
 \n\
 \n\
 /**************************************************************\n\
@@ -31925,208 +32029,6 @@ THREE.Curve.create = function ( constructor, getPointFunc ) {\n\
 \n\
 };\n\
 \n\
-\n\
-/**************************************************************\n\
- *\tLine3D\n\
- **************************************************************/\n\
-\n\
-THREE.LineCurve3 = THREE.Curve.create(\n\
-\n\
-\tfunction ( v1, v2 ) {\n\
-\n\
-\t\tthis.v1 = v1;\n\
-\t\tthis.v2 = v2;\n\
-\n\
-\t},\n\
-\n\
-\tfunction ( t ) {\n\
-\n\
-\t\tvar r = new THREE.Vector3();\n\
-\n\
-\n\
-\t\tr.sub( this.v2, this.v1 ); // diff\n\
-\t\tr.multiplyScalar( t );\n\
-\t\tr.addSelf( this.v1 );\n\
-\n\
-\t\treturn r;\n\
-\n\
-\t}\n\
-\n\
-);\n\
-\n\
-\n\
-/**************************************************************\n\
- *\tQuadratic Bezier 3D curve\n\
- **************************************************************/\n\
-\n\
-THREE.QuadraticBezierCurve3 = THREE.Curve.create(\n\
-\n\
-\tfunction ( v0, v1, v2 ) {\n\
-\n\
-\t\tthis.v0 = v0;\n\
-\t\tthis.v1 = v1;\n\
-\t\tthis.v2 = v2;\n\
-\n\
-\t},\n\
-\n\
-\tfunction ( t ) {\n\
-\n\
-\t\tvar tx, ty, tz;\n\
-\n\
-\t\ttx = THREE.Shape.Utils.b2( t, this.v0.x, this.v1.x, this.v2.x );\n\
-\t\tty = THREE.Shape.Utils.b2( t, this.v0.y, this.v1.y, this.v2.y );\n\
-\t\ttz = THREE.Shape.Utils.b2( t, this.v0.z, this.v1.z, this.v2.z );\n\
-\n\
-\t\treturn new THREE.Vector3( tx, ty, tz );\n\
-\n\
-\t}\n\
-\n\
-);\n\
-\n\
-\n\
-\n\
-/**************************************************************\n\
- *\tCubic Bezier 3D curve\n\
- **************************************************************/\n\
-\n\
-THREE.CubicBezierCurve3 = THREE.Curve.create(\n\
-\n\
-\tfunction ( v0, v1, v2, v3 ) {\n\
-\n\
-\t\tthis.v0 = v0;\n\
-\t\tthis.v1 = v1;\n\
-\t\tthis.v2 = v2;\n\
-\t\tthis.v3 = v3;\n\
-\n\
-\t},\n\
-\n\
-\tfunction ( t ) {\n\
-\n\
-\t\tvar tx, ty, tz;\n\
-\n\
-\t\ttx = THREE.Shape.Utils.b3( t, this.v0.x, this.v1.x, this.v2.x, this.v3.x );\n\
-\t\tty = THREE.Shape.Utils.b3( t, this.v0.y, this.v1.y, this.v2.y, this.v3.y );\n\
-\t\ttz = THREE.Shape.Utils.b3( t, this.v0.z, this.v1.z, this.v2.z, this.v3.z );\n\
-\n\
-\t\treturn new THREE.Vector3( tx, ty, tz );\n\
-\n\
-\t}\n\
-\n\
-);\n\
-\n\
-\n\
-\n\
-/**************************************************************\n\
- *\tSpline 3D curve\n\
- **************************************************************/\n\
-\n\
-\n\
-THREE.SplineCurve3 = THREE.Curve.create(\n\
-\n\
-\tfunction ( points /* array of Vector3 */) {\n\
-\n\
-\t\tthis.points = (points == undefined) ? [] : points;\n\
-\n\
-\t},\n\
-\n\
-\tfunction ( t ) {\n\
-\n\
-\t\tvar v = new THREE.Vector3();\n\
-\t\tvar c = [];\n\
-\t\tvar points = this.points, point, intPoint, weight;\n\
-\t\tpoint = ( points.length - 1 ) * t;\n\
-\n\
-\t\tintPoint = Math.floor( point );\n\
-\t\tweight = point - intPoint;\n\
-\n\
-\t\tc[ 0 ] = intPoint == 0 ? intPoint : intPoint - 1;\n\
-\t\tc[ 1 ] = intPoint;\n\
-\t\tc[ 2 ] = intPoint  > points.length - 2 ? points.length - 1 : intPoint + 1;\n\
-\t\tc[ 3 ] = intPoint  > points.length - 3 ? points.length - 1 : intPoint + 2;\n\
-\n\
-\t\tvar pt0 = points[ c[0] ],\n\
-\t\t\tpt1 = points[ c[1] ],\n\
-\t\t\tpt2 = points[ c[2] ],\n\
-\t\t\tpt3 = points[ c[3] ];\n\
-\n\
-\t\tv.x = THREE.Curve.Utils.interpolate(pt0.x, pt1.x, pt2.x, pt3.x, weight);\n\
-\t\tv.y = THREE.Curve.Utils.interpolate(pt0.y, pt1.y, pt2.y, pt3.y, weight);\n\
-\t\tv.z = THREE.Curve.Utils.interpolate(pt0.z, pt1.z, pt2.z, pt3.z, weight);\n\
-\n\
-\t\treturn v;\n\
-\n\
-\t}\n\
-\n\
-);\n\
-\n\
-\n\
-// THREE.SplineCurve3.prototype.getTangent = function(t) {\n\
-// \t\tvar v = new THREE.Vector3();\n\
-// \t\tvar c = [];\n\
-// \t\tvar points = this.points, point, intPoint, weight;\n\
-// \t\tpoint = ( points.length - 1 ) * t;\n\
-\n\
-// \t\tintPoint = Math.floor( point );\n\
-// \t\tweight = point - intPoint;\n\
-\n\
-// \t\tc[ 0 ] = intPoint == 0 ? intPoint : intPoint - 1;\n\
-// \t\tc[ 1 ] = intPoint;\n\
-// \t\tc[ 2 ] = intPoint  > points.length - 2 ? points.length - 1 : intPoint + 1;\n\
-// \t\tc[ 3 ] = intPoint  > points.length - 3 ? points.length - 1 : intPoint + 2;\n\
-\n\
-// \t\tvar pt0 = points[ c[0] ],\n\
-// \t\t\tpt1 = points[ c[1] ],\n\
-// \t\t\tpt2 = points[ c[2] ],\n\
-// \t\t\tpt3 = points[ c[3] ];\n\
-\n\
-// \t// t = weight;\n\
-// \tv.x = THREE.Curve.Utils.tangentSpline( t, pt0.x, pt1.x, pt2.x, pt3.x );\n\
-// \tv.y = THREE.Curve.Utils.tangentSpline( t, pt0.y, pt1.y, pt2.y, pt3.y );\n\
-// \tv.z = THREE.Curve.Utils.tangentSpline( t, pt0.z, pt1.z, pt2.z, pt3.z );\n\
-\n\
-// \treturn v;\n\
-\n\
-// }\n\
-\n\
-/**************************************************************\n\
- *\tClosed Spline 3D curve\n\
- **************************************************************/\n\
-\n\
-\n\
-THREE.ClosedSplineCurve3 = THREE.Curve.create(\n\
-\n\
-\tfunction ( points /* array of Vector3 */) {\n\
-\n\
-\t\tthis.points = (points == undefined) ? [] : points;\n\
-\n\
-\t},\n\
-\n\
-    function ( t ) {\n\
-\n\
-        var v = new THREE.Vector3();\n\
-        var c = [];\n\
-        var points = this.points, point, intPoint, weight;\n\
-        point = ( points.length - 0 ) * t;\n\
-            // This needs to be from 0-length +1\n\
-\n\
-        intPoint = Math.floor( point );\n\
-        weight = point - intPoint;\n\
-\n\
-        intPoint += intPoint > 0 ? 0 : ( Math.floor( Math.abs( intPoint ) / points.length ) + 1 ) * points.length;\n\
-        c[ 0 ] = ( intPoint - 1 ) % points.length;\n\
-        c[ 1 ] = ( intPoint ) % points.length;\n\
-        c[ 2 ] = ( intPoint + 1 ) % points.length;\n\
-        c[ 3 ] = ( intPoint + 2 ) % points.length;\n\
-\n\
-        v.x = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].x, points[ c[ 1 ] ].x, points[ c[ 2 ] ].x, points[ c[ 3 ] ].x, weight );\n\
-        v.y = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].y, points[ c[ 1 ] ].y, points[ c[ 2 ] ].y, points[ c[ 3 ] ].y, weight );\n\
-        v.z = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].z, points[ c[ 1 ] ].z, points[ c[ 2 ] ].z, points[ c[ 3 ] ].z, weight );\n\
-\n\
-        return v;\n\
-\n\
-    }\n\
-\n\
-);\n\
 /**\n\
  * @author zz85 / http://www.lab4games.net/zz85/blog\n\
  *\n\
@@ -32291,14 +32193,14 @@ THREE.CurvePath.prototype.getBoundingBox = function () {\n\
 \t\tif ( p.y > maxY ) maxY = p.y;\n\
 \t\telse if ( p.y < minY ) minY = p.y;\n\
 \n\
-\t\tif (v3) {\n\
+\t\tif ( v3 ) {\n\
 \n\
 \t\t\tif ( p.z > maxZ ) maxZ = p.z;\n\
 \t\t\telse if ( p.z < minZ ) minZ = p.z;\n\
 \n\
 \t\t}\n\
 \n\
-\t\tsum.addSelf( p );\n\
+\t\tsum.add( p );\n\
 \n\
 \t}\n\
 \n\
@@ -32309,14 +32211,14 @@ THREE.CurvePath.prototype.getBoundingBox = function () {\n\
 \t\tmaxX: maxX,\n\
 \t\tmaxY: maxY,\n\
 \t\tcentroid: sum.divideScalar( il )\n\
-\t\n\
+\n\
 \t};\n\
 \n\
-\tif (v3) {\n\
+\tif ( v3 ) {\n\
 \n\
 \t\tret.maxZ = maxZ;\n\
 \t\tret.minZ = minZ;\n\
-\t\n\
+\n\
 \t}\n\
 \n\
 \treturn ret;\n\
@@ -32452,6 +32354,7 @@ THREE.CurvePath.prototype.getWrapPoints = function ( oldPts, path ) {\n\
 \n\
 };\n\
 \n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
@@ -32474,12 +32377,12 @@ THREE.Gyroscope.prototype.updateMatrixWorld = function ( force ) {\n\
 \n\
 \t\tif ( this.parent ) {\n\
 \n\
-\t\t\tthis.matrixWorld.multiply( this.parent.matrixWorld, this.matrix );\n\
+\t\t\tthis.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );\n\
 \n\
-\t\t\tthis.matrixWorld.decompose( this.translationWorld, this.rotationWorld, this.scaleWorld );\n\
-\t\t\tthis.matrix.decompose( this.translationObject, this.rotationObject, this.scaleObject );\n\
+\t\t\tthis.matrixWorld.decompose( this.translationWorld, this.quaternionWorld, this.scaleWorld );\n\
+\t\t\tthis.matrix.decompose( this.translationObject, this.quaternionObject, this.scaleObject );\n\
 \n\
-\t\t\tthis.matrixWorld.compose( this.translationWorld, this.rotationObject, this.scaleWorld );\n\
+\t\t\tthis.matrixWorld.compose( this.translationWorld, this.quaternionObject, this.scaleWorld );\n\
 \n\
 \n\
 \t\t} else {\n\
@@ -32507,10 +32410,11 @@ THREE.Gyroscope.prototype.updateMatrixWorld = function ( force ) {\n\
 \n\
 THREE.Gyroscope.prototype.translationWorld = new THREE.Vector3();\n\
 THREE.Gyroscope.prototype.translationObject = new THREE.Vector3();\n\
-THREE.Gyroscope.prototype.rotationWorld = new THREE.Quaternion();\n\
-THREE.Gyroscope.prototype.rotationObject = new THREE.Quaternion();\n\
+THREE.Gyroscope.prototype.quaternionWorld = new THREE.Quaternion();\n\
+THREE.Gyroscope.prototype.quaternionObject = new THREE.Quaternion();\n\
 THREE.Gyroscope.prototype.scaleWorld = new THREE.Vector3();\n\
 THREE.Gyroscope.prototype.scaleObject = new THREE.Vector3();\n\
+\n\
 \n\
 /**\n\
  * @author zz85 / http://www.lab4games.net/zz85/blog\n\
@@ -32606,8 +32510,8 @@ THREE.Path.prototype.quadraticCurveTo = function( aCPx, aCPy, aX, aY ) {\n\
 };\n\
 \n\
 THREE.Path.prototype.bezierCurveTo = function( aCP1x, aCP1y,\n\
-                                               aCP2x, aCP2y,\n\
-                                               aX, aY ) {\n\
+\t\t\t\t\t\t\t\t\t\t\t   aCP2x, aCP2y,\n\
+\t\t\t\t\t\t\t\t\t\t\t   aX, aY ) {\n\
 \n\
 \tvar args = Array.prototype.slice.call( arguments );\n\
 \n\
@@ -32655,14 +32559,14 @@ THREE.Path.prototype.arc = function ( aX, aY, aRadius,\n\
 \n\
 \tthis.absarc(aX + x0, aY + y0, aRadius,\n\
 \t\taStartAngle, aEndAngle, aClockwise );\n\
-\t\n\
+\n\
  };\n\
 \n\
  THREE.Path.prototype.absarc = function ( aX, aY, aRadius,\n\
 \t\t\t\t\t\t\t\t\t  aStartAngle, aEndAngle, aClockwise ) {\n\
 \tthis.absellipse(aX, aY, aRadius, aRadius, aStartAngle, aEndAngle, aClockwise);\n\
  };\n\
- \n\
+\n\
 THREE.Path.prototype.ellipse = function ( aX, aY, xRadius, yRadius,\n\
 \t\t\t\t\t\t\t\t\t  aStartAngle, aEndAngle, aClockwise ) {\n\
 \n\
@@ -32674,7 +32578,7 @@ THREE.Path.prototype.ellipse = function ( aX, aY, xRadius, yRadius,\n\
 \t\taStartAngle, aEndAngle, aClockwise );\n\
 \n\
  };\n\
- \n\
+\n\
 \n\
 THREE.Path.prototype.absellipse = function ( aX, aY, xRadius, yRadius,\n\
 \t\t\t\t\t\t\t\t\t  aStartAngle, aEndAngle, aClockwise ) {\n\
@@ -32788,7 +32692,7 @@ THREE.Path.prototype.getPoints = function( divisions, closedPath ) {\n\
 \n\
 \t\t\t\tpoints.push( new THREE.Vector2( tx, ty ) );\n\
 \n\
-\t\t  \t}\n\
+\t\t\t}\n\
 \n\
 \t\t\tbreak;\n\
 \n\
@@ -32938,7 +32842,7 @@ THREE.Path.prototype.getPoints = function( divisions, closedPath ) {\n\
 \tvar lastPoint = points[ points.length - 1];\n\
 \tvar EPSILON = 0.0000000001;\n\
 \tif ( Math.abs(lastPoint.x - points[ 0 ].x) < EPSILON &&\n\
-             Math.abs(lastPoint.y - points[ 0 ].y) < EPSILON)\n\
+\t\t\t Math.abs(lastPoint.y - points[ 0 ].y) < EPSILON)\n\
 \t\tpoints.splice( points.length - 1, 1);\n\
 \tif ( closedPath ) {\n\
 \n\
@@ -32952,7 +32856,7 @@ THREE.Path.prototype.getPoints = function( divisions, closedPath ) {\n\
 \n\
 // Breaks path into shapes\n\
 \n\
-THREE.Path.prototype.toShapes = function() {\n\
+THREE.Path.prototype.toShapes = function( isCCW ) {\n\
 \n\
 \tvar i, il, item, action, args;\n\
 \n\
@@ -32990,19 +32894,23 @@ THREE.Path.prototype.toShapes = function() {\n\
 \n\
 \tif ( subPaths.length == 0 ) return [];\n\
 \n\
-\tvar tmpPath, tmpShape, shapes = [];\n\
-\n\
-\tvar holesFirst = !THREE.Shape.Utils.isClockWise( subPaths[ 0 ].getPoints() );\n\
-\t// console.log(\"Holes first\", holesFirst);\n\
+\tvar solid, tmpPath, tmpShape, shapes = [];\n\
 \n\
 \tif ( subPaths.length == 1) {\n\
+\n\
 \t\ttmpPath = subPaths[0];\n\
 \t\ttmpShape = new THREE.Shape();\n\
 \t\ttmpShape.actions = tmpPath.actions;\n\
 \t\ttmpShape.curves = tmpPath.curves;\n\
 \t\tshapes.push( tmpShape );\n\
 \t\treturn shapes;\n\
-\t};\n\
+\n\
+\t}\n\
+\n\
+\tvar holesFirst = !THREE.Shape.Utils.isClockWise( subPaths[ 0 ].getPoints() );\n\
+\tholesFirst = isCCW ? !holesFirst : holesFirst;\n\
+\n\
+\t// console.log(\"Holes first\", holesFirst);\n\
 \n\
 \tif ( holesFirst ) {\n\
 \n\
@@ -33011,8 +32919,10 @@ THREE.Path.prototype.toShapes = function() {\n\
 \t\tfor ( i = 0, il = subPaths.length; i < il; i ++ ) {\n\
 \n\
 \t\t\ttmpPath = subPaths[ i ];\n\
+\t\t\tsolid = THREE.Shape.Utils.isClockWise( tmpPath.getPoints() );\n\
+\t\t\tsolid = isCCW ? !solid : solid;\n\
 \n\
-\t\t\tif ( THREE.Shape.Utils.isClockWise( tmpPath.getPoints() ) ) {\n\
+\t\t\tif ( solid ) {\n\
 \n\
 \t\t\t\ttmpShape.actions = tmpPath.actions;\n\
 \t\t\t\ttmpShape.curves = tmpPath.curves;\n\
@@ -33035,13 +32945,15 @@ THREE.Path.prototype.toShapes = function() {\n\
 \t} else {\n\
 \n\
 \t\t// Shapes first\n\
+\t\ttmpShape = undefined;\n\
 \n\
 \t\tfor ( i = 0, il = subPaths.length; i < il; i ++ ) {\n\
 \n\
 \t\t\ttmpPath = subPaths[ i ];\n\
+\t\t\tsolid = THREE.Shape.Utils.isClockWise( tmpPath.getPoints() );\n\
+\t\t\tsolid = isCCW ? !solid : solid;\n\
 \n\
-\t\t\tif ( THREE.Shape.Utils.isClockWise( tmpPath.getPoints() ) ) {\n\
-\n\
+\t\t\tif ( solid ) {\n\
 \n\
 \t\t\t\tif ( tmpShape ) shapes.push( tmpShape );\n\
 \n\
@@ -33066,6 +32978,7 @@ THREE.Path.prototype.toShapes = function() {\n\
 \treturn shapes;\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author zz85 / http://www.lab4games.net/zz85/blog\n\
  * Defines a 2d shape plane using paths.\n\
@@ -33077,7 +32990,7 @@ THREE.Path.prototype.toShapes = function() {\n\
 // STEP 3a - Extract points from each shape, turn to vertices\n\
 // STEP 3b - Triangulate each shape, add faces.\n\
 \n\
-THREE.Shape = function ( ) {\n\
+THREE.Shape = function () {\n\
 \n\
 \tTHREE.Path.apply( this, arguments );\n\
 \tthis.holes = [];\n\
@@ -33598,6 +33511,403 @@ THREE.Shape.Utils = {\n\
 \n\
 };\n\
 \n\
+\n\
+/**************************************************************\n\
+ *\tLine\n\
+ **************************************************************/\n\
+\n\
+THREE.LineCurve = function ( v1, v2 ) {\n\
+\n\
+\tthis.v1 = v1;\n\
+\tthis.v2 = v2;\n\
+\n\
+};\n\
+\n\
+THREE.LineCurve.prototype = Object.create( THREE.Curve.prototype );\n\
+\n\
+THREE.LineCurve.prototype.getPoint = function ( t ) {\n\
+\n\
+\tvar point = this.v2.clone().sub(this.v1);\n\
+\tpoint.multiplyScalar( t ).add( this.v1 );\n\
+\n\
+\treturn point;\n\
+\n\
+};\n\
+\n\
+// Line curve is linear, so we can overwrite default getPointAt\n\
+\n\
+THREE.LineCurve.prototype.getPointAt = function ( u ) {\n\
+\n\
+\treturn this.getPoint( u );\n\
+\n\
+};\n\
+\n\
+THREE.LineCurve.prototype.getTangent = function( t ) {\n\
+\n\
+\tvar tangent = this.v2.clone().sub(this.v1);\n\
+\n\
+\treturn tangent.normalize();\n\
+\n\
+};\n\
+/**************************************************************\n\
+ *\tQuadratic Bezier curve\n\
+ **************************************************************/\n\
+\n\
+\n\
+THREE.QuadraticBezierCurve = function ( v0, v1, v2 ) {\n\
+\n\
+\tthis.v0 = v0;\n\
+\tthis.v1 = v1;\n\
+\tthis.v2 = v2;\n\
+\n\
+};\n\
+\n\
+THREE.QuadraticBezierCurve.prototype = Object.create( THREE.Curve.prototype );\n\
+\n\
+\n\
+THREE.QuadraticBezierCurve.prototype.getPoint = function ( t ) {\n\
+\n\
+\tvar tx, ty;\n\
+\n\
+\ttx = THREE.Shape.Utils.b2( t, this.v0.x, this.v1.x, this.v2.x );\n\
+\tty = THREE.Shape.Utils.b2( t, this.v0.y, this.v1.y, this.v2.y );\n\
+\n\
+\treturn new THREE.Vector2( tx, ty );\n\
+\n\
+};\n\
+\n\
+\n\
+THREE.QuadraticBezierCurve.prototype.getTangent = function( t ) {\n\
+\n\
+\tvar tx, ty;\n\
+\n\
+\ttx = THREE.Curve.Utils.tangentQuadraticBezier( t, this.v0.x, this.v1.x, this.v2.x );\n\
+\tty = THREE.Curve.Utils.tangentQuadraticBezier( t, this.v0.y, this.v1.y, this.v2.y );\n\
+\n\
+\t// returns unit vector\n\
+\n\
+\tvar tangent = new THREE.Vector2( tx, ty );\n\
+\ttangent.normalize();\n\
+\n\
+\treturn tangent;\n\
+\n\
+};\n\
+/**************************************************************\n\
+ *\tCubic Bezier curve\n\
+ **************************************************************/\n\
+\n\
+THREE.CubicBezierCurve = function ( v0, v1, v2, v3 ) {\n\
+\n\
+\tthis.v0 = v0;\n\
+\tthis.v1 = v1;\n\
+\tthis.v2 = v2;\n\
+\tthis.v3 = v3;\n\
+\n\
+};\n\
+\n\
+THREE.CubicBezierCurve.prototype = Object.create( THREE.Curve.prototype );\n\
+\n\
+THREE.CubicBezierCurve.prototype.getPoint = function ( t ) {\n\
+\n\
+\tvar tx, ty;\n\
+\n\
+\ttx = THREE.Shape.Utils.b3( t, this.v0.x, this.v1.x, this.v2.x, this.v3.x );\n\
+\tty = THREE.Shape.Utils.b3( t, this.v0.y, this.v1.y, this.v2.y, this.v3.y );\n\
+\n\
+\treturn new THREE.Vector2( tx, ty );\n\
+\n\
+};\n\
+\n\
+THREE.CubicBezierCurve.prototype.getTangent = function( t ) {\n\
+\n\
+\tvar tx, ty;\n\
+\n\
+\ttx = THREE.Curve.Utils.tangentCubicBezier( t, this.v0.x, this.v1.x, this.v2.x, this.v3.x );\n\
+\tty = THREE.Curve.Utils.tangentCubicBezier( t, this.v0.y, this.v1.y, this.v2.y, this.v3.y );\n\
+\n\
+\tvar tangent = new THREE.Vector2( tx, ty );\n\
+\ttangent.normalize();\n\
+\n\
+\treturn tangent;\n\
+\n\
+};\n\
+/**************************************************************\n\
+ *\tSpline curve\n\
+ **************************************************************/\n\
+\n\
+THREE.SplineCurve = function ( points /* array of Vector2 */ ) {\n\
+\n\
+\tthis.points = (points == undefined) ? [] : points;\n\
+\n\
+};\n\
+\n\
+THREE.SplineCurve.prototype = Object.create( THREE.Curve.prototype );\n\
+\n\
+THREE.SplineCurve.prototype.getPoint = function ( t ) {\n\
+\n\
+\tvar v = new THREE.Vector2();\n\
+\tvar c = [];\n\
+\tvar points = this.points, point, intPoint, weight;\n\
+\tpoint = ( points.length - 1 ) * t;\n\
+\n\
+\tintPoint = Math.floor( point );\n\
+\tweight = point - intPoint;\n\
+\n\
+\tc[ 0 ] = intPoint == 0 ? intPoint : intPoint - 1;\n\
+\tc[ 1 ] = intPoint;\n\
+\tc[ 2 ] = intPoint  > points.length - 2 ? points.length -1 : intPoint + 1;\n\
+\tc[ 3 ] = intPoint  > points.length - 3 ? points.length -1 : intPoint + 2;\n\
+\n\
+\tv.x = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].x, points[ c[ 1 ] ].x, points[ c[ 2 ] ].x, points[ c[ 3 ] ].x, weight );\n\
+\tv.y = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].y, points[ c[ 1 ] ].y, points[ c[ 2 ] ].y, points[ c[ 3 ] ].y, weight );\n\
+\n\
+\treturn v;\n\
+\n\
+};\n\
+/**************************************************************\n\
+ *\tEllipse curve\n\
+ **************************************************************/\n\
+\n\
+THREE.EllipseCurve = function ( aX, aY, xRadius, yRadius,\n\
+\t\t\t\t\t\t\taStartAngle, aEndAngle,\n\
+\t\t\t\t\t\t\taClockwise ) {\n\
+\n\
+\tthis.aX = aX;\n\
+\tthis.aY = aY;\n\
+\n\
+\tthis.xRadius = xRadius;\n\
+\tthis.yRadius = yRadius;\n\
+\n\
+\tthis.aStartAngle = aStartAngle;\n\
+\tthis.aEndAngle = aEndAngle;\n\
+\n\
+\tthis.aClockwise = aClockwise;\n\
+\n\
+};\n\
+\n\
+THREE.EllipseCurve.prototype = Object.create( THREE.Curve.prototype );\n\
+\n\
+THREE.EllipseCurve.prototype.getPoint = function ( t ) {\n\
+\n\
+\tvar deltaAngle = this.aEndAngle - this.aStartAngle;\n\
+\n\
+\tif ( !this.aClockwise ) {\n\
+\n\
+\t\tt = 1 - t;\n\
+\n\
+\t}\n\
+\n\
+\tvar angle = this.aStartAngle + t * deltaAngle;\n\
+\n\
+\tvar tx = this.aX + this.xRadius * Math.cos( angle );\n\
+\tvar ty = this.aY + this.yRadius * Math.sin( angle );\n\
+\n\
+\treturn new THREE.Vector2( tx, ty );\n\
+\n\
+};\n\
+/**************************************************************\n\
+ *\tArc curve\n\
+ **************************************************************/\n\
+\n\
+THREE.ArcCurve = function ( aX, aY, aRadius, aStartAngle, aEndAngle, aClockwise ) {\n\
+\n\
+\tTHREE.EllipseCurve.call( this, aX, aY, aRadius, aRadius, aStartAngle, aEndAngle, aClockwise );\n\
+};\n\
+\n\
+THREE.ArcCurve.prototype = Object.create( THREE.EllipseCurve.prototype );\n\
+/**************************************************************\n\
+ *\tLine3D\n\
+ **************************************************************/\n\
+\n\
+THREE.LineCurve3 = THREE.Curve.create(\n\
+\n\
+\tfunction ( v1, v2 ) {\n\
+\n\
+\t\tthis.v1 = v1;\n\
+\t\tthis.v2 = v2;\n\
+\n\
+\t},\n\
+\n\
+\tfunction ( t ) {\n\
+\n\
+\t\tvar r = new THREE.Vector3();\n\
+\n\
+\n\
+\t\tr.subVectors( this.v2, this.v1 ); // diff\n\
+\t\tr.multiplyScalar( t );\n\
+\t\tr.add( this.v1 );\n\
+\n\
+\t\treturn r;\n\
+\n\
+\t}\n\
+\n\
+);\n\
+\n\
+/**************************************************************\n\
+ *\tQuadratic Bezier 3D curve\n\
+ **************************************************************/\n\
+\n\
+THREE.QuadraticBezierCurve3 = THREE.Curve.create(\n\
+\n\
+\tfunction ( v0, v1, v2 ) {\n\
+\n\
+\t\tthis.v0 = v0;\n\
+\t\tthis.v1 = v1;\n\
+\t\tthis.v2 = v2;\n\
+\n\
+\t},\n\
+\n\
+\tfunction ( t ) {\n\
+\n\
+\t\tvar tx, ty, tz;\n\
+\n\
+\t\ttx = THREE.Shape.Utils.b2( t, this.v0.x, this.v1.x, this.v2.x );\n\
+\t\tty = THREE.Shape.Utils.b2( t, this.v0.y, this.v1.y, this.v2.y );\n\
+\t\ttz = THREE.Shape.Utils.b2( t, this.v0.z, this.v1.z, this.v2.z );\n\
+\n\
+\t\treturn new THREE.Vector3( tx, ty, tz );\n\
+\n\
+\t}\n\
+\n\
+);\n\
+/**************************************************************\n\
+ *\tCubic Bezier 3D curve\n\
+ **************************************************************/\n\
+\n\
+THREE.CubicBezierCurve3 = THREE.Curve.create(\n\
+\n\
+\tfunction ( v0, v1, v2, v3 ) {\n\
+\n\
+\t\tthis.v0 = v0;\n\
+\t\tthis.v1 = v1;\n\
+\t\tthis.v2 = v2;\n\
+\t\tthis.v3 = v3;\n\
+\n\
+\t},\n\
+\n\
+\tfunction ( t ) {\n\
+\n\
+\t\tvar tx, ty, tz;\n\
+\n\
+\t\ttx = THREE.Shape.Utils.b3( t, this.v0.x, this.v1.x, this.v2.x, this.v3.x );\n\
+\t\tty = THREE.Shape.Utils.b3( t, this.v0.y, this.v1.y, this.v2.y, this.v3.y );\n\
+\t\ttz = THREE.Shape.Utils.b3( t, this.v0.z, this.v1.z, this.v2.z, this.v3.z );\n\
+\n\
+\t\treturn new THREE.Vector3( tx, ty, tz );\n\
+\n\
+\t}\n\
+\n\
+);\n\
+/**************************************************************\n\
+ *\tSpline 3D curve\n\
+ **************************************************************/\n\
+\n\
+\n\
+THREE.SplineCurve3 = THREE.Curve.create(\n\
+\n\
+\tfunction ( points /* array of Vector3 */) {\n\
+\n\
+\t\tthis.points = (points == undefined) ? [] : points;\n\
+\n\
+\t},\n\
+\n\
+\tfunction ( t ) {\n\
+\n\
+\t\tvar v = new THREE.Vector3();\n\
+\t\tvar c = [];\n\
+\t\tvar points = this.points, point, intPoint, weight;\n\
+\t\tpoint = ( points.length - 1 ) * t;\n\
+\n\
+\t\tintPoint = Math.floor( point );\n\
+\t\tweight = point - intPoint;\n\
+\n\
+\t\tc[ 0 ] = intPoint == 0 ? intPoint : intPoint - 1;\n\
+\t\tc[ 1 ] = intPoint;\n\
+\t\tc[ 2 ] = intPoint  > points.length - 2 ? points.length - 1 : intPoint + 1;\n\
+\t\tc[ 3 ] = intPoint  > points.length - 3 ? points.length - 1 : intPoint + 2;\n\
+\n\
+\t\tvar pt0 = points[ c[0] ],\n\
+\t\t\tpt1 = points[ c[1] ],\n\
+\t\t\tpt2 = points[ c[2] ],\n\
+\t\t\tpt3 = points[ c[3] ];\n\
+\n\
+\t\tv.x = THREE.Curve.Utils.interpolate(pt0.x, pt1.x, pt2.x, pt3.x, weight);\n\
+\t\tv.y = THREE.Curve.Utils.interpolate(pt0.y, pt1.y, pt2.y, pt3.y, weight);\n\
+\t\tv.z = THREE.Curve.Utils.interpolate(pt0.z, pt1.z, pt2.z, pt3.z, weight);\n\
+\n\
+\t\treturn v;\n\
+\n\
+\t}\n\
+\n\
+);\n\
+\n\
+\n\
+// THREE.SplineCurve3.prototype.getTangent = function(t) {\n\
+// \t\tvar v = new THREE.Vector3();\n\
+// \t\tvar c = [];\n\
+// \t\tvar points = this.points, point, intPoint, weight;\n\
+// \t\tpoint = ( points.length - 1 ) * t;\n\
+\n\
+// \t\tintPoint = Math.floor( point );\n\
+// \t\tweight = point - intPoint;\n\
+\n\
+// \t\tc[ 0 ] = intPoint == 0 ? intPoint : intPoint - 1;\n\
+// \t\tc[ 1 ] = intPoint;\n\
+// \t\tc[ 2 ] = intPoint  > points.length - 2 ? points.length - 1 : intPoint + 1;\n\
+// \t\tc[ 3 ] = intPoint  > points.length - 3 ? points.length - 1 : intPoint + 2;\n\
+\n\
+// \t\tvar pt0 = points[ c[0] ],\n\
+// \t\t\tpt1 = points[ c[1] ],\n\
+// \t\t\tpt2 = points[ c[2] ],\n\
+// \t\t\tpt3 = points[ c[3] ];\n\
+\n\
+// \t// t = weight;\n\
+// \tv.x = THREE.Curve.Utils.tangentSpline( t, pt0.x, pt1.x, pt2.x, pt3.x );\n\
+// \tv.y = THREE.Curve.Utils.tangentSpline( t, pt0.y, pt1.y, pt2.y, pt3.y );\n\
+// \tv.z = THREE.Curve.Utils.tangentSpline( t, pt0.z, pt1.z, pt2.z, pt3.z );\n\
+\n\
+// \treturn v;\n\
+\n\
+// }\n\
+/**************************************************************\n\
+ *\tClosed Spline 3D curve\n\
+ **************************************************************/\n\
+\n\
+\n\
+THREE.ClosedSplineCurve3 = THREE.Curve.create(\n\
+\n\
+\tfunction ( points /* array of Vector3 */) {\n\
+\n\
+\t\tthis.points = (points == undefined) ? [] : points;\n\
+\n\
+\t},\n\
+\n\
+    function ( t ) {\n\
+\n\
+        var v = new THREE.Vector3();\n\
+        var c = [];\n\
+        var points = this.points, point, intPoint, weight;\n\
+        point = ( points.length - 0 ) * t;\n\
+            // This needs to be from 0-length +1\n\
+\n\
+        intPoint = Math.floor( point );\n\
+        weight = point - intPoint;\n\
+\n\
+        intPoint += intPoint > 0 ? 0 : ( Math.floor( Math.abs( intPoint ) / points.length ) + 1 ) * points.length;\n\
+        c[ 0 ] = ( intPoint - 1 ) % points.length;\n\
+        c[ 1 ] = ( intPoint ) % points.length;\n\
+        c[ 2 ] = ( intPoint + 1 ) % points.length;\n\
+        c[ 3 ] = ( intPoint + 2 ) % points.length;\n\
+\n\
+        v.x = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].x, points[ c[ 1 ] ].x, points[ c[ 2 ] ].x, points[ c[ 3 ] ].x, weight );\n\
+        v.y = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].y, points[ c[ 1 ] ].y, points[ c[ 2 ] ].y, points[ c[ 3 ] ].y, weight );\n\
+        v.z = THREE.Curve.Utils.interpolate( points[ c[ 0 ] ].z, points[ c[ 1 ] ].z, points[ c[ 2 ] ].z, points[ c[ 3 ] ].z, weight );\n\
+\n\
+        return v;\n\
+\n\
+    }\n\
+\n\
+);\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  */\n\
@@ -33856,6 +34166,7 @@ THREE.AnimationHandler = (function() {\n\
 \treturn that;\n\
 \n\
 }());\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -33898,12 +34209,6 @@ THREE.Animation.prototype.play = function ( loop, startTimeMS ) {\n\
 \t\tfor ( h = 0; h < hl; h ++ ) {\n\
 \n\
 \t\t\tobject = this.hierarchy[ h ];\n\
-\n\
-\t\t\tif ( this.interpolationType !== THREE.AnimationHandler.CATMULLROM_FORWARD ) {\n\
-\n\
-\t\t\t\tobject.useQuaternion = true;\n\
-\n\
-\t\t\t}\n\
 \n\
 \t\t\tobject.matrixAutoUpdate = true;\n\
 \n\
@@ -34105,7 +34410,7 @@ THREE.Animation.prototype.update = function ( deltaTimeMS ) {\n\
 \t\t\t\t\t\tforwardPoint = this.interpolateCatmullRom( this.points, scale * 1.01 );\n\
 \n\
 \t\t\t\t\t\tthis.target.set( forwardPoint[ 0 ], forwardPoint[ 1 ], forwardPoint[ 2 ] );\n\
-\t\t\t\t\t\tthis.target.subSelf( vector );\n\
+\t\t\t\t\t\tthis.target.sub( vector );\n\
 \t\t\t\t\t\tthis.target.y = 0;\n\
 \t\t\t\t\t\tthis.target.normalize();\n\
 \n\
@@ -34242,6 +34547,7 @@ THREE.Animation.prototype.getPrevKeyWith = function ( type, h, key ) {\n\
 \treturn this.data.hierarchy[ h ].keys[ keys.length - 1 ];\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -34319,7 +34625,6 @@ THREE.KeyFrameAnimation.prototype.play = function( loop, startTimeMS ) {\n\
 \n\
 \t\t\tobject = this.hierarchy[ h ];\n\
 \t\t\tnode = this.data.hierarchy[ h ];\n\
-\t\t\tobject.useQuaternion = true;\n\
 \n\
 \t\t\tif ( node.animationCache === undefined ) {\n\
 \n\
@@ -34665,6 +34970,7 @@ THREE.KeyFrameAnimation.prototype.getPrevKeyWith = function( sid, h, key ) {\n\
 \treturn keys[ keys.length - 1 ];\n\
 \n\
 };\n\
+\n\
 /**\n\
  * Camera for rendering cube maps\n\
  *\t- renders scene into axis-aligned cube\n\
@@ -34742,6 +35048,7 @@ THREE.CubeCamera = function ( near, far, cubeResolution ) {\n\
 };\n\
 \n\
 THREE.CubeCamera.prototype = Object.create( THREE.Object3D.prototype );\n\
+\n\
 /*\n\
  *\t@author zz85 / http://twitter.com/blurspline / http://www.lab4games.net/zz85/blog\n\
  *\n\
@@ -34979,98 +35286,62 @@ THREE.CombinedCamera.prototype.toBottomView = function() {\n\
 \n\
 };\n\
 \n\
+\n\
 /**\n\
- * @author alteredq / http://alteredqualia.com/\n\
- *\n\
- *\t- 3d asterisk shape (for line pieces THREE.Line)\n\
- */\n\
-\n\
-THREE.AsteriskGeometry = function ( innerRadius, outerRadius ) {\n\
-\n\
-\tTHREE.Geometry.call( this );\n\
-\n\
-\tvar sd = innerRadius;\n\
-\tvar ed = outerRadius;\n\
-\n\
-\tvar sd2 = 0.707 * sd;\n\
-\tvar ed2 = 0.707 * ed;\n\
-\n\
-\tvar rays = [ [ sd, 0, 0 ], [ ed, 0, 0 ], [ -sd, 0, 0 ], [ -ed, 0, 0 ],\n\
-\t\t\t\t [ 0, sd, 0 ], [ 0, ed, 0 ], [ 0, -sd, 0 ], [ 0, -ed, 0 ],\n\
-\t\t\t\t [ 0, 0, sd ], [ 0, 0, ed ], [ 0, 0, -sd ], [ 0, 0, -ed ],\n\
-\t\t\t\t [ sd2, sd2, 0 ], [ ed2, ed2, 0 ], [ -sd2, -sd2, 0 ], [ -ed2, -ed2, 0 ],\n\
-\t\t\t\t [ sd2, -sd2, 0 ], [ ed2, -ed2, 0 ], [ -sd2, sd2, 0 ], [ -ed2, ed2, 0 ],\n\
-\t\t\t\t [ sd2, 0, sd2 ], [ ed2, 0, ed2 ], [ -sd2, 0, -sd2 ], [ -ed2, 0, -ed2 ],\n\
-\t\t\t\t [ sd2, 0, -sd2 ], [ ed2, 0, -ed2 ], [ -sd2, 0, sd2 ], [ -ed2, 0, ed2 ],\n\
-\t\t\t\t [ 0, sd2, sd2 ], [ 0, ed2, ed2 ], [ 0, -sd2, -sd2 ], [ 0, -ed2, -ed2 ],\n\
-\t\t\t\t [ 0, sd2, -sd2 ], [ 0, ed2, -ed2 ], [ 0, -sd2, sd2 ], [ 0, -ed2, ed2 ]\n\
-\t];\n\
-\n\
-\tfor ( var i = 0, il = rays.length; i < il; i ++ ) {\n\
-\n\
-\t\tvar x = rays[ i ][ 0 ];\n\
-\t\tvar y = rays[ i ][ 1 ];\n\
-\t\tvar z = rays[ i ][ 2 ];\n\
-\n\
-\t\tthis.vertices.push( new THREE.Vector3( x, y, z ) );\n\
-\n\
-\t}\n\
-\n\
-};\n\
-\n\
-THREE.AsteriskGeometry.prototype = Object.create( THREE.Geometry.prototype );/**\n\
  * @author hughes\n\
  */\n\
 \n\
 THREE.CircleGeometry = function ( radius, segments, thetaStart, thetaLength ) {\n\
 \n\
-    THREE.Geometry.call( this );\n\
+\tTHREE.Geometry.call( this );\n\
 \n\
-    radius = radius || 50;\n\
+\tradius = radius || 50;\n\
 \n\
-    thetaStart = thetaStart !== undefined ? thetaStart : 0;\n\
-    thetaLength = thetaLength !== undefined ? thetaLength : Math.PI * 2;\n\
-    segments = segments !== undefined ? Math.max( 3, segments ) : 8;\n\
+\tthetaStart = thetaStart !== undefined ? thetaStart : 0;\n\
+\tthetaLength = thetaLength !== undefined ? thetaLength : Math.PI * 2;\n\
+\tsegments = segments !== undefined ? Math.max( 3, segments ) : 8;\n\
 \n\
-    var i, uvs = [],\n\
-    center = new THREE.Vector3(), centerUV = new THREE.Vector2( 0.5, 0.5 );\n\
+\tvar i, uvs = [],\n\
+\tcenter = new THREE.Vector3(), centerUV = new THREE.Vector2( 0.5, 0.5 );\n\
 \n\
-    this.vertices.push(center);\n\
-    uvs.push( centerUV );\n\
+\tthis.vertices.push(center);\n\
+\tuvs.push( centerUV );\n\
 \n\
-    for ( i = 0; i <= segments; i ++ ) {\n\
+\tfor ( i = 0; i <= segments; i ++ ) {\n\
 \n\
-        var vertex = new THREE.Vector3();\n\
+\t\tvar vertex = new THREE.Vector3();\n\
+\t\tvar segment = thetaStart + i / segments * thetaLength;\n\
 \n\
-        vertex.x = radius * Math.cos( thetaStart + i / segments * thetaLength );\n\
-        vertex.y = radius * Math.sin( thetaStart + i / segments * thetaLength );\n\
+\t\tvertex.x = radius * Math.cos( segment );\n\
+\t\tvertex.y = radius * Math.sin( segment );\n\
 \n\
-        this.vertices.push( vertex );\n\
-        uvs.push( new THREE.Vector2( ( vertex.x / radius + 1 ) / 2, - ( vertex.y / radius + 1 ) / 2 + 1 ) );\n\
+\t\tthis.vertices.push( vertex );\n\
+\t\tuvs.push( new THREE.Vector2( ( vertex.x / radius + 1 ) / 2, ( vertex.y / radius + 1 ) / 2 ) );\n\
 \n\
-    }\n\
+\t}\n\
 \n\
-    var n = new THREE.Vector3( 0, 0, -1 );\n\
+\tvar n = new THREE.Vector3( 0, 0, 1 );\n\
 \n\
-    for ( i = 1; i <= segments; i ++ ) {\n\
+\tfor ( i = 1; i <= segments; i ++ ) {\n\
 \n\
-        var v1 = i;\n\
-        var v2 = i + 1 ;\n\
-        var v3 = 0;\n\
+\t\tvar v1 = i;\n\
+\t\tvar v2 = i + 1 ;\n\
+\t\tvar v3 = 0;\n\
 \n\
-        this.faces.push( new THREE.Face3( v1, v2, v3, [ n, n, n ] ) );\n\
-        this.faceVertexUvs[ 0 ].push( [ uvs[ i ], uvs[ i + 1 ], centerUV ] );\n\
+\t\tthis.faces.push( new THREE.Face3( v1, v2, v3, [ n, n, n ] ) );\n\
+\t\tthis.faceVertexUvs[ 0 ].push( [ uvs[ i ], uvs[ i + 1 ], centerUV ] );\n\
 \n\
-    }\n\
+\t}\n\
 \n\
-    this.computeCentroids();\n\
-    this.computeFaceNormals();\n\
+\tthis.computeCentroids();\n\
+\tthis.computeFaceNormals();\n\
 \n\
-    this.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );\n\
+\tthis.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );\n\
 \n\
 };\n\
 \n\
 THREE.CircleGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * based on http://papervision3d.googlecode.com/svn/trunk/as3/trunk/src/org/papervision3d/objects/primitives/Cube.as\n\
@@ -35158,18 +35429,26 @@ THREE.CubeGeometry = function ( width, height, depth, widthSegments, heightSegme
 \t\t\t\tvar c = ( ix + 1 ) + gridX1 * ( iy + 1 );\n\
 \t\t\t\tvar d = ( ix + 1 ) + gridX1 * iy;\n\
 \n\
-\t\t\t\tvar face = new THREE.Face4( a + offset, b + offset, c + offset, d + offset );\n\
+\t\t\t\tvar uva = new THREE.Vector2( ix / gridX, 1 - iy / gridY );\n\
+\t\t\t\tvar uvb = new THREE.Vector2( ix / gridX, 1 - ( iy + 1 ) / gridY );\n\
+\t\t\t\tvar uvc = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - ( iy + 1 ) / gridY );\n\
+\t\t\t\tvar uvd = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - iy / gridY );\n\
+\n\
+\t\t\t\tvar face = new THREE.Face3( a + offset, b + offset, d + offset );\n\
 \t\t\t\tface.normal.copy( normal );\n\
-\t\t\t\tface.vertexNormals.push( normal.clone(), normal.clone(), normal.clone(), normal.clone() );\n\
+\t\t\t\tface.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );\n\
 \t\t\t\tface.materialIndex = materialIndex;\n\
 \n\
 \t\t\t\tscope.faces.push( face );\n\
-\t\t\t\tscope.faceVertexUvs[ 0 ].push( [\n\
-\t\t\t\t\t\t\tnew THREE.Vector2( ix / gridX, 1 - iy / gridY ),\n\
-\t\t\t\t\t\t\tnew THREE.Vector2( ix / gridX, 1 - ( iy + 1 ) / gridY ),\n\
-\t\t\t\t\t\t\tnew THREE.Vector2( ( ix + 1 ) / gridX, 1- ( iy + 1 ) / gridY ),\n\
-\t\t\t\t\t\t\tnew THREE.Vector2( ( ix + 1 ) / gridX, 1 - iy / gridY )\n\
-\t\t\t\t\t\t] );\n\
+\t\t\t\tscope.faceVertexUvs[ 0 ].push( [ uva, uvb, uvd ] );\n\
+\n\
+\t\t\t\tface = new THREE.Face3( b + offset, c + offset, d + offset );\n\
+\t\t\t\tface.normal.copy( normal );\n\
+\t\t\t\tface.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );\n\
+\t\t\t\tface.materialIndex = materialIndex;\n\
+\n\
+\t\t\t\tscope.faces.push( face );\n\
+\t\t\t\tscope.faceVertexUvs[ 0 ].push( [ uvb.clone(), uvc, uvd.clone() ] );\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -35183,35 +35462,39 @@ THREE.CubeGeometry = function ( width, height, depth, widthSegments, heightSegme
 };\n\
 \n\
 THREE.CubeGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
-THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radiusSegments, heightSegments, openEnded ) {\n\
+THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radialSegments, heightSegments, openEnded ) {\n\
 \n\
 \tTHREE.Geometry.call( this );\n\
 \n\
-\tradiusTop = radiusTop !== undefined ? radiusTop : 20;\n\
-\tradiusBottom = radiusBottom !== undefined ? radiusBottom : 20;\n\
-\theight = height !== undefined ? height : 100;\n\
+\tthis.radiusTop = radiusTop = radiusTop !== undefined ? radiusTop : 20;\n\
+\tthis.radiusBottom = radiusBottom = radiusBottom !== undefined ? radiusBottom : 20;\n\
+\tthis.height = height = height !== undefined ? height : 100;\n\
+\n\
+\tthis.radialSegments = radialSegments = radialSegments || 8;\n\
+\tthis.heightSegments = heightSegments = heightSegments || 1;\n\
+\n\
+\tthis.openEnded = openEnded = openEnded !== undefined ? openEnded : false;\n\
 \n\
 \tvar heightHalf = height / 2;\n\
-\tvar segmentsX = radiusSegments || 8;\n\
-\tvar segmentsY = heightSegments || 1;\n\
 \n\
 \tvar x, y, vertices = [], uvs = [];\n\
 \n\
-\tfor ( y = 0; y <= segmentsY; y ++ ) {\n\
+\tfor ( y = 0; y <= heightSegments; y ++ ) {\n\
 \n\
 \t\tvar verticesRow = [];\n\
 \t\tvar uvsRow = [];\n\
 \n\
-\t\tvar v = y / segmentsY;\n\
+\t\tvar v = y / heightSegments;\n\
 \t\tvar radius = v * ( radiusBottom - radiusTop ) + radiusTop;\n\
 \n\
-\t\tfor ( x = 0; x <= segmentsX; x ++ ) {\n\
+\t\tfor ( x = 0; x <= radialSegments; x ++ ) {\n\
 \n\
-\t\t\tvar u = x / segmentsX;\n\
+\t\t\tvar u = x / radialSegments;\n\
 \n\
 \t\t\tvar vertex = new THREE.Vector3();\n\
 \t\t\tvertex.x = radius * Math.sin( u * Math.PI * 2 );\n\
@@ -35233,7 +35516,7 @@ THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radiusSegme
 \tvar tanTheta = ( radiusBottom - radiusTop ) / height;\n\
 \tvar na, nb;\n\
 \n\
-\tfor ( x = 0; x < segmentsX; x ++ ) {\n\
+\tfor ( x = 0; x < radialSegments; x ++ ) {\n\
 \n\
 \t\tif ( radiusTop !== 0 ) {\n\
 \n\
@@ -35250,7 +35533,7 @@ THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radiusSegme
 \t\tna.setY( Math.sqrt( na.x * na.x + na.z * na.z ) * tanTheta ).normalize();\n\
 \t\tnb.setY( Math.sqrt( nb.x * nb.x + nb.z * nb.z ) * tanTheta ).normalize();\n\
 \n\
-\t\tfor ( y = 0; y < segmentsY; y ++ ) {\n\
+\t\tfor ( y = 0; y < heightSegments; y ++ ) {\n\
 \n\
 \t\t\tvar v1 = vertices[ y ][ x ];\n\
 \t\t\tvar v2 = vertices[ y + 1 ][ x ];\n\
@@ -35267,8 +35550,11 @@ THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radiusSegme
 \t\t\tvar uv3 = uvs[ y + 1 ][ x + 1 ].clone();\n\
 \t\t\tvar uv4 = uvs[ y ][ x + 1 ].clone();\n\
 \n\
-\t\t\tthis.faces.push( new THREE.Face4( v1, v2, v3, v4, [ n1, n2, n3, n4 ] ) );\n\
-\t\t\tthis.faceVertexUvs[ 0 ].push( [ uv1, uv2, uv3, uv4 ] );\n\
+\t\t\tthis.faces.push( new THREE.Face3( v1, v2, v4, [ n1, n2, n4 ] ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uv1, uv2, uv4 ] );\n\
+\n\
+\t\t\tthis.faces.push( new THREE.Face3( v2, v3, v4, [ n2, n3, n4 ] ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uv2, uv3, uv4 ] );\n\
 \n\
 \t\t}\n\
 \n\
@@ -35276,11 +35562,11 @@ THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radiusSegme
 \n\
 \t// top cap\n\
 \n\
-\tif ( !openEnded && radiusTop > 0 ) {\n\
+\tif ( openEnded === false && radiusTop > 0 ) {\n\
 \n\
 \t\tthis.vertices.push( new THREE.Vector3( 0, heightHalf, 0 ) );\n\
 \n\
-\t\tfor ( x = 0; x < segmentsX; x ++ ) {\n\
+\t\tfor ( x = 0; x < radialSegments; x ++ ) {\n\
 \n\
 \t\t\tvar v1 = vertices[ 0 ][ x ];\n\
 \t\t\tvar v2 = vertices[ 0 ][ x + 1 ];\n\
@@ -35303,11 +35589,11 @@ THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radiusSegme
 \n\
 \t// bottom cap\n\
 \n\
-\tif ( !openEnded && radiusBottom > 0 ) {\n\
+\tif ( openEnded === false && radiusBottom > 0 ) {\n\
 \n\
 \t\tthis.vertices.push( new THREE.Vector3( 0, - heightHalf, 0 ) );\n\
 \n\
-\t\tfor ( x = 0; x < segmentsX; x ++ ) {\n\
+\t\tfor ( x = 0; x < radialSegments; x ++ ) {\n\
 \n\
 \t\t\tvar v1 = vertices[ y ][ x + 1 ];\n\
 \t\t\tvar v2 = vertices[ y ][ x ];\n\
@@ -35334,6 +35620,7 @@ THREE.CylinderGeometry = function ( radiusTop, radiusBottom, height, radiusSegme
 }\n\
 \n\
 THREE.CylinderGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author zz85 / http://www.lab4games.net/zz85/blog\n\
  *\n\
@@ -35519,7 +35806,7 @@ THREE.ExtrudeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \n\
 \t\tif ( !vec ) console.log( \"die\" );\n\
 \n\
-\t\treturn vec.clone().multiplyScalar( size ).addSelf( pt );\n\
+\t\treturn vec.clone().multiplyScalar( size ).add( pt );\n\
 \n\
 \t}\n\
 \n\
@@ -35600,8 +35887,8 @@ THREE.ExtrudeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \n\
 \t\t// pts from i\n\
 \n\
-\t\tp.copy( pt_i ).addSelf( v_hat );\n\
-\t\tq.copy( pt_i ).addSelf( w_hat );\n\
+\t\tp.copy( pt_i ).add( v_hat );\n\
+\t\tq.copy( pt_i ).add( w_hat );\n\
 \n\
 \t\tif ( p.equals( q ) ) {\n\
 \n\
@@ -35612,11 +35899,11 @@ THREE.ExtrudeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \n\
 \t\t// Points from j, k. helps prevents points cross overover most of the time\n\
 \n\
-\t\tp.copy( pt_j ).addSelf( v_hat );\n\
-\t\tq.copy( pt_k ).addSelf( w_hat );\n\
+\t\tp.copy( pt_j ).add( v_hat );\n\
+\t\tq.copy( pt_k ).add( w_hat );\n\
 \n\
 \t\tv_dot_w_hat = v.dot( w_hat );\n\
-\t\tq_sub_p_dot_w_hat = q.subSelf( p ).dot( w_hat );\n\
+\t\tq_sub_p_dot_w_hat = q.sub( p ).dot( w_hat );\n\
 \n\
 \t\t// We should not reach these conditions\n\
 \n\
@@ -35646,9 +35933,9 @@ THREE.ExtrudeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \n\
 \t\t}\n\
 \n\
-\t\tintersection = v.multiplyScalar( s ).addSelf( p );\n\
+\t\tintersection = v.multiplyScalar( s ).add( p );\n\
 \n\
-\t\treturn intersection.subSelf( pt_i ).clone(); // Don't normalize!, otherwise sharp corners become ugly\n\
+\t\treturn intersection.sub( pt_i ).clone(); // Don't normalize!, otherwise sharp corners become ugly\n\
 \n\
 \t}\n\
 \n\
@@ -35755,7 +36042,7 @@ THREE.ExtrudeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \t\t\tnormal.copy( splineTube.normals[0] ).multiplyScalar(vert.x);\n\
 \t\t\tbinormal.copy( splineTube.binormals[0] ).multiplyScalar(vert.y);\n\
 \n\
-\t\t\tposition2.copy( extrudePts[0] ).addSelf(normal).addSelf(binormal);\n\
+\t\t\tposition2.copy( extrudePts[0] ).add(normal).add(binormal);\n\
 \n\
 \t\t\tv( position2.x, position2.y, position2.z );\n\
 \n\
@@ -35785,7 +36072,7 @@ THREE.ExtrudeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \t\t\t\tnormal.copy( splineTube.normals[s] ).multiplyScalar( vert.x );\n\
 \t\t\t\tbinormal.copy( splineTube.binormals[s] ).multiplyScalar( vert.y );\n\
 \n\
-\t\t\t\tposition2.copy( extrudePts[s] ).addSelf( normal ).addSelf( binormal );\n\
+\t\t\t\tposition2.copy( extrudePts[s] ).add( normal ).add( binormal );\n\
 \n\
 \t\t\t\tv( position2.x, position2.y, position2.z );\n\
 \n\
@@ -35987,11 +36274,14 @@ THREE.ExtrudeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \t\tc += shapesOffset;\n\
 \t\td += shapesOffset;\n\
 \n\
- \t\tscope.faces.push( new THREE.Face4( a, b, c, d, null, null, extrudeMaterial ) );\n\
+ \t\tscope.faces.push( new THREE.Face3( a, b, d, null, null, extrudeMaterial ) );\n\
+ \t\tscope.faces.push( new THREE.Face3( b, c, d, null, null, extrudeMaterial ) );\n\
 \n\
  \t\tvar uvs = uvgen.generateSideWallUV( scope, shape, wallContour, options, a, b, c, d,\n\
  \t\t                                    stepIndex, stepsLength, contourIndex1, contourIndex2 );\n\
- \t\tscope.faceVertexUvs[ 0 ].push( uvs );\n\
+\n\
+ \t\tscope.faceVertexUvs[ 0 ].push( [ uvs[ 0 ], uvs[ 1 ], uvs[ 3 ] ] );\n\
+ \t\tscope.faceVertexUvs[ 0 ].push( [ uvs[ 1 ], uvs[ 2 ], uvs[ 3 ] ] );\n\
 \n\
 \t}\n\
 \n\
@@ -36067,6 +36357,7 @@ THREE.ExtrudeGeometry.__v3 = new THREE.Vector2();\n\
 THREE.ExtrudeGeometry.__v4 = new THREE.Vector2();\n\
 THREE.ExtrudeGeometry.__v5 = new THREE.Vector2();\n\
 THREE.ExtrudeGeometry.__v6 = new THREE.Vector2();\n\
+\n\
 /**\n\
  * @author jonobr1 / http://jonobr1.com\n\
  *\n\
@@ -36203,65 +36494,96 @@ THREE.ShapeGeometry.prototype.addShape = function ( shape, options ) {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author astrodud / http://astrodud.isgreat.org/\n\
  * @author zz85 / https://github.com/zz85\n\
+ * @author bhouston / http://exocortex.com\n\
  */\n\
 \n\
-THREE.LatheGeometry = function ( points, steps, angle ) {\n\
+// points - to create a closed torus, one must use a set of points \n\
+//    like so: [ a, b, c, d, a ], see first is the same as last.\n\
+// segments - the number of circumference segments to create\n\
+// phiStart - the starting radian\n\
+// phiLength - the radian (0 to 2*PI) range of the lathed section\n\
+//    2*pi is a closed lathe, less than 2PI is a portion.\n\
+THREE.LatheGeometry = function ( points, segments, phiStart, phiLength ) {\n\
 \n\
 \tTHREE.Geometry.call( this );\n\
 \n\
-\tvar _steps = steps || 12;\n\
-\tvar _angle = angle || 2 * Math.PI;\n\
+\tsegments = segments || 12;\n\
+\tphiStart = phiStart || 0;\n\
+\tphiLength = phiLength || 2 * Math.PI;\n\
 \n\
-\tvar _newV = [];\n\
-\tvar _matrix = new THREE.Matrix4().makeRotationZ( _angle / _steps );\n\
+\tvar inversePointLength = 1.0 / ( points.length - 1 );\n\
+\tvar inverseSegments = 1.0 / segments;\n\
 \n\
-\tfor ( var j = 0; j < points.length; j ++ ) {\n\
+\tfor ( var i = 0, il = segments; i <= il; i ++ ) {\n\
 \n\
-\t\t_newV[ j ] = points[ j ].clone();\n\
-\t\tthis.vertices.push( _newV[ j ] );\n\
+\t\tvar phi = phiStart + i * inverseSegments * phiLength;\n\
 \n\
-\t}\n\
+\t\tvar c = Math.cos( phi ),\n\
+\t\t\ts = Math.sin( phi );\n\
 \n\
-\tvar i, il = _steps + 1;\n\
+\t\tfor ( var j = 0, jl = points.length; j < jl; j ++ ) {\n\
 \n\
-\tfor ( i = 0; i < il; i ++ ) {\n\
+\t\t\tvar pt = points[ j ];\n\
 \n\
-\t\tfor ( var j = 0; j < _newV.length; j ++ ) {\n\
+\t\t\tvar vertex = new THREE.Vector3();\n\
 \n\
-\t\t\t_newV[ j ] = _matrix.multiplyVector3( _newV[ j ].clone() );\n\
-\t\t\tthis.vertices.push( _newV[ j ] );\n\
+\t\t\tvertex.x = c * pt.x - s * pt.y;\n\
+\t\t\tvertex.y = s * pt.x + c * pt.y;\n\
+\t\t\tvertex.z = pt.z;\n\
+\n\
+\t\t\tthis.vertices.push( vertex );\n\
 \n\
 \t\t}\n\
 \n\
 \t}\n\
 \n\
-\tfor ( i = 0; i < _steps; i ++ ) {\n\
+\tvar np = points.length;\n\
 \n\
-\t\tfor ( var k = 0, kl = points.length; k < kl - 1; k ++ ) {\n\
+\tfor ( var i = 0, il = segments; i < il; i ++ ) {\n\
 \n\
-\t\t\tvar a = i * kl + k;\n\
-\t\t\tvar b = ( ( i + 1 ) % il ) * kl + k;\n\
-\t\t\tvar c = ( ( i + 1 ) % il ) * kl + ( k + 1 ) % kl;\n\
-\t\t\tvar d = i * kl + ( k + 1 ) % kl;\n\
+\t\tfor ( var j = 0, jl = points.length - 1; j < jl; j ++ ) {\n\
 \n\
-\t\t\tthis.faces.push( new THREE.Face4( a, b, c, d ) );\n\
+\t\t\tvar base = j + np * i;\n\
+\t\t\tvar a = base;\n\
+\t\t\tvar b = base + np;\n\
+\t\t\tvar c = base + 1 + np;\n\
+\t\t\tvar d = base + 1;\n\
+\n\
+\t\t\tvar u0 = i * inverseSegments;\n\
+\t\t\tvar v0 = j * inversePointLength;\n\
+\t\t\tvar u1 = u0 + inverseSegments;\n\
+\t\t\tvar v1 = v0 + inversePointLength;\n\
+\n\
+\t\t\tthis.faces.push( new THREE.Face3( a, b, d ) );\n\
 \n\
 \t\t\tthis.faceVertexUvs[ 0 ].push( [\n\
 \n\
-\t\t\t\tnew THREE.Vector2( 1 - i / _steps, k / kl ),\n\
-\t\t\t\tnew THREE.Vector2( 1 - ( i + 1 ) / _steps, k / kl ),\n\
-\t\t\t\tnew THREE.Vector2( 1 - ( i + 1 ) / _steps, ( k + 1 ) / kl ),\n\
-\t\t\t\tnew THREE.Vector2( 1 - i / _steps, ( k + 1 ) / kl )\n\
+\t\t\t\tnew THREE.Vector2( u0, v0 ),\n\
+\t\t\t\tnew THREE.Vector2( u1, v0 ),\n\
+\t\t\t\tnew THREE.Vector2( u0, v1 )\n\
 \n\
 \t\t\t] );\n\
+\n\
+\t\t\tthis.faces.push( new THREE.Face3( b, c, d ) );\n\
+\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [\n\
+\n\
+\t\t\t\tnew THREE.Vector2( u1, v0 ),\n\
+\t\t\t\tnew THREE.Vector2( u1, v1 ),\n\
+\t\t\t\tnew THREE.Vector2( u0, v1 )\n\
+\n\
+\t\t\t] );\n\
+\n\
 \n\
 \t\t}\n\
 \n\
 \t}\n\
 \n\
+\tthis.mergeVertices();\n\
 \tthis.computeCentroids();\n\
 \tthis.computeFaceNormals();\n\
 \tthis.computeVertexNormals();\n\
@@ -36269,6 +36591,7 @@ THREE.LatheGeometry = function ( points, steps, angle ) {\n\
 };\n\
 \n\
 THREE.LatheGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  * based on http://papervision3d.googlecode.com/svn/trunk/as3/trunk/src/org/papervision3d/objects/primitives/Plane.as\n\
@@ -36321,17 +36644,24 @@ THREE.PlaneGeometry = function ( width, height, widthSegments, heightSegments ) 
 \t\t\tvar c = ( ix + 1 ) + gridX1 * ( iz + 1 );\n\
 \t\t\tvar d = ( ix + 1 ) + gridX1 * iz;\n\
 \n\
-\t\t\tvar face = new THREE.Face4( a, b, c, d );\n\
+\t\t\tvar uva = new THREE.Vector2( ix / gridX, 1 - iz / gridZ );\n\
+\t\t\tvar uvb = new THREE.Vector2( ix / gridX, 1 - ( iz + 1 ) / gridZ );\n\
+\t\t\tvar uvc = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - ( iz + 1 ) / gridZ );\n\
+\t\t\tvar uvd = new THREE.Vector2( ( ix + 1 ) / gridX, 1 - iz / gridZ );\n\
+\n\
+\t\t\tvar face = new THREE.Face3( a, b, d );\n\
 \t\t\tface.normal.copy( normal );\n\
-\t\t\tface.vertexNormals.push( normal.clone(), normal.clone(), normal.clone(), normal.clone() );\n\
+\t\t\tface.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );\n\
 \n\
 \t\t\tthis.faces.push( face );\n\
-\t\t\tthis.faceVertexUvs[ 0 ].push( [\n\
-\t\t\t\tnew THREE.Vector2( ix / gridX, 1 - iz / gridZ ),\n\
-\t\t\t\tnew THREE.Vector2( ix / gridX, 1 - ( iz + 1 ) / gridZ ),\n\
-\t\t\t\tnew THREE.Vector2( ( ix + 1 ) / gridX, 1 - ( iz + 1 ) / gridZ ),\n\
-\t\t\t\tnew THREE.Vector2( ( ix + 1 ) / gridX, 1 - iz / gridZ )\n\
-\t\t\t] );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uva, uvb, uvd ] );\n\
+\n\
+\t\t\tface = new THREE.Face3( b, c, d );\n\
+\t\t\tface.normal.copy( normal );\n\
+\t\t\tface.vertexNormals.push( normal.clone(), normal.clone(), normal.clone() );\n\
+\n\
+\t\t\tthis.faces.push( face );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvb.clone(), uvc, uvd.clone() ] );\n\
 \n\
 \t\t}\n\
 \n\
@@ -36342,6 +36672,80 @@ THREE.PlaneGeometry = function ( width, height, widthSegments, heightSegments ) 
 };\n\
 \n\
 THREE.PlaneGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
+/**\n\
+ * @author Kaleb Murphy\n\
+ */\n\
+\n\
+THREE.RingGeometry = function ( innerRadius, outerRadius, thetaSegments, phiSegments, thetaStart, thetaLength ) {\n\
+\n\
+\tTHREE.Geometry.call( this );\n\
+\n\
+\tinnerRadius = innerRadius || 0;\n\
+\touterRadius = outerRadius || 50;\n\
+\n\
+\tthetaStart = thetaStart !== undefined ? thetaStart : 0;\n\
+\tthetaLength = thetaLength !== undefined ? thetaLength : Math.PI * 2;\n\
+\n\
+\tthetaSegments = thetaSegments !== undefined ? Math.max( 3, thetaSegments ) : 8;\n\
+\tphiSegments = phiSegments !== undefined ? Math.max( 3, phiSegments ) : 8;\n\
+\n\
+\tvar i, o, uvs = [], radius = innerRadius, radiusStep = ( ( outerRadius - innerRadius ) / phiSegments );\n\
+\n\
+\tfor ( i = 0; i <= phiSegments; i ++ ) { // concentric circles inside ring\n\
+\n\
+\t\tfor ( o = 0; o <= thetaSegments; o ++ ) { // number of segments per circle\n\
+\n\
+\t\t\tvar vertex = new THREE.Vector3();\n\
+\t\t\tvar segment = thetaStart + o / thetaSegments * thetaLength;\n\
+\n\
+\t\t\tvertex.x = radius * Math.cos( segment );\n\
+\t\t\tvertex.y = radius * Math.sin( segment );\n\
+\n\
+\t\t\tthis.vertices.push( vertex );\n\
+\t\t\tuvs.push( new THREE.Vector2( ( vertex.x / radius + 1 ) / 2, - ( vertex.y / radius + 1 ) / 2 + 1 ) );\n\
+\t\t}\n\
+\n\
+\t\tradius += radiusStep;\n\
+\n\
+\t}\n\
+\n\
+\tvar n = new THREE.Vector3( 0, 0, 1 );\n\
+\n\
+\tfor ( i = 0; i < phiSegments; i ++ ) { // concentric circles inside ring\n\
+\n\
+\t\tvar thetaSegment = i * thetaSegments;\n\
+\n\
+\t\tfor ( o = 0; o <= thetaSegments; o ++ ) { // number of segments per circle\n\
+\n\
+\t\t\tvar segment = o + thetaSegment;\n\
+\n\
+\t\t\tvar v1 = segment + i;\n\
+\t\t\tvar v2 = segment + thetaSegments + i;\n\
+\t\t\tvar v3 = segment + thetaSegments + 1 + i;\n\
+\n\
+\t\t\tthis.faces.push( new THREE.Face3( v1, v2, v3, [ n, n, n ] ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvs[ v1 ], uvs[ v2 ], uvs[ v3 ] ]);\n\
+\n\
+\t\t\tv1 = segment + i;\n\
+\t\t\tv2 = segment + thetaSegments + 1 + i;\n\
+\t\t\tv3 = segment + 1 + i;\n\
+\n\
+\t\t\tthis.faces.push( new THREE.Face3( v1, v2, v3, [ n, n, n ] ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvs[ v1 ], uvs[ v2 ], uvs[ v3 ] ]);\n\
+\n\
+\t\t}\n\
+\t}\n\
+\n\
+\tthis.computeCentroids();\n\
+\tthis.computeFaceNormals();\n\
+\n\
+\tthis.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );\n\
+\n\
+};\n\
+\n\
+THREE.RingGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author mrdoob / http://mrdoob.com/\n\
  */\n\
@@ -36350,33 +36754,33 @@ THREE.SphereGeometry = function ( radius, widthSegments, heightSegments, phiStar
 \n\
 \tTHREE.Geometry.call( this );\n\
 \n\
-\tthis.radius = radius || 50;\n\
+\tthis.radius = radius = radius || 50;\n\
 \n\
-\tthis.widthSegments = Math.max( 3, Math.floor( widthSegments ) || 8 );\n\
-\tthis.heightSegments = Math.max( 2, Math.floor( heightSegments ) || 6 );\n\
+\tthis.widthSegments = widthSegments = Math.max( 3, Math.floor( widthSegments ) || 8 );\n\
+\tthis.heightSegments = heightSegments = Math.max( 2, Math.floor( heightSegments ) || 6 );\n\
 \n\
-\tphiStart = phiStart !== undefined ? phiStart : 0;\n\
-\tphiLength = phiLength !== undefined ? phiLength : Math.PI * 2;\n\
+\tthis.phiStart = phiStart = phiStart !== undefined ? phiStart : 0;\n\
+\tthis.phiLength = phiLength = phiLength !== undefined ? phiLength : Math.PI * 2;\n\
 \n\
-\tthetaStart = thetaStart !== undefined ? thetaStart : 0;\n\
-\tthetaLength = thetaLength !== undefined ? thetaLength : Math.PI;\n\
+\tthis.thetaStart = thetaStart = thetaStart !== undefined ? thetaStart : 0;\n\
+\tthis.thetaLength = thetaLength = thetaLength !== undefined ? thetaLength : Math.PI;\n\
 \n\
 \tvar x, y, vertices = [], uvs = [];\n\
 \n\
-\tfor ( y = 0; y <= this.heightSegments; y ++ ) {\n\
+\tfor ( y = 0; y <= heightSegments; y ++ ) {\n\
 \n\
 \t\tvar verticesRow = [];\n\
 \t\tvar uvsRow = [];\n\
 \n\
-\t\tfor ( x = 0; x <= this.widthSegments; x ++ ) {\n\
+\t\tfor ( x = 0; x <= widthSegments; x ++ ) {\n\
 \n\
-\t\t\tvar u = x / this.widthSegments;\n\
-\t\t\tvar v = y / this.heightSegments;\n\
+\t\t\tvar u = x / widthSegments;\n\
+\t\t\tvar v = y / heightSegments;\n\
 \n\
 \t\t\tvar vertex = new THREE.Vector3();\n\
-\t\t\tvertex.x = - this.radius * Math.cos( phiStart + u * phiLength ) * Math.sin( thetaStart + v * thetaLength );\n\
-\t\t\tvertex.y = this.radius * Math.cos( thetaStart + v * thetaLength );\n\
-\t\t\tvertex.z = this.radius * Math.sin( phiStart + u * phiLength ) * Math.sin( thetaStart + v * thetaLength );\n\
+\t\t\tvertex.x = - radius * Math.cos( phiStart + u * phiLength ) * Math.sin( thetaStart + v * thetaLength );\n\
+\t\t\tvertex.y = radius * Math.cos( thetaStart + v * thetaLength );\n\
+\t\t\tvertex.z = radius * Math.sin( phiStart + u * phiLength ) * Math.sin( thetaStart + v * thetaLength );\n\
 \n\
 \t\t\tthis.vertices.push( vertex );\n\
 \n\
@@ -36421,8 +36825,11 @@ THREE.SphereGeometry = function ( radius, widthSegments, heightSegments, phiStar
 \n\
 \t\t\t} else {\n\
 \n\
-\t\t\t\tthis.faces.push( new THREE.Face4( v1, v2, v3, v4, [ n1, n2, n3, n4 ] ) );\n\
-\t\t\t\tthis.faceVertexUvs[ 0 ].push( [ uv1, uv2, uv3, uv4 ] );\n\
+\t\t\t\tthis.faces.push( new THREE.Face3( v1, v2, v4, [ n1, n2, n4 ] ) );\n\
+\t\t\t\tthis.faceVertexUvs[ 0 ].push( [ uv1, uv2, uv4 ] );\n\
+\n\
+\t\t\t\tthis.faces.push( new THREE.Face3( v2, v3, v4, [ n2, n3, n4 ] ) );\n\
+\t\t\t\tthis.faceVertexUvs[ 0 ].push( [ uv2.clone(), uv3, uv4.clone() ] );\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -36433,11 +36840,12 @@ THREE.SphereGeometry = function ( radius, widthSegments, heightSegments, phiStar
 \tthis.computeCentroids();\n\
 \tthis.computeFaceNormals();\n\
 \n\
-    this.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );\n\
+\tthis.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );\n\
 \n\
 };\n\
 \n\
 THREE.SphereGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author zz85 / http://www.lab4games.net/zz85/blog\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -36478,6 +36886,8 @@ THREE.SphereGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
 \n\
 THREE.TextGeometry = function ( text, parameters ) {\n\
 \n\
+\tparameters = parameters || {};\n\
+\n\
 \tvar textShapes = THREE.FontUtils.generateShapes( text, parameters );\n\
 \n\
 \t// translate parameters to ExtrudeGeometry API\n\
@@ -36495,6 +36905,7 @@ THREE.TextGeometry = function ( text, parameters ) {\n\
 };\n\
 \n\
 THREE.TextGeometry.prototype = Object.create( THREE.ExtrudeGeometry.prototype );\n\
+\n\
 /**\n\
  * @author oosmoxiecode\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -36533,7 +36944,7 @@ THREE.TorusGeometry = function ( radius, tube, radialSegments, tubularSegments, 
 \t\t\tthis.vertices.push( vertex );\n\
 \n\
 \t\t\tuvs.push( new THREE.Vector2( i / this.tubularSegments, j / this.radialSegments ) );\n\
-\t\t\tnormals.push( vertex.clone().subSelf( center ).normalize() );\n\
+\t\t\tnormals.push( vertex.clone().sub( center ).normalize() );\n\
 \n\
 \t\t}\n\
 \t}\n\
@@ -36548,16 +36959,25 @@ THREE.TorusGeometry = function ( radius, tube, radialSegments, tubularSegments, 
 \t\t\tvar c = ( this.tubularSegments + 1 ) * ( j - 1 ) + i;\n\
 \t\t\tvar d = ( this.tubularSegments + 1 ) * j + i;\n\
 \n\
-\t\t\tvar face = new THREE.Face4( a, b, c, d, [ normals[ a ], normals[ b ], normals[ c ], normals[ d ] ] );\n\
-\t\t\tface.normal.addSelf( normals[ a ] );\n\
-\t\t\tface.normal.addSelf( normals[ b ] );\n\
-\t\t\tface.normal.addSelf( normals[ c ] );\n\
-\t\t\tface.normal.addSelf( normals[ d ] );\n\
+\t\t\tvar face = new THREE.Face3( a, b, d, [ normals[ a ], normals[ b ], normals[ d ] ] );\n\
+\t\t\tface.normal.add( normals[ a ] );\n\
+\t\t\tface.normal.add( normals[ b ] );\n\
+\t\t\tface.normal.add( normals[ d ] );\n\
 \t\t\tface.normal.normalize();\n\
 \n\
 \t\t\tthis.faces.push( face );\n\
 \n\
-\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvs[ a ].clone(), uvs[ b ].clone(), uvs[ c ].clone(), uvs[ d ].clone() ] );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvs[ a ].clone(), uvs[ b ].clone(), uvs[ d ].clone() ] );\n\
+\n\
+\t\t\tface = new THREE.Face3( b, c, d, [ normals[ b ], normals[ c ], normals[ d ] ] );\n\
+\t\t\tface.normal.add( normals[ b ] );\n\
+\t\t\tface.normal.add( normals[ c ] );\n\
+\t\t\tface.normal.add( normals[ d ] );\n\
+\t\t\tface.normal.normalize();\n\
+\n\
+\t\t\tthis.faces.push( face );\n\
+\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvs[ b ].clone(), uvs[ c ].clone(), uvs[ d ].clone() ] );\n\
 \t\t}\n\
 \n\
 \t}\n\
@@ -36567,6 +36987,7 @@ THREE.TorusGeometry = function ( radius, tube, radialSegments, tubularSegments, 
 };\n\
 \n\
 THREE.TorusGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author oosmoxiecode\n\
  * based on http://code.google.com/p/away3d/source/browse/trunk/fp10/Away3D/src/away3d/primitives/TorusKnot.as?spec=svn2473&r=2473\n\
@@ -36594,31 +37015,29 @@ THREE.TorusKnotGeometry = function ( radius, tube, radialSegments, tubularSegmen
 \tfor ( var i = 0; i < this.radialSegments; ++ i ) {\n\
 \n\
 \t\tthis.grid[ i ] = new Array( this.tubularSegments );\n\
+\t\tvar u = i / this.radialSegments * 2 * this.p * Math.PI;\n\
+\t\tvar p1 = getPos( u, this.q, this.p, this.radius, this.heightScale );\n\
+\t\tvar p2 = getPos( u + 0.01, this.q, this.p, this.radius, this.heightScale );\n\
+\t\ttang.subVectors( p2, p1 );\n\
+\t\tn.addVectors( p2, p1 );\n\
+\n\
+\t\tbitan.crossVectors( tang, n );\n\
+\t\tn.crossVectors( bitan, tang );\n\
+\t\tbitan.normalize();\n\
+\t\tn.normalize();\n\
 \n\
 \t\tfor ( var j = 0; j < this.tubularSegments; ++ j ) {\n\
 \n\
-\t\t\tvar u = i / this.radialSegments * 2 * this.p * Math.PI;\n\
 \t\t\tvar v = j / this.tubularSegments * 2 * Math.PI;\n\
-\t\t\tvar p1 = getPos( u, v, this.q, this.p, this.radius, this.heightScale );\n\
-\t\t\tvar p2 = getPos( u + 0.01, v, this.q, this.p, this.radius, this.heightScale );\n\
-\t\t\tvar cx, cy;\n\
+\t\t\tvar cx = - this.tube * Math.cos( v ); // TODO: Hack: Negating it so it faces outside.\n\
+\t\t\tvar cy = this.tube * Math.sin( v );\n\
 \n\
-\t\t\ttang.sub( p2, p1 );\n\
-\t\t\tn.add( p2, p1 );\n\
+\t\t\tvar pos = new THREE.Vector3();\n\
+\t\t\tpos.x = p1.x + cx * n.x + cy * bitan.x;\n\
+\t\t\tpos.y = p1.y + cx * n.y + cy * bitan.y;\n\
+\t\t\tpos.z = p1.z + cx * n.z + cy * bitan.z;\n\
 \n\
-\t\t\tbitan.cross( tang, n );\n\
-\t\t\tn.cross( bitan, tang );\n\
-\t\t\tbitan.normalize();\n\
-\t\t\tn.normalize();\n\
-\n\
-\t\t\tcx = - this.tube * Math.cos( v ); // TODO: Hack: Negating it so it faces outside.\n\
-\t\t\tcy = this.tube * Math.sin( v );\n\
-\n\
-\t\t\tp1.x += cx * n.x + cy * bitan.x;\n\
-\t\t\tp1.y += cx * n.y + cy * bitan.y;\n\
-\t\t\tp1.z += cx * n.z + cy * bitan.z;\n\
-\n\
-\t\t\tthis.grid[ i ][ j ] = vert( p1.x, p1.y, p1.z );\n\
+\t\t\tthis.grid[ i ][ j ] = scope.vertices.push( pos ) - 1;\n\
 \n\
 \t\t}\n\
 \n\
@@ -36641,8 +37060,11 @@ THREE.TorusKnotGeometry = function ( radius, tube, radialSegments, tubularSegmen
 \t\t\tvar uvc = new THREE.Vector2( ( i + 1 ) / this.radialSegments, ( j + 1 ) / this.tubularSegments );\n\
 \t\t\tvar uvd = new THREE.Vector2( i / this.radialSegments, ( j + 1 ) / this.tubularSegments );\n\
 \n\
-\t\t\tthis.faces.push( new THREE.Face4( a, b, c, d ) );\n\
-\t\t\tthis.faceVertexUvs[ 0 ].push( [ uva,uvb,uvc, uvd ] );\n\
+\t\t\tthis.faces.push( new THREE.Face3( a, b, d ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uva, uvb, uvd ] );\n\
+\n\
+\t\t\tthis.faces.push( new THREE.Face3( b, c, d ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvb.clone(), uvc, uvd.clone() ] );\n\
 \n\
 \t\t}\n\
 \t}\n\
@@ -36651,16 +37073,9 @@ THREE.TorusKnotGeometry = function ( radius, tube, radialSegments, tubularSegmen
 \tthis.computeFaceNormals();\n\
 \tthis.computeVertexNormals();\n\
 \n\
-\tfunction vert( x, y, z ) {\n\
-\n\
-\t\treturn scope.vertices.push( new THREE.Vector3( x, y, z ) ) - 1;\n\
-\n\
-\t}\n\
-\n\
-\tfunction getPos( u, v, in_q, in_p, radius, heightScale ) {\n\
+\tfunction getPos( u, in_q, in_p, radius, heightScale ) {\n\
 \n\
 \t\tvar cu = Math.cos( u );\n\
-\t\tvar cv = Math.cos( v );\n\
 \t\tvar su = Math.sin( u );\n\
 \t\tvar quOverP = in_q / in_p * u;\n\
 \t\tvar cs = Math.cos( quOverP );\n\
@@ -36676,6 +37091,7 @@ THREE.TorusKnotGeometry = function ( radius, tube, radialSegments, tubularSegmen
 };\n\
 \n\
 THREE.TorusKnotGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author WestLangley / https://github.com/WestLangley\n\
  * @author zz85 / https://github.com/zz85\n\
@@ -36689,17 +37105,15 @@ THREE.TorusKnotGeometry.prototype = Object.create( THREE.Geometry.prototype );\n
  * http://www.cs.indiana.edu/pub/techreports/TR425.pdf\n\
  */\n\
 \n\
-THREE.TubeGeometry = function( path, segments, radius, radiusSegments, closed, debug ) {\n\
+THREE.TubeGeometry = function( path, segments, radius, radialSegments, closed ) {\n\
 \n\
 \tTHREE.Geometry.call( this );\n\
 \n\
 \tthis.path = path;\n\
 \tthis.segments = segments || 64;\n\
 \tthis.radius = radius || 1;\n\
-\tthis.radiusSegments = radiusSegments || 8;\n\
+\tthis.radialSegments = radialSegments || 8;\n\
 \tthis.closed = closed || false;\n\
-\n\
-\tif ( debug ) this.debug = new THREE.Object3D();\n\
 \n\
 \tthis.grid = [];\n\
 \n\
@@ -36753,17 +37167,9 @@ THREE.TubeGeometry = function( path, segments, radius, radiusSegments, closed, d
 \t\tnormal = normals[ i ];\n\
 \t\tbinormal = binormals[ i ];\n\
 \n\
-\t\tif ( this.debug ) {\n\
+\t\tfor ( j = 0; j < this.radialSegments; j++ ) {\n\
 \n\
-\t\t\tthis.debug.add( new THREE.ArrowHelper(tangent, pos, radius, 0x0000ff ) );\n\
-\t\t\tthis.debug.add( new THREE.ArrowHelper(normal, pos, radius, 0xff0000 ) );\n\
-\t\t\tthis.debug.add( new THREE.ArrowHelper(binormal, pos, radius, 0x00ff00 ) );\n\
-\n\
-\t\t}\n\
-\n\
-\t\tfor ( j = 0; j < this.radiusSegments; j++ ) {\n\
-\n\
-\t\t\tv = j / this.radiusSegments * 2 * Math.PI;\n\
+\t\t\tv = j / this.radialSegments * 2 * Math.PI;\n\
 \n\
 \t\t\tcx = -this.radius * Math.cos( v ); // TODO: Hack: Negating it so it faces outside.\n\
 \t\t\tcy = this.radius * Math.sin( v );\n\
@@ -36783,23 +37189,26 @@ THREE.TubeGeometry = function( path, segments, radius, radiusSegments, closed, d
 \n\
 \tfor ( i = 0; i < this.segments; i++ ) {\n\
 \n\
-\t\tfor ( j = 0; j < this.radiusSegments; j++ ) {\n\
+\t\tfor ( j = 0; j < this.radialSegments; j++ ) {\n\
 \n\
 \t\t\tip = ( this.closed ) ? (i + 1) % this.segments : i + 1;\n\
-\t\t\tjp = (j + 1) % this.radiusSegments;\n\
+\t\t\tjp = (j + 1) % this.radialSegments;\n\
 \n\
 \t\t\ta = this.grid[ i ][ j ];\t\t// *** NOT NECESSARILY PLANAR ! ***\n\
 \t\t\tb = this.grid[ ip ][ j ];\n\
 \t\t\tc = this.grid[ ip ][ jp ];\n\
 \t\t\td = this.grid[ i ][ jp ];\n\
 \n\
-\t\t\tuva = new THREE.Vector2( i / this.segments, j / this.radiusSegments );\n\
-\t\t\tuvb = new THREE.Vector2( ( i + 1 ) / this.segments, j / this.radiusSegments );\n\
-\t\t\tuvc = new THREE.Vector2( ( i + 1 ) / this.segments, ( j + 1 ) / this.radiusSegments );\n\
-\t\t\tuvd = new THREE.Vector2( i / this.segments, ( j + 1 ) / this.radiusSegments );\n\
+\t\t\tuva = new THREE.Vector2( i / this.segments, j / this.radialSegments );\n\
+\t\t\tuvb = new THREE.Vector2( ( i + 1 ) / this.segments, j / this.radialSegments );\n\
+\t\t\tuvc = new THREE.Vector2( ( i + 1 ) / this.segments, ( j + 1 ) / this.radialSegments );\n\
+\t\t\tuvd = new THREE.Vector2( i / this.segments, ( j + 1 ) / this.radialSegments );\n\
 \n\
-\t\t\tthis.faces.push( new THREE.Face4( a, b, c, d ) );\n\
-\t\t\tthis.faceVertexUvs[ 0 ].push( [ uva, uvb, uvc, uvd ] );\n\
+\t\t\tthis.faces.push( new THREE.Face3( a, b, d ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uva, uvb, uvd ] );\n\
+\n\
+\t\t\tthis.faces.push( new THREE.Face3( b, c, d ) );\n\
+\t\t\tthis.faceVertexUvs[ 0 ].push( [ uvb.clone(), uvc, uvd.clone() ] );\n\
 \n\
 \t\t}\n\
 \t}\n\
@@ -36859,8 +37268,8 @@ THREE.TubeGeometry.FrenetFrames = function(path, segments, closed) {\n\
 \t\tnormals[ 0 ] = new THREE.Vector3();\n\
 \t\tbinormals[ 0 ] = new THREE.Vector3();\n\
 \t\tif (lastBinormal===undefined) lastBinormal = new THREE.Vector3( 0, 0, 1 );\n\
-\t\tnormals[ 0 ].cross( lastBinormal, tangents[ 0 ] ).normalize();\n\
-\t\tbinormals[ 0 ].cross( tangents[ 0 ], normals[ 0 ] ).normalize();\n\
+\t\tnormals[ 0 ].crossVectors( lastBinormal, tangents[ 0 ] ).normalize();\n\
+\t\tbinormals[ 0 ].crossVectors( tangents[ 0 ], normals[ 0 ] ).normalize();\n\
 \t}\n\
 \n\
 \tfunction initialNormal2() {\n\
@@ -36868,11 +37277,11 @@ THREE.TubeGeometry.FrenetFrames = function(path, segments, closed) {\n\
 \t\t// This uses the Frenet-Serret formula for deriving binormal\n\
 \t\tvar t2 = path.getTangentAt( epsilon );\n\
 \n\
-\t\tnormals[ 0 ] = new THREE.Vector3().sub( t2, tangents[ 0 ] ).normalize();\n\
-\t\tbinormals[ 0 ] = new THREE.Vector3().cross( tangents[ 0 ], normals[ 0 ] );\n\
+\t\tnormals[ 0 ] = new THREE.Vector3().subVectors( t2, tangents[ 0 ] ).normalize();\n\
+\t\tbinormals[ 0 ] = new THREE.Vector3().crossVectors( tangents[ 0 ], normals[ 0 ] );\n\
 \n\
-\t\tnormals[ 0 ].cross( binormals[ 0 ], tangents[ 0 ] ).normalize(); // last binormal x tangent\n\
-\t\tbinormals[ 0 ].cross( tangents[ 0 ], normals[ 0 ] ).normalize();\n\
+\t\tnormals[ 0 ].crossVectors( binormals[ 0 ], tangents[ 0 ] ).normalize(); // last binormal x tangent\n\
+\t\tbinormals[ 0 ].crossVectors( tangents[ 0 ], normals[ 0 ] ).normalize();\n\
 \n\
 \t}\n\
 \n\
@@ -36901,10 +37310,10 @@ THREE.TubeGeometry.FrenetFrames = function(path, segments, closed) {\n\
 \t\t\tnormal.set( 0, 0, 1 );\n\
 \t\t}\n\
 \n\
-\t\tvec.cross( tangents[ 0 ], normal ).normalize();\n\
+\t\tvec.crossVectors( tangents[ 0 ], normal ).normalize();\n\
 \n\
-\t\tnormals[ 0 ].cross( tangents[ 0 ], vec );\n\
-\t\tbinormals[ 0 ].cross( tangents[ 0 ], normals[ 0 ] );\n\
+\t\tnormals[ 0 ].crossVectors( tangents[ 0 ], vec );\n\
+\t\tbinormals[ 0 ].crossVectors( tangents[ 0 ], normals[ 0 ] );\n\
 \t}\n\
 \n\
 \n\
@@ -36916,19 +37325,19 @@ THREE.TubeGeometry.FrenetFrames = function(path, segments, closed) {\n\
 \n\
 \t\tbinormals[ i ] = binormals[ i-1 ].clone();\n\
 \n\
-\t\tvec.cross( tangents[ i-1 ], tangents[ i ] );\n\
+\t\tvec.crossVectors( tangents[ i-1 ], tangents[ i ] );\n\
 \n\
 \t\tif ( vec.length() > epsilon ) {\n\
 \n\
 \t\t\tvec.normalize();\n\
 \n\
-\t\t\ttheta = Math.acos( tangents[ i-1 ].dot( tangents[ i ] ) );\n\
+\t\t\ttheta = Math.acos( THREE.Math.clamp( tangents[ i-1 ].dot( tangents[ i ] ), -1, 1 ) ); // clamp for floating pt errors\n\
 \n\
-\t\t\tmat.makeRotationAxis( vec, theta ).multiplyVector3( normals[ i ] );\n\
+\t\t\tnormals[ i ].applyMatrix4( mat.makeRotationAxis( vec, theta ) );\n\
 \n\
 \t\t}\n\
 \n\
-\t\tbinormals[ i ].cross( tangents[ i ], normals[ i ] );\n\
+\t\tbinormals[ i ].crossVectors( tangents[ i ], normals[ i ] );\n\
 \n\
 \t}\n\
 \n\
@@ -36937,10 +37346,10 @@ THREE.TubeGeometry.FrenetFrames = function(path, segments, closed) {\n\
 \n\
 \tif ( closed ) {\n\
 \n\
-\t\ttheta = Math.acos( normals[ 0 ].dot( normals[ numpoints-1 ] ) );\n\
+\t\ttheta = Math.acos( THREE.Math.clamp( normals[ 0 ].dot( normals[ numpoints-1 ] ), -1, 1 ) );\n\
 \t\ttheta /= ( numpoints - 1 );\n\
 \n\
-\t\tif ( tangents[ 0 ].dot( vec.cross( normals[ 0 ], normals[ numpoints-1 ] ) ) > 0 ) {\n\
+\t\tif ( tangents[ 0 ].dot( vec.crossVectors( normals[ 0 ], normals[ numpoints-1 ] ) ) > 0 ) {\n\
 \n\
 \t\t\ttheta = -theta;\n\
 \n\
@@ -36949,17 +37358,19 @@ THREE.TubeGeometry.FrenetFrames = function(path, segments, closed) {\n\
 \t\tfor ( i = 1; i < numpoints; i++ ) {\n\
 \n\
 \t\t\t// twist a little...\n\
-\t\t\tmat.makeRotationAxis( tangents[ i ], theta * i ).multiplyVector3( normals[ i ] );\n\
-\t\t\tbinormals[ i ].cross( tangents[ i ], normals[ i ] );\n\
+\t\t\tnormals[ i ].applyMatrix4( mat.makeRotationAxis( tangents[ i ], theta * i ) );\n\
+\t\t\tbinormals[ i ].crossVectors( tangents[ i ], normals[ i ] );\n\
 \n\
 \t\t}\n\
 \n\
 \t}\n\
 };\n\
+\n\
 /**\n\
  * @author clockworkgeek / https://github.com/clockworkgeek\n\
  * @author timothypratley / https://github.com/timothypratley\n\
- */\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+*/\n\
 \n\
 THREE.PolyhedronGeometry = function ( vertices, faces, radius, detail ) {\n\
 \n\
@@ -36978,13 +37389,47 @@ THREE.PolyhedronGeometry = function ( vertices, faces, radius, detail ) {\n\
 \n\
 \tvar midpoints = [], p = this.vertices;\n\
 \n\
+\tvar f = [];\n\
 \tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
 \n\
-\t\tmake( p[ faces[ i ][ 0 ] ], p[ faces[ i ][ 1 ] ], p[ faces[ i ][ 2 ] ], detail );\n\
+\t\tvar v1 = p[ faces[ i ][ 0 ] ];\n\
+\t\tvar v2 = p[ faces[ i ][ 1 ] ];\n\
+\t\tvar v3 = p[ faces[ i ][ 2 ] ];\n\
+\n\
+\t\tf[ i ] = new THREE.Face3( v1.index, v2.index, v3.index, [ v1.clone(), v2.clone(), v3.clone() ] );\n\
 \n\
 \t}\n\
 \n\
-\tthis.mergeVertices();\n\
+\tfor ( var i = 0, l = f.length; i < l; i ++ ) {\n\
+\n\
+\t\tsubdivide(f[ i ], detail);\n\
+\n\
+\t}\n\
+\n\
+\n\
+\t// Handle case when face straddles the seam\n\
+\n\
+\tfor ( var i = 0, l = this.faceVertexUvs[ 0 ].length; i < l; i ++ ) {\n\
+\n\
+\t\tvar uvs = this.faceVertexUvs[ 0 ][ i ];\n\
+\n\
+\t\tvar x0 = uvs[ 0 ].x;\n\
+\t\tvar x1 = uvs[ 1 ].x;\n\
+\t\tvar x2 = uvs[ 2 ].x;\n\
+\n\
+\t\tvar max = Math.max( x0, Math.max( x1, x2 ) );\n\
+\t\tvar min = Math.min( x0, Math.min( x1, x2 ) );\n\
+\n\
+\t\tif ( max > 0.9 && min < 0.1 ) { // 0.9 is somewhat arbitrary\n\
+\n\
+\t\t\tif ( x0 < 0.2 ) uvs[ 0 ].x += 1;\n\
+\t\t\tif ( x1 < 0.2 ) uvs[ 1 ].x += 1;\n\
+\t\t\tif ( x2 < 0.2 ) uvs[ 2 ].x += 1;\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
 \n\
 \t// Apply radius\n\
 \n\
@@ -36993,6 +37438,17 @@ THREE.PolyhedronGeometry = function ( vertices, faces, radius, detail ) {\n\
 \t\tthis.vertices[ i ].multiplyScalar( radius );\n\
 \n\
 \t}\n\
+\n\
+\n\
+\t// Merge vertices\n\
+\n\
+\tthis.mergeVertices();\n\
+\n\
+\tthis.computeCentroids();\n\
+\n\
+\tthis.computeFaceNormals();\n\
+\n\
+\tthis.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );\n\
 \n\
 \n\
 \t// Project vector onto sphere's surface\n\
@@ -37015,54 +37471,89 @@ THREE.PolyhedronGeometry = function ( vertices, faces, radius, detail ) {\n\
 \n\
 \t// Approximate a curved face with recursively sub-divided triangles.\n\
 \n\
-\tfunction make( v1, v2, v3, detail ) {\n\
+\tfunction make( v1, v2, v3 ) {\n\
 \n\
-\t\tif ( detail < 1 ) {\n\
+\t\tvar face = new THREE.Face3( v1.index, v2.index, v3.index, [ v1.clone(), v2.clone(), v3.clone() ] );\n\
+\t\tface.centroid.add( v1 ).add( v2 ).add( v3 ).divideScalar( 3 );\n\
+\t\tthat.faces.push( face );\n\
 \n\
-\t\t\tvar face = new THREE.Face3( v1.index, v2.index, v3.index, [ v1.clone(), v2.clone(), v3.clone() ] );\n\
-\t\t\tface.centroid.addSelf( v1 ).addSelf( v2 ).addSelf( v3 ).divideScalar( 3 );\n\
-\t\t\tface.normal = face.centroid.clone().normalize();\n\
-\t\t\tthat.faces.push( face );\n\
+\t\tvar azi = azimuth( face.centroid );\n\
 \n\
-\t\t\tvar azi = azimuth( face.centroid );\n\
-\t\t\tthat.faceVertexUvs[ 0 ].push( [\n\
-\t\t\t\tcorrectUV( v1.uv, v1, azi ),\n\
-\t\t\t\tcorrectUV( v2.uv, v2, azi ),\n\
-\t\t\t\tcorrectUV( v3.uv, v3, azi )\n\
-\t\t\t] );\n\
-\n\
-\t\t} else {\n\
-\n\
-\t\t\tdetail -= 1;\n\
-\n\
-\t\t\t// split triangle into 4 smaller triangles\n\
-\n\
-\t\t\tmake( v1, midpoint( v1, v2 ), midpoint( v1, v3 ), detail ); // top quadrant\n\
-\t\t\tmake( midpoint( v1, v2 ), v2, midpoint( v2, v3 ), detail ); // left quadrant\n\
-\t\t\tmake( midpoint( v1, v3 ), midpoint( v2, v3 ), v3, detail ); // right quadrant\n\
-\t\t\tmake( midpoint( v1, v2 ), midpoint( v2, v3 ), midpoint( v1, v3 ), detail ); // center quadrant\n\
-\n\
-\t\t}\n\
+\t\tthat.faceVertexUvs[ 0 ].push( [\n\
+\t\t\tcorrectUV( v1.uv, v1, azi ),\n\
+\t\t\tcorrectUV( v2.uv, v2, azi ),\n\
+\t\t\tcorrectUV( v3.uv, v3, azi )\n\
+\t\t] );\n\
 \n\
 \t}\n\
 \n\
-\tfunction midpoint( v1, v2 ) {\n\
 \n\
-\t\tif ( !midpoints[ v1.index ] ) midpoints[ v1.index ] = [];\n\
-\t\tif ( !midpoints[ v2.index ] ) midpoints[ v2.index ] = [];\n\
+\t// Analytically subdivide a face to the required detail level.\n\
 \n\
-\t\tvar mid = midpoints[ v1.index ][ v2.index ];\n\
+\tfunction subdivide(face, detail ) {\n\
 \n\
-\t\tif ( mid === undefined ) {\n\
+\t\tvar cols = Math.pow(2, detail);\n\
+\t\tvar cells = Math.pow(4, detail);\n\
+\t\tvar a = prepare( that.vertices[ face.a ] );\n\
+\t\tvar b = prepare( that.vertices[ face.b ] );\n\
+\t\tvar c = prepare( that.vertices[ face.c ] );\n\
+\t\tvar v = [];\n\
 \n\
-\t\t\t// generate mean point and project to surface with prepare()\n\
+\t\t// Construct all of the vertices for this subdivision.\n\
 \n\
-\t\t\tmidpoints[ v1.index ][ v2.index ] = midpoints[ v2.index ][ v1.index ] = mid = prepare(\n\
-\t\t\t\tnew THREE.Vector3().add( v1, v2 ).divideScalar( 2 )\n\
-\t\t\t);\n\
+\t\tfor ( var i = 0 ; i <= cols; i ++ ) {\n\
+\n\
+\t\t\tv[ i ] = [];\n\
+\n\
+\t\t\tvar aj = prepare( a.clone().lerp( c, i / cols ) );\n\
+\t\t\tvar bj = prepare( b.clone().lerp( c, i / cols ) );\n\
+\t\t\tvar rows = cols - i;\n\
+\n\
+\t\t\tfor ( var j = 0; j <= rows; j ++) {\n\
+\n\
+\t\t\t\tif ( j == 0 && i == cols ) {\n\
+\n\
+\t\t\t\t\tv[ i ][ j ] = aj;\n\
+\n\
+\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\tv[ i ][ j ] = prepare( aj.clone().lerp( bj, j / rows ) );\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
 \t\t}\n\
 \n\
-\t\treturn mid;\n\
+\t\t// Construct all of the faces.\n\
+\n\
+\t\tfor ( var i = 0; i < cols ; i ++ ) {\n\
+\n\
+\t\t\tfor ( var j = 0; j < 2 * (cols - i) - 1; j ++ ) {\n\
+\n\
+\t\t\t\tvar k = Math.floor( j / 2 );\n\
+\n\
+\t\t\t\tif ( j % 2 == 0 ) {\n\
+\n\
+\t\t\t\t\tmake(\n\
+\t\t\t\t\t\tv[ i ][ k + 1],\n\
+\t\t\t\t\t\tv[ i + 1 ][ k ],\n\
+\t\t\t\t\t\tv[ i ][ k ]\n\
+\t\t\t\t\t);\n\
+\n\
+\t\t\t\t} else {\n\
+\n\
+\t\t\t\t\tmake(\n\
+\t\t\t\t\t\tv[ i ][ k + 1 ],\n\
+\t\t\t\t\t\tv[ i + 1][ k + 1],\n\
+\t\t\t\t\t\tv[ i + 1 ][ k ]\n\
+\t\t\t\t\t);\n\
+\n\
+\t\t\t\t}\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
 \n\
 \t}\n\
 \n\
@@ -37091,22 +37582,23 @@ THREE.PolyhedronGeometry = function ( vertices, faces, radius, detail ) {\n\
 \n\
 \t\tif ( ( azimuth < 0 ) && ( uv.x === 1 ) ) uv = new THREE.Vector2( uv.x - 1, uv.y );\n\
 \t\tif ( ( vector.x === 0 ) && ( vector.z === 0 ) ) uv = new THREE.Vector2( azimuth / 2 / Math.PI + 0.5, uv.y );\n\
-\t\treturn uv;\n\
+\t\treturn uv.clone();\n\
 \n\
 \t}\n\
 \n\
-\tthis.computeCentroids();\n\
-\n\
-    this.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );\n\
 \n\
 };\n\
 \n\
 THREE.PolyhedronGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author timothypratley / https://github.com/timothypratley\n\
  */\n\
 \n\
 THREE.IcosahedronGeometry = function ( radius, detail ) {\n\
+\n\
+\tthis.radius = radius;\n\
+\tthis.detail = detail;\n\
 \n\
 \tvar t = ( 1 + Math.sqrt( 5 ) ) / 2;\n\
 \n\
@@ -37128,6 +37620,7 @@ THREE.IcosahedronGeometry = function ( radius, detail ) {\n\
 };\n\
 \n\
 THREE.IcosahedronGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author timothypratley / https://github.com/timothypratley\n\
  */\n\
@@ -37146,6 +37639,7 @@ THREE.OctahedronGeometry = function ( radius, detail ) {\n\
 };\n\
 \n\
 THREE.OctahedronGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author timothypratley / https://github.com/timothypratley\n\
  */\n\
@@ -37165,24 +37659,23 @@ THREE.TetrahedronGeometry = function ( radius, detail ) {\n\
 };\n\
 \n\
 THREE.TetrahedronGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
+\n\
 /**\n\
  * @author zz85 / https://github.com/zz85\n\
  * Parametric Surfaces Geometry\n\
  * based on the brilliant article by @prideout http://prideout.net/blog/?p=44\n\
  *\n\
- * new THREE.ParametricGeometry( parametricFunction, uSegments, ySegements, useTris );\n\
+ * new THREE.ParametricGeometry( parametricFunction, uSegments, ySegements );\n\
  *\n\
  */\n\
 \n\
-THREE.ParametricGeometry = function ( func, slices, stacks, useTris ) {\n\
+THREE.ParametricGeometry = function ( func, slices, stacks ) {\n\
 \n\
 \tTHREE.Geometry.call( this );\n\
 \n\
 \tvar verts = this.vertices;\n\
 \tvar faces = this.faces;\n\
 \tvar uvs = this.faceVertexUvs[ 0 ];\n\
-\n\
-\tuseTris = (useTris === undefined) ? false : useTris;\n\
 \n\
 \tvar i, il, j, p;\n\
 \tvar u, v;\n\
@@ -37213,28 +37706,19 @@ THREE.ParametricGeometry = function ( func, slices, stacks, useTris ) {\n\
 \n\
 \t\t\ta = i * sliceCount + j;\n\
 \t\t\tb = i * sliceCount + j + 1;\n\
-\t\t\tc = (i + 1) * sliceCount + j;\n\
-\t\t\td = (i + 1) * sliceCount + j + 1;\n\
+\t\t\tc = (i + 1) * sliceCount + j + 1;\n\
+\t\t\td = (i + 1) * sliceCount + j;\n\
 \n\
 \t\t\tuva = new THREE.Vector2( j / slices, i / stacks );\n\
 \t\t\tuvb = new THREE.Vector2( ( j + 1 ) / slices, i / stacks );\n\
-\t\t\tuvc = new THREE.Vector2( j / slices, ( i + 1 ) / stacks );\n\
-\t\t\tuvd = new THREE.Vector2( ( j + 1 ) / slices, ( i + 1 ) / stacks );\n\
+\t\t\tuvc = new THREE.Vector2( ( j + 1 ) / slices, ( i + 1 ) / stacks );\n\
+\t\t\tuvd = new THREE.Vector2( j / slices, ( i + 1 ) / stacks );\n\
 \n\
-\t\t\tif ( useTris ) {\n\
+\t\t\tfaces.push( new THREE.Face3( a, b, d ) );\n\
+\t\t\tuvs.push( [ uva, uvb, uvd ] );\n\
 \n\
-\t\t\t\tfaces.push( new THREE.Face3( a, b, c ) );\n\
-\t\t\t\tfaces.push( new THREE.Face3( b, d, c ) );\n\
-\n\
-\t\t\t\tuvs.push( [ uva, uvb, uvc ] );\n\
-\t\t\t\tuvs.push( [ uvb, uvd, uvc ] );\n\
-\n\
-\t\t\t} else {\n\
-\n\
-\t\t\t\tfaces.push( new THREE.Face4( a, b, d, c ) );\n\
-\t\t\t\tuvs.push( [ uva, uvb, uvd, uvc ] );\n\
-\n\
-\t\t\t}\n\
+\t\t\tfaces.push( new THREE.Face3( b, c, d ) );\n\
+\t\t\tuvs.push( [ uvb.clone(), uvc, uvd.clone() ] );\n\
 \n\
 \t\t}\n\
 \n\
@@ -37253,229 +37737,7 @@ THREE.ParametricGeometry = function ( func, slices, stacks, useTris ) {\n\
 };\n\
 \n\
 THREE.ParametricGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
-/**\n\
- * @author qiao / https://github.com/qiao\n\
- * @fileoverview This is a convex hull generator using the incremental method. \n\
- * The complexity is O(n^2) where n is the number of vertices.\n\
- * O(nlogn) algorithms do exist, but they are much more complicated.\n\
- *\n\
- * Benchmark: \n\
- *\n\
- *  Platform: CPU: P7350 @2.00GHz Engine: V8\n\
- *\n\
- *  Num Vertices\tTime(ms)\n\
- *\n\
- *     10           1\n\
- *     20           3\n\
- *     30           19\n\
- *     40           48\n\
- *     50           107\n\
- */\n\
 \n\
-THREE.ConvexGeometry = function( vertices ) {\n\
-\n\
-\tTHREE.Geometry.call( this );\n\
-\n\
-\tvar faces = [ [ 0, 1, 2 ], [ 0, 2, 1 ] ]; \n\
-\n\
-\tfor ( var i = 3; i < vertices.length; i++ ) {\n\
-\n\
-\t\taddPoint( i );\n\
-\n\
-\t}\n\
-\n\
-\n\
-\tfunction addPoint( vertexId ) {\n\
-\n\
-\t\tvar vertex = vertices[ vertexId ].clone();\n\
-\n\
-\t\tvar mag = vertex.length();\n\
-\t\tvertex.x += mag * randomOffset();\n\
-\t\tvertex.y += mag * randomOffset();\n\
-\t\tvertex.z += mag * randomOffset();\n\
-\n\
-\t\tvar hole = [];\n\
-\n\
-\t\tfor ( var f = 0; f < faces.length; ) {\n\
-\n\
-\t\t\tvar face = faces[ f ];\n\
-\n\
-\t\t\t// for each face, if the vertex can see it,\n\
-\t\t\t// then we try to add the face's edges into the hole.\n\
-\t\t\tif ( visible( face, vertex ) ) {\n\
-\n\
-\t\t\t\tfor ( var e = 0; e < 3; e++ ) {\n\
-\n\
-\t\t\t\t\tvar edge = [ face[ e ], face[ ( e + 1 ) % 3 ] ];\n\
-\t\t\t\t\tvar boundary = true;\n\
-\n\
-\t\t\t\t\t// remove duplicated edges.\n\
-\t\t\t\t\tfor ( var h = 0; h < hole.length; h++ ) {\n\
-\n\
-\t\t\t\t\t\tif ( equalEdge( hole[ h ], edge ) ) {\n\
-\n\
-\t\t\t\t\t\t\thole[ h ] = hole[ hole.length - 1 ];\n\
-\t\t\t\t\t\t\thole.pop();\n\
-\t\t\t\t\t\t\tboundary = false;\n\
-\t\t\t\t\t\t\tbreak;\n\
-\n\
-\t\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t\tif ( boundary ) {\n\
-\n\
-\t\t\t\t\t\thole.push( edge );\n\
-\n\
-\t\t\t\t\t}\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\t// remove faces[ f ]\n\
-\t\t\t\tfaces[ f ] = faces[ faces.length - 1 ];\n\
-\t\t\t\tfaces.pop();\n\
-\n\
-\t\t\t} else { // not visible\n\
-\n\
-\t\t\t\tf++;\n\
-\n\
-\t\t\t}\n\
-\t\t}\n\
-\n\
-\t\t// construct the new faces formed by the edges of the hole and the vertex\n\
-\t\tfor ( var h = 0; h < hole.length; h++ ) {\n\
-\n\
-\t\t\tfaces.push( [ \n\
-\t\t\t\thole[ h ][ 0 ],\n\
-\t\t\t\thole[ h ][ 1 ],\n\
-\t\t\t\tvertexId\n\
-\t\t\t] );\n\
-\n\
-\t\t}\n\
-\t}\n\
-\n\
-\t/**\n\
-\t * Whether the face is visible from the vertex\n\
-\t */\n\
-\tfunction visible( face, vertex ) {\n\
-\n\
-\t\tvar va = vertices[ face[ 0 ] ];\n\
-\t\tvar vb = vertices[ face[ 1 ] ];\n\
-\t\tvar vc = vertices[ face[ 2 ] ];\n\
-\n\
-\t\tvar n = normal( va, vb, vc );\n\
-\n\
-\t\t// distance from face to origin\n\
-\t\tvar dist = n.dot( va );\n\
-\n\
-\t\treturn n.dot( vertex ) >= dist; \n\
-\n\
-\t}\n\
-\n\
-\t/**\n\
-\t * Face normal\n\
-\t */\n\
-\tfunction normal( va, vb, vc ) {\n\
-\n\
-\t\tvar cb = new THREE.Vector3();\n\
-\t\tvar ab = new THREE.Vector3();\n\
-\n\
-\t\tcb.sub( vc, vb );\n\
-\t\tab.sub( va, vb );\n\
-\t\tcb.crossSelf( ab );\n\
-\n\
-\t\tcb.normalize();\n\
-\n\
-\t\treturn cb;\n\
-\n\
-\t}\n\
-\n\
-\t/**\n\
-\t * Detect whether two edges are equal.\n\
-\t * Note that when constructing the convex hull, two same edges can only\n\
-\t * be of the negative direction.\n\
-\t */\n\
-\tfunction equalEdge( ea, eb ) {\n\
-\n\
-\t\treturn ea[ 0 ] === eb[ 1 ] && ea[ 1 ] === eb[ 0 ]; \n\
-\n\
-\t}\n\
-\n\
-\t/**\n\
-\t * Create a random offset between -1e-6 and 1e-6.\n\
-\t */\n\
-\tfunction randomOffset() {\n\
-\n\
-\t\treturn ( Math.random() - 0.5 ) * 2 * 1e-6;\n\
-\n\
-\t}\n\
-\n\
-\n\
-\t/**\n\
-\t * XXX: Not sure if this is the correct approach. Need someone to review.\n\
-\t */\n\
-\tfunction vertexUv( vertex ) {\n\
-\n\
-\t\tvar mag = vertex.length();\n\
-\t\treturn new THREE.Vector2( vertex.x / mag, vertex.y / mag );\n\
-\n\
-\t}\n\
-\n\
-\t// Push vertices into `this.vertices`, skipping those inside the hull\n\
-\tvar id = 0;\n\
-\tvar newId = new Array( vertices.length ); // map from old vertex id to new id\n\
-\n\
-\tfor ( var i = 0; i < faces.length; i++ ) {\n\
-\n\
-\t\t var face = faces[ i ];\n\
-\n\
-\t\t for ( var j = 0; j < 3; j++ ) {\n\
-\n\
-\t\t\t\tif ( newId[ face[ j ] ] === undefined ) {\n\
-\n\
-\t\t\t\t\t\tnewId[ face[ j ] ] = id++;\n\
-\t\t\t\t\t\tthis.vertices.push( vertices[ face[ j ] ] );\n\
-\n\
-\t\t\t\t}\n\
-\n\
-\t\t\t\tface[ j ] = newId[ face[ j ] ];\n\
-\n\
-\t\t }\n\
-\n\
-\t}\n\
-\n\
-\t// Convert faces into instances of THREE.Face3\n\
-\tfor ( var i = 0; i < faces.length; i++ ) {\n\
-\n\
-\t\tthis.faces.push( new THREE.Face3( \n\
-\t\t\t\tfaces[ i ][ 0 ],\n\
-\t\t\t\tfaces[ i ][ 1 ],\n\
-\t\t\t\tfaces[ i ][ 2 ]\n\
-\t\t) );\n\
-\n\
-\t}\n\
-\n\
-\t// Compute UVs\n\
-\tfor ( var i = 0; i < this.faces.length; i++ ) {\n\
-\n\
-\t\tvar face = this.faces[ i ];\n\
-\n\
-\t\tthis.faceVertexUvs[ 0 ].push( [\n\
-\t\t\tvertexUv( this.vertices[ face.a ] ),\n\
-\t\t\tvertexUv( this.vertices[ face.b ] ),\n\
-\t\t\tvertexUv( this.vertices[ face.c ])\n\
-\t\t] );\n\
-\n\
-\t}\n\
-\n\
-\n\
-\tthis.computeCentroids();\n\
-\tthis.computeFaceNormals();\n\
-\tthis.computeVertexNormals();\n\
-\n\
-};\n\
-\n\
-THREE.ConvexGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
 /**\n\
  * @author sroucheray / http://sroucheray.org/\n\
  * @author mrdoob / http://mrdoob.com/\n\
@@ -37483,12 +37745,14 @@ THREE.ConvexGeometry.prototype = Object.create( THREE.Geometry.prototype );\n\
 \n\
 THREE.AxisHelper = function ( size ) {\n\
 \n\
+\tsize = size || 1;\n\
+\n\
 \tvar geometry = new THREE.Geometry();\n\
 \n\
 \tgeometry.vertices.push(\n\
-\t\tnew THREE.Vector3(), new THREE.Vector3( size || 1, 0, 0 ),\n\
-\t\tnew THREE.Vector3(), new THREE.Vector3( 0, size || 1, 0 ),\n\
-\t\tnew THREE.Vector3(), new THREE.Vector3( 0, 0, size || 1 )\n\
+\t\tnew THREE.Vector3(), new THREE.Vector3( size, 0, 0 ),\n\
+\t\tnew THREE.Vector3(), new THREE.Vector3( 0, size, 0 ),\n\
+\t\tnew THREE.Vector3(), new THREE.Vector3( 0, 0, size )\n\
 \t);\n\
 \n\
 \tgeometry.colors.push(\n\
@@ -37504,9 +37768,11 @@ THREE.AxisHelper = function ( size ) {\n\
 };\n\
 \n\
 THREE.AxisHelper.prototype = Object.create( THREE.Line.prototype );\n\
+\n\
 /**\n\
  * @author WestLangley / http://github.com/WestLangley\n\
- * @author zz85 / https://github.com/zz85\n\
+ * @author zz85 / http://github.com/zz85\n\
+ * @author bhouston / http://exocortex.com\n\
  *\n\
  * Creates an arrow for visualizing directions\n\
  *\n\
@@ -37519,25 +37785,29 @@ THREE.AxisHelper.prototype = Object.create( THREE.Line.prototype );\n\
 \n\
 THREE.ArrowHelper = function ( dir, origin, length, hex ) {\n\
 \n\
+\t// dir is assumed to be normalized\n\
+\n\
 \tTHREE.Object3D.call( this );\n\
 \n\
 \tif ( hex === undefined ) hex = 0xffff00;\n\
-\tif ( length === undefined ) length = 20;\n\
+\tif ( length === undefined ) length = 1;\n\
+\n\
+\tthis.position = origin;\n\
 \n\
 \tvar lineGeometry = new THREE.Geometry();\n\
 \tlineGeometry.vertices.push( new THREE.Vector3( 0, 0, 0 ) );\n\
 \tlineGeometry.vertices.push( new THREE.Vector3( 0, 1, 0 ) );\n\
 \n\
 \tthis.line = new THREE.Line( lineGeometry, new THREE.LineBasicMaterial( { color: hex } ) );\n\
+\tthis.line.matrixAutoUpdate = false;\n\
 \tthis.add( this.line );\n\
 \n\
 \tvar coneGeometry = new THREE.CylinderGeometry( 0, 0.05, 0.25, 5, 1 );\n\
+\tconeGeometry.applyMatrix( new THREE.Matrix4().makeTranslation( 0, 0.875, 0 ) );\n\
 \n\
 \tthis.cone = new THREE.Mesh( coneGeometry, new THREE.MeshBasicMaterial( { color: hex } ) );\n\
-\tthis.cone.position.set( 0, 1, 0 );\n\
+\tthis.cone.matrixAutoUpdate = false;\n\
 \tthis.add( this.cone );\n\
-\n\
-\tif ( origin instanceof THREE.Vector3 ) this.position = origin;\n\
 \n\
 \tthis.setDirection( dir );\n\
 \tthis.setLength( length );\n\
@@ -37546,17 +37816,36 @@ THREE.ArrowHelper = function ( dir, origin, length, hex ) {\n\
 \n\
 THREE.ArrowHelper.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
-THREE.ArrowHelper.prototype.setDirection = function ( dir ) {\n\
+THREE.ArrowHelper.prototype.setDirection = function () {\n\
 \n\
-\tvar axis = new THREE.Vector3( 0, 1, 0 ).crossSelf( dir );\n\
+\tvar axis = new THREE.Vector3();\n\
+\tvar radians;\n\
 \n\
-\tvar radians = Math.acos( new THREE.Vector3( 0, 1, 0 ).dot( dir.clone().normalize() ) );\n\
+\treturn function ( dir ) {\n\
 \n\
-\tthis.matrix = new THREE.Matrix4().makeRotationAxis( axis.normalize(), radians );\n\
+\t\t// dir is assumed to be normalized\n\
 \n\
-\tthis.rotation.setEulerFromRotationMatrix( this.matrix, this.eulerOrder );\n\
+\t\tif ( dir.y > 0.99999 ) {\n\
 \n\
-};\n\
+\t\t\tthis.quaternion.set( 0, 0, 0, 1 );\n\
+\n\
+\t\t} else if ( dir.y < - 0.99999 ) {\n\
+\n\
+\t\t\tthis.quaternion.set( 1, 0, 0, 0 );\n\
+\n\
+\t\t} else {\n\
+\n\
+\t\t\taxis.set( dir.z, 0, - dir.x ).normalize();\n\
+\n\
+\t\t\tradians = Math.acos( dir.y );\n\
+\n\
+\t\t\tthis.quaternion.setFromAxisAngle( axis, radians );\n\
+\n\
+\t\t}\n\
+\n\
+\t};\n\
+\n\
+}();\n\
 \n\
 THREE.ArrowHelper.prototype.setLength = function ( length ) {\n\
 \n\
@@ -37570,6 +37859,125 @@ THREE.ArrowHelper.prototype.setColor = function ( hex ) {\n\
 \tthis.cone.material.color.setHex( hex );\n\
 \n\
 };\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
+\n\
+THREE.BoxHelper = function ( object ) {\n\
+\n\
+\t//   5____4\n\
+\t// 1/___0/|\n\
+\t// | 6__|_7\n\
+\t// 2/___3/\n\
+\n\
+\tvar vertices = [\n\
+\t\tnew THREE.Vector3(   1,   1,   1 ),\n\
+\t\tnew THREE.Vector3( - 1,   1,   1 ),\n\
+\t\tnew THREE.Vector3( - 1, - 1,   1 ),\n\
+\t\tnew THREE.Vector3(   1, - 1,   1 ),\n\
+\n\
+\t\tnew THREE.Vector3(   1,   1, - 1 ),\n\
+\t\tnew THREE.Vector3( - 1,   1, - 1 ),\n\
+\t\tnew THREE.Vector3( - 1, - 1, - 1 ),\n\
+\t\tnew THREE.Vector3(   1, - 1, - 1 )\n\
+\t];\n\
+\n\
+\tthis.vertices = vertices;\n\
+\n\
+\t// TODO: Wouldn't be nice if Line had .segments?\n\
+\n\
+\tvar geometry = new THREE.Geometry();\n\
+\tgeometry.vertices.push(\n\
+\t\tvertices[ 0 ], vertices[ 1 ],\n\
+\t\tvertices[ 1 ], vertices[ 2 ],\n\
+\t\tvertices[ 2 ], vertices[ 3 ],\n\
+\t\tvertices[ 3 ], vertices[ 0 ],\n\
+\n\
+\t\tvertices[ 4 ], vertices[ 5 ],\n\
+\t\tvertices[ 5 ], vertices[ 6 ],\n\
+\t\tvertices[ 6 ], vertices[ 7 ],\n\
+\t\tvertices[ 7 ], vertices[ 4 ],\n\
+\n\
+\t\tvertices[ 0 ], vertices[ 4 ],\n\
+\t\tvertices[ 1 ], vertices[ 5 ],\n\
+\t\tvertices[ 2 ], vertices[ 6 ],\n\
+\t\tvertices[ 3 ], vertices[ 7 ]\n\
+\t);\n\
+\n\
+\tTHREE.Line.call( this, geometry, new THREE.LineBasicMaterial( { color: 0xffff00 } ), THREE.LinePieces );\n\
+\n\
+\tif ( object !== undefined ) {\n\
+\n\
+\t\tthis.update( object );\n\
+\n\
+\t}\n\
+\n\
+};\n\
+\n\
+THREE.BoxHelper.prototype = Object.create( THREE.Line.prototype );\n\
+\n\
+THREE.BoxHelper.prototype.update = function ( object ) {\n\
+\n\
+\tvar geometry = object.geometry;\n\
+\n\
+\tif ( geometry.boundingBox === null ) {\n\
+\n\
+\t\tgeometry.computeBoundingBox();\n\
+\n\
+\t}\n\
+\n\
+\tvar min = geometry.boundingBox.min;\n\
+\tvar max = geometry.boundingBox.max;\n\
+\tvar vertices = this.vertices;\n\
+\n\
+\tvertices[ 0 ].set( max.x, max.y, max.z );\n\
+\tvertices[ 1 ].set( min.x, max.y, max.z );\n\
+\tvertices[ 2 ].set( min.x, min.y, max.z );\n\
+\tvertices[ 3 ].set( max.x, min.y, max.z );\n\
+\tvertices[ 4 ].set( max.x, max.y, min.z );\n\
+\tvertices[ 5 ].set( min.x, max.y, min.z );\n\
+\tvertices[ 6 ].set( min.x, min.y, min.z );\n\
+\tvertices[ 7 ].set( max.x, min.y, min.z );\n\
+\n\
+\tthis.geometry.computeBoundingSphere();\n\
+\tthis.geometry.verticesNeedUpdate = true;\n\
+\n\
+\tthis.matrixAutoUpdate = false;\n\
+\tthis.matrixWorld = object.matrixWorld;\n\
+\n\
+};\n\
+\n\
+/**\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+ */\n\
+\n\
+// a helper to show the world-axis-aligned bounding box for an object\n\
+\n\
+THREE.BoundingBoxHelper = function ( object, hex ) {\n\
+\n\
+\tvar color = hex || 0x888888;\n\
+\n\
+\tthis.object = object;\n\
+\n\
+\tthis.box = new THREE.Box3();\n\
+\n\
+\tTHREE.Mesh.call( this, new THREE.CubeGeometry( 1, 1, 1 ), new THREE.MeshBasicMaterial( { color: color, wireframe: true } ) );\n\
+\n\
+};\n\
+\n\
+THREE.BoundingBoxHelper.prototype = Object.create( THREE.Mesh.prototype );\n\
+\n\
+THREE.BoundingBoxHelper.prototype.update = function () {\n\
+\n\
+\tthis.box.setFromObject( this.object );\n\
+\n\
+\tthis.box.size( this.scale );\n\
+\n\
+\tthis.box.center( this.position );\n\
+\n\
+};\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  *\n\
@@ -37581,18 +37989,10 @@ THREE.ArrowHelper.prototype.setColor = function ( hex ) {\n\
 \n\
 THREE.CameraHelper = function ( camera ) {\n\
 \n\
-\tTHREE.Line.call( this );\n\
+\tvar geometry = new THREE.Geometry();\n\
+\tvar material = new THREE.LineBasicMaterial( { color: 0xffffff, vertexColors: THREE.FaceColors } );\n\
 \n\
-\tvar scope = this;\n\
-\n\
-\tthis.geometry = new THREE.Geometry();\n\
-\tthis.material = new THREE.LineBasicMaterial( { color: 0xffffff, vertexColors: THREE.FaceColors } );\n\
-\tthis.type = THREE.LinePieces;\n\
-\n\
-\tthis.matrixWorld = camera.matrixWorld;\n\
-\tthis.matrixAutoUpdate = false;\n\
-\n\
-\tthis.pointMap = {};\n\
+\tvar pointMap = {};\n\
 \n\
 \t// colors\n\
 \n\
@@ -37649,8 +38049,6 @@ THREE.CameraHelper = function ( camera ) {\n\
 \taddLine( \"cf1\", \"cf2\", hexCross );\n\
 \taddLine( \"cf3\", \"cf4\", hexCross );\n\
 \n\
-\tthis.camera = camera;\n\
-\n\
 \tfunction addLine( a, b, hex ) {\n\
 \n\
 \t\taddPoint( a, hex );\n\
@@ -37660,16 +38058,28 @@ THREE.CameraHelper = function ( camera ) {\n\
 \n\
 \tfunction addPoint( id, hex ) {\n\
 \n\
-\t\tscope.geometry.vertices.push( new THREE.Vector3() );\n\
-\t\tscope.geometry.colors.push( new THREE.Color( hex ) );\n\
+\t\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\t\tgeometry.colors.push( new THREE.Color( hex ) );\n\
 \n\
-\t\tif ( scope.pointMap[ id ] === undefined ) scope.pointMap[ id ] = [];\n\
+\t\tif ( pointMap[ id ] === undefined ) {\n\
 \n\
-\t\tscope.pointMap[ id ].push( scope.geometry.vertices.length - 1 );\n\
+\t\t\tpointMap[ id ] = [];\n\
+\n\
+\t\t}\n\
+\n\
+\t\tpointMap[ id ].push( geometry.vertices.length - 1 );\n\
 \n\
 \t}\n\
 \n\
-\tthis.update( camera );\n\
+\tTHREE.Line.call( this, geometry, material, THREE.LinePieces );\n\
+\n\
+\tthis.camera = camera;\n\
+\tthis.matrixWorld = camera.matrixWorld;\n\
+\tthis.matrixAutoUpdate = false;\n\
+\n\
+\tthis.pointMap = pointMap;\n\
+\n\
+\tthis.update();\n\
 \n\
 };\n\
 \n\
@@ -37677,209 +38087,262 @@ THREE.CameraHelper.prototype = Object.create( THREE.Line.prototype );\n\
 \n\
 THREE.CameraHelper.prototype.update = function () {\n\
 \n\
-\tvar scope = this;\n\
+\tvar vector = new THREE.Vector3();\n\
+\tvar camera = new THREE.Camera();\n\
+\tvar projector = new THREE.Projector();\n\
 \n\
-\tvar w = 1, h = 1;\n\
+\treturn function () {\n\
 \n\
-\t// we need just camera projection matrix\n\
-\t// world matrix must be identity\n\
+\t\tvar scope = this;\n\
 \n\
-\tTHREE.CameraHelper.__c.projectionMatrix.copy( this.camera.projectionMatrix );\n\
+\t\tvar w = 1, h = 1;\n\
 \n\
-\t// center / target\n\
+\t\t// we need just camera projection matrix\n\
+\t\t// world matrix must be identity\n\
 \n\
-\tsetPoint( \"c\", 0, 0, -1 );\n\
-\tsetPoint( \"t\", 0, 0,  1 );\n\
+\t\tcamera.projectionMatrix.copy( this.camera.projectionMatrix );\n\
 \n\
-\t// near\n\
+\t\t// center / target\n\
 \n\
-\tsetPoint( \"n1\", -w, -h, -1 );\n\
-\tsetPoint( \"n2\",  w, -h, -1 );\n\
-\tsetPoint( \"n3\", -w,  h, -1 );\n\
-\tsetPoint( \"n4\",  w,  h, -1 );\n\
+\t\tsetPoint( \"c\", 0, 0, -1 );\n\
+\t\tsetPoint( \"t\", 0, 0,  1 );\n\
 \n\
-\t// far\n\
+\t\t// near\n\
 \n\
-\tsetPoint( \"f1\", -w, -h, 1 );\n\
-\tsetPoint( \"f2\",  w, -h, 1 );\n\
-\tsetPoint( \"f3\", -w,  h, 1 );\n\
-\tsetPoint( \"f4\",  w,  h, 1 );\n\
+\t\tsetPoint( \"n1\", -w, -h, -1 );\n\
+\t\tsetPoint( \"n2\",  w, -h, -1 );\n\
+\t\tsetPoint( \"n3\", -w,  h, -1 );\n\
+\t\tsetPoint( \"n4\",  w,  h, -1 );\n\
 \n\
-\t// up\n\
+\t\t// far\n\
 \n\
-\tsetPoint( \"u1\",  w * 0.7, h * 1.1, -1 );\n\
-\tsetPoint( \"u2\", -w * 0.7, h * 1.1, -1 );\n\
-\tsetPoint( \"u3\",        0, h * 2,   -1 );\n\
+\t\tsetPoint( \"f1\", -w, -h, 1 );\n\
+\t\tsetPoint( \"f2\",  w, -h, 1 );\n\
+\t\tsetPoint( \"f3\", -w,  h, 1 );\n\
+\t\tsetPoint( \"f4\",  w,  h, 1 );\n\
 \n\
-\t// cross\n\
+\t\t// up\n\
 \n\
-\tsetPoint( \"cf1\", -w,  0, 1 );\n\
-\tsetPoint( \"cf2\",  w,  0, 1 );\n\
-\tsetPoint( \"cf3\",  0, -h, 1 );\n\
-\tsetPoint( \"cf4\",  0,  h, 1 );\n\
+\t\tsetPoint( \"u1\",  w * 0.7, h * 1.1, -1 );\n\
+\t\tsetPoint( \"u2\", -w * 0.7, h * 1.1, -1 );\n\
+\t\tsetPoint( \"u3\",        0, h * 2,   -1 );\n\
 \n\
-\tsetPoint( \"cn1\", -w,  0, -1 );\n\
-\tsetPoint( \"cn2\",  w,  0, -1 );\n\
-\tsetPoint( \"cn3\",  0, -h, -1 );\n\
-\tsetPoint( \"cn4\",  0,  h, -1 );\n\
+\t\t// cross\n\
 \n\
-\tfunction setPoint( point, x, y, z ) {\n\
+\t\tsetPoint( \"cf1\", -w,  0, 1 );\n\
+\t\tsetPoint( \"cf2\",  w,  0, 1 );\n\
+\t\tsetPoint( \"cf3\",  0, -h, 1 );\n\
+\t\tsetPoint( \"cf4\",  0,  h, 1 );\n\
 \n\
-\t\tTHREE.CameraHelper.__v.set( x, y, z );\n\
-\t\tTHREE.CameraHelper.__projector.unprojectVector( THREE.CameraHelper.__v, THREE.CameraHelper.__c );\n\
+\t\tsetPoint( \"cn1\", -w,  0, -1 );\n\
+\t\tsetPoint( \"cn2\",  w,  0, -1 );\n\
+\t\tsetPoint( \"cn3\",  0, -h, -1 );\n\
+\t\tsetPoint( \"cn4\",  0,  h, -1 );\n\
 \n\
-\t\tvar points = scope.pointMap[ point ];\n\
+\t\tfunction setPoint( point, x, y, z ) {\n\
 \n\
-\t\tif ( points !== undefined ) {\n\
+\t\t\tvector.set( x, y, z );\n\
+\t\t\tprojector.unprojectVector( vector, camera );\n\
 \n\
-\t\t\tfor ( var i = 0, il = points.length; i < il; i ++ ) {\n\
+\t\t\tvar points = scope.pointMap[ point ];\n\
 \n\
-\t\t\t\tscope.geometry.vertices[ points[ i ] ].copy( THREE.CameraHelper.__v );\n\
+\t\t\tif ( points !== undefined ) {\n\
+\n\
+\t\t\t\tfor ( var i = 0, il = points.length; i < il; i ++ ) {\n\
+\n\
+\t\t\t\t\tscope.geometry.vertices[ points[ i ] ].copy( vector );\n\
+\n\
+\t\t\t\t}\n\
 \n\
 \t\t\t}\n\
 \n\
 \t\t}\n\
 \n\
-\t}\n\
+\t\tthis.geometry.verticesNeedUpdate = true;\n\
 \n\
-\tthis.geometry.verticesNeedUpdate = true;\n\
+\t};\n\
 \n\
-};\n\
-\n\
-THREE.CameraHelper.__projector = new THREE.Projector();\n\
-THREE.CameraHelper.__v = new THREE.Vector3();\n\
-THREE.CameraHelper.__c = new THREE.Camera();\n\
+}();\n\
 \n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
- *\n\
- *\t- shows directional light color, intensity, position, orientation and target\n\
+ * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
-THREE.DirectionalLightHelper = function ( light, sphereSize, arrowLength ) {\n\
+THREE.DirectionalLightHelper = function ( light, size ) {\n\
 \n\
 \tTHREE.Object3D.call( this );\n\
 \n\
 \tthis.light = light;\n\
+\tthis.light.updateMatrixWorld();\n\
 \n\
-\t// position\n\
+\tthis.matrixWorld = light.matrixWorld;\n\
+\tthis.matrixAutoUpdate = false;\n\
 \n\
-\tthis.position = light.position;\n\
+\tvar geometry = new THREE.PlaneGeometry( size, size );\n\
+\tvar material = new THREE.MeshBasicMaterial( { wireframe: true, fog: false } );\n\
+\tmaterial.color.copy( this.light.color ).multiplyScalar( this.light.intensity );\n\
 \n\
-\t// direction\n\
+\tthis.lightPlane = new THREE.Mesh( geometry, material );\n\
+\tthis.add( this.lightPlane );\n\
 \n\
-\tthis.direction = new THREE.Vector3();\n\
-\tthis.direction.sub( light.target.position, light.position );\n\
+\tgeometry = new THREE.Geometry();\n\
+\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\tgeometry.computeLineDistances();\n\
 \n\
-\t// color\n\
+\tmaterial = new THREE.LineBasicMaterial( { fog: false } );\n\
+\tmaterial.color.copy( this.light.color ).multiplyScalar( this.light.intensity );\n\
 \n\
-\tthis.color = light.color.clone();\n\
+\tthis.targetLine = new THREE.Line( geometry, material );\n\
+\tthis.add( this.targetLine );\n\
 \n\
-\tvar intensity = THREE.Math.clamp( light.intensity, 0, 1 );\n\
+\tthis.update();\n\
 \n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
-\n\
-\tvar hexColor = this.color.getHex();\n\
-\n\
-\t// light helper\n\
-\n\
-\tvar bulbGeometry = new THREE.SphereGeometry( sphereSize, 16, 8 );\n\
-\tvar raysGeometry = new THREE.AsteriskGeometry( sphereSize * 1.25, sphereSize * 2.25 );\n\
-\n\
-\tvar bulbMaterial = new THREE.MeshBasicMaterial( { color: hexColor, fog: false } );\n\
-\tvar raysMaterial = new THREE.LineBasicMaterial( { color: hexColor, fog: false } );\n\
-\n\
-\tthis.lightArrow = new THREE.ArrowHelper( this.direction, null, arrowLength, hexColor );\n\
-\tthis.lightSphere = new THREE.Mesh( bulbGeometry, bulbMaterial );\n\
-\n\
-\tthis.lightArrow.cone.material.fog = false;\n\
-\tthis.lightArrow.line.material.fog = false;\n\
-\n\
-\tthis.lightRays = new THREE.Line( raysGeometry, raysMaterial, THREE.LinePieces );\n\
-\n\
-\tthis.add( this.lightArrow );\n\
-\tthis.add( this.lightSphere );\n\
-\tthis.add( this.lightRays );\n\
-\n\
-\tthis.lightSphere.properties.isGizmo = true;\n\
-\tthis.lightSphere.properties.gizmoSubject = light;\n\
-\tthis.lightSphere.properties.gizmoRoot = this;\n\
-\n\
-\t// light target helper\n\
-\n\
-\tthis.targetSphere = null;\n\
-\n\
-\tif ( light.target.properties.targetInverse ) {\n\
-\n\
-\t\tvar targetGeo = new THREE.SphereGeometry( sphereSize, 8, 4 );\n\
-\t\tvar targetMaterial = new THREE.MeshBasicMaterial( { color: hexColor, wireframe: true, fog: false } );\n\
-\n\
-\t\tthis.targetSphere = new THREE.Mesh( targetGeo, targetMaterial );\n\
-\t\tthis.targetSphere.position = light.target.position;\n\
-\n\
-\t\tthis.targetSphere.properties.isGizmo = true;\n\
-\t\tthis.targetSphere.properties.gizmoSubject = light.target;\n\
-\t\tthis.targetSphere.properties.gizmoRoot = this.targetSphere;\n\
-\n\
-\t\tvar lineMaterial = new THREE.LineDashedMaterial( { color: hexColor, dashSize: 4, gapSize: 4, opacity: 0.75, transparent: true, fog: false } );\n\
-\t\tvar lineGeometry = new THREE.Geometry();\n\
-\t\tlineGeometry.vertices.push( this.position.clone() );\n\
-\t\tlineGeometry.vertices.push( this.targetSphere.position.clone() );\n\
-\t\tlineGeometry.computeLineDistances();\n\
-\n\
-\t\tthis.targetLine = new THREE.Line( lineGeometry, lineMaterial );\n\
-\t\tthis.targetLine.properties.isGizmo = true;\n\
-\n\
-\t}\n\
-\n\
-\t//\n\
-\n\
-\tthis.properties.isGizmo = true;\n\
-\n\
-}\n\
+};\n\
 \n\
 THREE.DirectionalLightHelper.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
 THREE.DirectionalLightHelper.prototype.update = function () {\n\
 \n\
-\t// update arrow orientation\n\
-\t// pointing from light to target\n\
+\tvar vector = new THREE.Vector3();\n\
 \n\
-\tthis.direction.sub( this.light.target.position, this.light.position );\n\
-\tthis.lightArrow.setDirection( this.direction );\n\
+\treturn function () {\n\
 \n\
-\t// update arrow, spheres, rays and line colors to light color * light intensity\n\
+\t\tvector.getPositionFromMatrix( this.light.matrixWorld ).negate();\n\
 \n\
-\tthis.color.copy( this.light.color );\n\
+\t\tthis.lightPlane.lookAt( vector );\n\
+\t\tthis.lightPlane.material.color.copy( this.light.color ).multiplyScalar( this.light.intensity );\n\
 \n\
-\tvar intensity = THREE.Math.clamp( this.light.intensity, 0, 1 );\n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
+\t\tthis.targetLine.geometry.vertices[ 1 ].copy( vector );\n\
+\t\tthis.targetLine.geometry.verticesNeedUpdate = true;\n\
+\t\tthis.targetLine.material.color.copy( this.lightPlane.material.color );\n\
 \n\
-\tthis.lightArrow.setColor( this.color.getHex() );\n\
-\tthis.lightSphere.material.color.copy( this.color );\n\
-\tthis.lightRays.material.color.copy( this.color );\n\
+\t}\n\
 \n\
-\tthis.targetSphere.material.color.copy( this.color );\n\
-\tthis.targetLine.material.color.copy( this.color );\n\
+}();\n\
 \n\
-\t// update target line vertices\n\
 \n\
-\tthis.targetLine.geometry.vertices[ 0 ].copy( this.light.position );\n\
-\tthis.targetLine.geometry.vertices[ 1 ].copy( this.light.target.position );\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+*/\n\
 \n\
-\tthis.targetLine.geometry.computeLineDistances();\n\
-\tthis.targetLine.geometry.verticesNeedUpdate = true;\n\
+THREE.FaceNormalsHelper = function ( object, size, hex, linewidth ) {\n\
+\n\
+\tthis.object = object;\n\
+\n\
+\tthis.size = size || 1;\n\
+\n\
+\tvar color = hex || 0xffff00;\n\
+\n\
+\tvar width = linewidth || 1;\n\
+\n\
+\tvar geometry = new THREE.Geometry();\n\
+\n\
+\tvar faces = this.object.geometry.faces;\n\
+\n\
+\tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
+\n\
+\t\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\t\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\n\
+\t}\n\
+\n\
+\tTHREE.Line.call( this, geometry, new THREE.LineBasicMaterial( { color: color, linewidth: width } ), THREE.LinePieces );\n\
+\n\
+\tthis.matrixAutoUpdate = false;\n\
+\n\
+\tthis.normalMatrix = new THREE.Matrix3();\n\
+\n\
+\tthis.update();\n\
+\n\
+};\n\
+\n\
+THREE.FaceNormalsHelper.prototype = Object.create( THREE.Line.prototype );\n\
+\n\
+THREE.FaceNormalsHelper.prototype.update = ( function ( object ) {\n\
+\n\
+\tvar v1 = new THREE.Vector3();\n\
+\n\
+\treturn function ( object ) {\n\
+\n\
+\t\tthis.object.updateMatrixWorld( true );\n\
+\n\
+\t\tthis.normalMatrix.getNormalMatrix( this.object.matrixWorld );\n\
+\n\
+\t\tvar vertices = this.geometry.vertices;\n\
+\n\
+\t\tvar faces = this.object.geometry.faces;\n\
+\n\
+\t\tvar worldMatrix = this.object.matrixWorld;\n\
+\n\
+\t\tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
+\n\
+\t\t\tvar face = faces[ i ];\n\
+\n\
+\t\t\tv1.copy( face.normal ).applyMatrix3( this.normalMatrix ).normalize().multiplyScalar( this.size );\n\
+\n\
+\t\t\tvar idx = 2 * i;\n\
+\n\
+\t\t\tvertices[ idx ].copy( face.centroid ).applyMatrix4( worldMatrix );\n\
+\n\
+\t\t\tvertices[ idx + 1 ].addVectors( vertices[ idx ], v1 );\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis.geometry.verticesNeedUpdate = true;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t}\n\
+\n\
+}());\n\
+\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
+\n\
+THREE.GridHelper = function ( size, step ) {\n\
+\n\
+\tvar geometry = new THREE.Geometry();\n\
+\tvar material = new THREE.LineBasicMaterial( { vertexColors: THREE.VertexColors } );\n\
+\n\
+\tthis.color1 = new THREE.Color( 0x444444 );\n\
+\tthis.color2 = new THREE.Color( 0x888888 );\n\
+\n\
+\tfor ( var i = - size; i <= size; i += step ) {\n\
+\n\
+\t\tgeometry.vertices.push(\n\
+\t\t\tnew THREE.Vector3( - size, 0, i ), new THREE.Vector3( size, 0, i ),\n\
+\t\t\tnew THREE.Vector3( i, 0, - size ), new THREE.Vector3( i, 0, size )\n\
+\t\t);\n\
+\n\
+\t\tvar color = i === 0 ? this.color1 : this.color2;\n\
+\n\
+\t\tgeometry.colors.push( color, color, color, color );\n\
+\n\
+\t}\n\
+\n\
+\tTHREE.Line.call( this, geometry, material, THREE.LinePieces );\n\
+\n\
+};\n\
+\n\
+THREE.GridHelper.prototype = Object.create( THREE.Line.prototype );\n\
+\n\
+THREE.GridHelper.prototype.setColors = function( colorCenterLine, colorGrid ) {\n\
+\n\
+\tthis.color1.set( colorCenterLine );\n\
+\tthis.color2.set( colorGrid );\n\
+\n\
+\tthis.geometry.colorsNeedUpdate = true;\n\
 \n\
 }\n\
 \n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
- *\n\
- *\t- shows hemisphere light intensity, sky and ground colors and directions\n\
+ * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
 THREE.HemisphereLightHelper = function ( light, sphereSize, arrowLength, domeSize ) {\n\
@@ -37887,161 +38350,74 @@ THREE.HemisphereLightHelper = function ( light, sphereSize, arrowLength, domeSiz
 \tTHREE.Object3D.call( this );\n\
 \n\
 \tthis.light = light;\n\
+\tthis.light.updateMatrixWorld();\n\
 \n\
-\t// position\n\
+\tthis.matrixWorld = light.matrixWorld;\n\
+\tthis.matrixAutoUpdate = false;\n\
 \n\
-\tthis.position = light.position;\n\
+\tthis.colors = [ new THREE.Color(), new THREE.Color() ];\n\
 \n\
-\t//\n\
+\tvar geometry = new THREE.SphereGeometry( sphereSize, 4, 2 );\n\
+\tgeometry.applyMatrix( new THREE.Matrix4().makeRotationX( - Math.PI / 2 ) );\n\
 \n\
-\tvar intensity = THREE.Math.clamp( light.intensity, 0, 1 );\n\
+\tfor ( var i = 0, il = 8; i < il; i ++ ) {\n\
 \n\
-\t// sky color\n\
-\n\
-\tthis.color = light.color.clone();\n\
-\n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
-\n\
-\tvar hexColor = this.color.getHex();\n\
-\n\
-\t// ground color\n\
-\n\
-\tthis.groundColor = light.groundColor.clone();\n\
-\n\
-\tthis.groundColor.r *= intensity;\n\
-\tthis.groundColor.g *= intensity;\n\
-\tthis.groundColor.b *= intensity;\n\
-\n\
-\tvar hexColorGround = this.groundColor.getHex();\n\
-\n\
-\t// double colored light bulb\n\
-\n\
-\tvar bulbGeometry = new THREE.SphereGeometry( sphereSize, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5 );\n\
-\tvar bulbGroundGeometry = new THREE.SphereGeometry( sphereSize, 16, 8, 0, Math.PI * 2, Math.PI * 0.5, Math.PI );\n\
-\n\
-\tvar bulbSkyMaterial = new THREE.MeshBasicMaterial( { color: hexColor, fog: false } );\n\
-\tvar bulbGroundMaterial = new THREE.MeshBasicMaterial( { color: hexColorGround, fog: false } );\n\
-\n\
-\tfor ( var i = 0, il = bulbGeometry.faces.length; i < il; i ++ ) {\n\
-\n\
-\t\tbulbGeometry.faces[ i ].materialIndex = 0;\n\
+\t\tgeometry.faces[ i ].color = this.colors[ i < 4 ? 0 : 1 ];\n\
 \n\
 \t}\n\
 \n\
-\tfor ( var i = 0, il = bulbGroundGeometry.faces.length; i < il; i ++ ) {\n\
+\tvar material = new THREE.MeshBasicMaterial( { vertexColors: THREE.FaceColors, wireframe: true } );\n\
 \n\
-\t\tbulbGroundGeometry.faces[ i ].materialIndex = 1;\n\
+\tthis.lightSphere = new THREE.Mesh( geometry, material );\n\
+\tthis.add( this.lightSphere );\n\
 \n\
-\t}\n\
+\tthis.update();\n\
 \n\
-\tTHREE.GeometryUtils.merge( bulbGeometry, bulbGroundGeometry );\n\
-\n\
-\tthis.lightSphere = new THREE.Mesh( bulbGeometry, new THREE.MeshFaceMaterial( [ bulbSkyMaterial, bulbGroundMaterial ] ) );\n\
-\n\
-\t// arrows for sky and ground light directions\n\
-\n\
-\tthis.lightArrow = new THREE.ArrowHelper( new THREE.Vector3( 0, 1, 0 ), new THREE.Vector3( 0, ( sphereSize + arrowLength ) * 1.1, 0 ), arrowLength, hexColor );\n\
-\tthis.lightArrow.rotation.x = Math.PI;\n\
-\n\
-\tthis.lightArrowGround = new THREE.ArrowHelper( new THREE.Vector3( 0, 1, 0 ), new THREE.Vector3( 0, ( sphereSize + arrowLength ) * -1.1, 0 ), arrowLength, hexColorGround );\n\
-\n\
-\tvar joint = new THREE.Object3D();\n\
-\tjoint.rotation.x = -Math.PI * 0.5;\n\
-\n\
-\tjoint.add( this.lightSphere );\n\
-\tjoint.add( this.lightArrow );\n\
-\tjoint.add( this.lightArrowGround );\n\
-\n\
-\tthis.add( joint );\n\
-\n\
-\t//\n\
-\n\
-\tthis.lightSphere.properties.isGizmo = true;\n\
-\tthis.lightSphere.properties.gizmoSubject = light;\n\
-\tthis.lightSphere.properties.gizmoRoot = this;\n\
-\n\
-\t//\n\
-\n\
-\tthis.properties.isGizmo = true;\n\
-\n\
-\t//\n\
-\n\
-\tthis.target = new THREE.Vector3();\n\
-\tthis.lookAt( this.target );\n\
-\n\
-}\n\
+};\n\
 \n\
 THREE.HemisphereLightHelper.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
 THREE.HemisphereLightHelper.prototype.update = function () {\n\
 \n\
-\t// update sphere sky and ground colors to light color * light intensity\n\
+\tvar vector = new THREE.Vector3();\n\
 \n\
-\tvar intensity = THREE.Math.clamp( this.light.intensity, 0, 1 );\n\
+\treturn function () {\n\
 \n\
-\tthis.color.copy( this.light.color );\n\
-\tthis.groundColor.copy( this.light.groundColor );\n\
+\t\tthis.colors[ 0 ].copy( this.light.color ).multiplyScalar( this.light.intensity );\n\
+\t\tthis.colors[ 1 ].copy( this.light.groundColor ).multiplyScalar( this.light.intensity );\n\
 \n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
+\t\tthis.lightSphere.lookAt( vector.getPositionFromMatrix( this.light.matrixWorld ).negate() );\n\
+\t\tthis.lightSphere.geometry.colorsNeedUpdate = true;\n\
 \n\
-\tthis.groundColor.r *= intensity;\n\
-\tthis.groundColor.g *= intensity;\n\
-\tthis.groundColor.b *= intensity;\n\
+\t}\n\
 \n\
-\tthis.lightSphere.material.materials[ 0 ].color.copy( this.color );\n\
-\tthis.lightSphere.material.materials[ 1 ].color.copy( this.groundColor );\n\
+}();\n\
 \n\
-\tthis.lightArrow.setColor( this.color.getHex() );\n\
-\tthis.lightArrowGround.setColor( this.groundColor.getHex() );\n\
-\n\
-\tthis.lookAt( this.target );\n\
-\n\
-}\n\
 \n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
- *\n\
- *\t- shows point light color, intensity, position and distance\n\
+ * @author mrdoob / http://mrdoob.com/\n\
  */\n\
 \n\
 THREE.PointLightHelper = function ( light, sphereSize ) {\n\
 \n\
-\tTHREE.Object3D.call( this );\n\
-\n\
 \tthis.light = light;\n\
+\tthis.light.updateMatrixWorld();\n\
 \n\
-\t// position\n\
+\tvar geometry = new THREE.SphereGeometry( sphereSize, 4, 2 );\n\
+\tvar material = new THREE.MeshBasicMaterial( { wireframe: true, fog: false } );\n\
+\tmaterial.color.copy( this.light.color ).multiplyScalar( this.light.intensity );\n\
 \n\
-\tthis.position = light.position;\n\
+\tTHREE.Mesh.call( this, geometry, material );\n\
 \n\
-\t// color\n\
+\tthis.matrixWorld = this.light.matrixWorld;\n\
+\tthis.matrixAutoUpdate = false;\n\
 \n\
-\tthis.color = light.color.clone();\n\
-\n\
-\tvar intensity = THREE.Math.clamp( light.intensity, 0, 1 );\n\
-\n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
-\n\
-\tvar hexColor = this.color.getHex();\n\
-\n\
-\t// light helper\n\
-\n\
-\tvar bulbGeometry = new THREE.SphereGeometry( sphereSize, 16, 8 );\n\
-\tvar raysGeometry = new THREE.AsteriskGeometry( sphereSize * 1.25, sphereSize * 2.25 );\n\
+\t/*\n\
 \tvar distanceGeometry = new THREE.IcosahedronGeometry( 1, 2 );\n\
-\n\
-\tvar bulbMaterial = new THREE.MeshBasicMaterial( { color: hexColor, fog: false } );\n\
-\tvar raysMaterial = new THREE.LineBasicMaterial( { color: hexColor, fog: false } );\n\
 \tvar distanceMaterial = new THREE.MeshBasicMaterial( { color: hexColor, fog: false, wireframe: true, opacity: 0.1, transparent: true } );\n\
 \n\
 \tthis.lightSphere = new THREE.Mesh( bulbGeometry, bulbMaterial );\n\
-\tthis.lightRays = new THREE.Line( raysGeometry, raysMaterial, THREE.LinePieces );\n\
 \tthis.lightDistance = new THREE.Mesh( distanceGeometry, distanceMaterial );\n\
 \n\
 \tvar d = light.distance;\n\
@@ -38056,41 +38432,18 @@ THREE.PointLightHelper = function ( light, sphereSize ) {\n\
 \n\
 \t}\n\
 \n\
-\tthis.add( this.lightSphere );\n\
-\tthis.add( this.lightRays );\n\
 \tthis.add( this.lightDistance );\n\
+\t*/\n\
 \n\
-\t//\n\
+};\n\
 \n\
-\tthis.lightSphere.properties.isGizmo = true;\n\
-\tthis.lightSphere.properties.gizmoSubject = light;\n\
-\tthis.lightSphere.properties.gizmoRoot = this;\n\
-\n\
-\t//\n\
-\n\
-\tthis.properties.isGizmo = true;\n\
-\n\
-}\n\
-\n\
-THREE.PointLightHelper.prototype = Object.create( THREE.Object3D.prototype );\n\
+THREE.PointLightHelper.prototype = Object.create( THREE.Mesh.prototype );\n\
 \n\
 THREE.PointLightHelper.prototype.update = function () {\n\
 \n\
-\t// update sphere and rays colors to light color * light intensity\n\
+\tthis.material.color.copy( this.light.color ).multiplyScalar( this.light.intensity );\n\
 \n\
-\tthis.color.copy( this.light.color );\n\
-\n\
-\tvar intensity = THREE.Math.clamp( this.light.intensity, 0, 1 );\n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
-\n\
-\tthis.lightSphere.material.color.copy( this.color );\n\
-\tthis.lightRays.material.color.copy( this.color );\n\
-\tthis.lightDistance.material.color.copy( this.color );\n\
-\n\
-\t//\n\
-\n\
+\t/*\n\
 \tvar d = this.light.distance;\n\
 \n\
 \tif ( d === 0.0 ) {\n\
@@ -38103,168 +38456,318 @@ THREE.PointLightHelper.prototype.update = function () {\n\
 \t\tthis.lightDistance.scale.set( d, d, d );\n\
 \n\
 \t}\n\
+\t*/\n\
 \n\
-}\n\
+};\n\
+\n\
 \n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
- *\n\
- *\t- shows spot light color, intensity, position, orientation, light cone and target\n\
- */\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+*/\n\
 \n\
-THREE.SpotLightHelper = function ( light, sphereSize, arrowLength ) {\n\
+THREE.SpotLightHelper = function ( light ) {\n\
 \n\
 \tTHREE.Object3D.call( this );\n\
 \n\
 \tthis.light = light;\n\
+\tthis.light.updateMatrixWorld();\n\
 \n\
-\t// position\n\
+\tthis.matrixWorld = light.matrixWorld;\n\
+\tthis.matrixAutoUpdate = false;\n\
 \n\
-\tthis.position = light.position;\n\
+\tvar geometry = new THREE.CylinderGeometry( 0, 1, 1, 8, 1, true );\n\
 \n\
-\t// direction\n\
+\tgeometry.applyMatrix( new THREE.Matrix4().makeTranslation( 0, -0.5, 0 ) );\n\
+\tgeometry.applyMatrix( new THREE.Matrix4().makeRotationX( - Math.PI / 2 ) );\n\
 \n\
-\tthis.direction = new THREE.Vector3();\n\
-\tthis.direction.sub( light.target.position, light.position );\n\
+\tvar material = new THREE.MeshBasicMaterial( { wireframe: true, fog: false } );\n\
+\t\n\
+\tthis.cone = new THREE.Mesh( geometry, material );\n\
+\tthis.add( this.cone );\n\
 \n\
-\t// color\n\
+\tthis.update();\n\
 \n\
-\tthis.color = light.color.clone();\n\
-\n\
-\tvar intensity = THREE.Math.clamp( light.intensity, 0, 1 );\n\
-\n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
-\n\
-\tvar hexColor = this.color.getHex();\n\
-\n\
-\t// light helper\n\
-\n\
-\tvar bulbGeometry = new THREE.SphereGeometry( sphereSize, 16, 8 );\n\
-\tvar raysGeometry = new THREE.AsteriskGeometry( sphereSize * 1.25, sphereSize * 2.25 );\n\
-\tvar coneGeometry = new THREE.CylinderGeometry( 0.0001, 1, 1, 8, 1, true );\n\
-\n\
-\tvar coneMatrix = new THREE.Matrix4();\n\
-\tconeMatrix.rotateX( -Math.PI/2 );\n\
-\tconeMatrix.translate( new THREE.Vector3( 0, -0.5, 0 ) );\n\
-\tconeGeometry.applyMatrix( coneMatrix );\n\
-\n\
-\tvar bulbMaterial = new THREE.MeshBasicMaterial( { color: hexColor, fog: false } );\n\
-\tvar raysMaterial = new THREE.LineBasicMaterial( { color: hexColor, fog: false } );\n\
-\tvar coneMaterial = new THREE.MeshBasicMaterial( { color: hexColor, fog: false, wireframe: true, opacity: 0.3, transparent: true } );\n\
-\n\
-\tthis.lightArrow = new THREE.ArrowHelper( this.direction, null, arrowLength, hexColor );\n\
-\tthis.lightSphere = new THREE.Mesh( bulbGeometry, bulbMaterial );\n\
-\tthis.lightCone = new THREE.Mesh( coneGeometry, coneMaterial );\n\
-\n\
-\tvar coneLength = light.distance ? light.distance : 10000;\n\
-\tvar coneWidth = coneLength * Math.tan( light.angle * 0.5 ) * 2;\n\
-\tthis.lightCone.scale.set( coneWidth, coneWidth, coneLength );\n\
-\n\
-\tthis.lightArrow.cone.material.fog = false;\n\
-\tthis.lightArrow.line.material.fog = false;\n\
-\n\
-\tthis.lightRays = new THREE.Line( raysGeometry, raysMaterial, THREE.LinePieces );\n\
-\n\
-\tthis.gyroscope = new THREE.Gyroscope();\n\
-\n\
-\tthis.gyroscope.add( this.lightArrow );\n\
-\tthis.gyroscope.add( this.lightSphere );\n\
-\tthis.gyroscope.add( this.lightRays );\n\
-\n\
-\tthis.add( this.gyroscope );\n\
-\tthis.add( this.lightCone );\n\
-\n\
-\tthis.lookAt( light.target.position );\n\
-\n\
-\tthis.lightSphere.properties.isGizmo = true;\n\
-\tthis.lightSphere.properties.gizmoSubject = light;\n\
-\tthis.lightSphere.properties.gizmoRoot = this;\n\
-\n\
-\t// light target helper\n\
-\n\
-\tthis.targetSphere = null;\n\
-\n\
-\tif ( light.target.properties.targetInverse ) {\n\
-\n\
-\t\tvar targetGeo = new THREE.SphereGeometry( sphereSize, 8, 4 );\n\
-\t\tvar targetMaterial = new THREE.MeshBasicMaterial( { color: hexColor, wireframe: true, fog: false } );\n\
-\n\
-\t\tthis.targetSphere = new THREE.Mesh( targetGeo, targetMaterial );\n\
-\t\tthis.targetSphere.position = light.target.position;\n\
-\n\
-\t\tthis.targetSphere.properties.isGizmo = true;\n\
-\t\tthis.targetSphere.properties.gizmoSubject = light.target;\n\
-\t\tthis.targetSphere.properties.gizmoRoot = this.targetSphere;\n\
-\n\
-\t\tvar lineMaterial = new THREE.LineDashedMaterial( { color: hexColor, dashSize: 4, gapSize: 4, opacity: 0.75, transparent: true, fog: false } );\n\
-\t\tvar lineGeometry = new THREE.Geometry();\n\
-\t\tlineGeometry.vertices.push( this.position.clone() );\n\
-\t\tlineGeometry.vertices.push( this.targetSphere.position.clone() );\n\
-\t\tlineGeometry.computeLineDistances();\n\
-\n\
-\t\tthis.targetLine = new THREE.Line( lineGeometry, lineMaterial );\n\
-\t\tthis.targetLine.properties.isGizmo = true;\n\
-\n\
-\t}\n\
-\n\
-\t//\n\
-\n\
-\tthis.properties.isGizmo = true;\n\
-\n\
-}\n\
+};\n\
 \n\
 THREE.SpotLightHelper.prototype = Object.create( THREE.Object3D.prototype );\n\
 \n\
 THREE.SpotLightHelper.prototype.update = function () {\n\
 \n\
-\t// update arrow orientation\n\
-\t// pointing from light to target\n\
+\tvar vector = new THREE.Vector3();\n\
+\tvar vector2 = new THREE.Vector3();\n\
 \n\
-\tthis.direction.sub( this.light.target.position, this.light.position );\n\
-\tthis.lightArrow.setDirection( this.direction );\n\
+\treturn function () {\n\
 \n\
-\t// update light cone orientation and size\n\
+\t\tvar coneLength = this.light.distance ? this.light.distance : 10000;\n\
+\t\tvar coneWidth = coneLength * Math.tan( this.light.angle );\n\
 \n\
-\tthis.lookAt( this.light.target.position );\n\
+\t\tthis.cone.scale.set( coneWidth, coneWidth, coneLength );\n\
 \n\
-\tvar coneLength = this.light.distance ? this.light.distance : 10000;\n\
-\tvar coneWidth = coneLength * Math.tan( this.light.angle * 0.5 ) * 2;\n\
-\tthis.lightCone.scale.set( coneWidth, coneWidth, coneLength );\n\
+\t\tvector.getPositionFromMatrix( this.light.matrixWorld );\n\
+\t\tvector2.getPositionFromMatrix( this.light.target.matrixWorld );\n\
 \n\
-\t// update arrow, spheres, rays and line colors to light color * light intensity\n\
+\t\tthis.cone.lookAt( vector2.sub( vector ) );\n\
 \n\
-\tthis.color.copy( this.light.color );\n\
+\t\tthis.cone.material.color.copy( this.light.color ).multiplyScalar( this.light.intensity );\n\
 \n\
-\tvar intensity = THREE.Math.clamp( this.light.intensity, 0, 1 );\n\
-\tthis.color.r *= intensity;\n\
-\tthis.color.g *= intensity;\n\
-\tthis.color.b *= intensity;\n\
+\t};\n\
 \n\
-\tthis.lightArrow.setColor( this.color.getHex() );\n\
-\tthis.lightSphere.material.color.copy( this.color );\n\
-\tthis.lightRays.material.color.copy( this.color );\n\
-\tthis.lightCone.material.color.copy( this.color );\n\
+}();\n\
 \n\
-\tthis.targetSphere.material.color.copy( this.color );\n\
-\tthis.targetLine.material.color.copy( this.color );\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+*/\n\
 \n\
-\t// update target line vertices\n\
+THREE.VertexNormalsHelper = function ( object, size, hex, linewidth ) {\n\
 \n\
-\tthis.targetLine.geometry.vertices[ 0 ].copy( this.light.position );\n\
-\tthis.targetLine.geometry.vertices[ 1 ].copy( this.light.target.position );\n\
+\tthis.object = object;\n\
 \n\
-\tthis.targetLine.geometry.computeLineDistances();\n\
-\tthis.targetLine.geometry.verticesNeedUpdate = true;\n\
+\tthis.size = size || 1;\n\
 \n\
-}\n\
+\tvar color = hex || 0xff0000;\n\
+\n\
+\tvar width = linewidth || 1;\n\
+\n\
+\tvar geometry = new THREE.Geometry();\n\
+\n\
+\tvar vertices = object.geometry.vertices;\n\
+\n\
+\tvar faces = object.geometry.faces;\n\
+\n\
+\tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
+\n\
+\t\tvar face = faces[ i ];\n\
+\n\
+\t\tfor ( var j = 0, jl = face.vertexNormals.length; j < jl; j ++ ) {\n\
+\n\
+\t\t\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\t\t\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
+\tTHREE.Line.call( this, geometry, new THREE.LineBasicMaterial( { color: color, linewidth: width } ), THREE.LinePieces );\n\
+\n\
+\tthis.matrixAutoUpdate = false;\n\
+\n\
+\tthis.normalMatrix = new THREE.Matrix3();\n\
+\n\
+\tthis.update();\n\
+\n\
+};\n\
+\n\
+THREE.VertexNormalsHelper.prototype = Object.create( THREE.Line.prototype );\n\
+\n\
+THREE.VertexNormalsHelper.prototype.update = ( function ( object ) {\n\
+\n\
+\tvar v1 = new THREE.Vector3();\n\
+\n\
+\treturn function( object ) {\n\
+\n\
+\t\tvar keys = [ 'a', 'b', 'c', 'd' ];\n\
+\n\
+\t\tthis.object.updateMatrixWorld( true );\n\
+\n\
+\t\tthis.normalMatrix.getNormalMatrix( this.object.matrixWorld );\n\
+\n\
+\t\tvar vertices = this.geometry.vertices;\n\
+\n\
+\t\tvar verts = this.object.geometry.vertices;\n\
+\n\
+\t\tvar faces = this.object.geometry.faces;\n\
+\n\
+\t\tvar worldMatrix = this.object.matrixWorld;\n\
+\n\
+\t\tvar idx = 0;\n\
+\n\
+\t\tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
+\n\
+\t\t\tvar face = faces[ i ];\n\
+\n\
+\t\t\tfor ( var j = 0, jl = face.vertexNormals.length; j < jl; j ++ ) {\n\
+\n\
+\t\t\t\tvar vertexId = face[ keys[ j ] ];\n\
+\t\t\t\tvar vertex = verts[ vertexId ];\n\
+\n\
+\t\t\t\tvar normal = face.vertexNormals[ j ];\n\
+\n\
+\t\t\t\tvertices[ idx ].copy( vertex ).applyMatrix4( worldMatrix );\n\
+\n\
+\t\t\t\tv1.copy( normal ).applyMatrix3( this.normalMatrix ).normalize().multiplyScalar( this.size );\n\
+\n\
+\t\t\t\tv1.add( vertices[ idx ] );\n\
+\t\t\t\tidx = idx + 1;\n\
+\n\
+\t\t\t\tvertices[ idx ].copy( v1 );\n\
+\t\t\t\tidx = idx + 1;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis.geometry.verticesNeedUpdate = true;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t}\n\
+\n\
+}());\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ * @author WestLangley / http://github.com/WestLangley\n\
+*/\n\
+\n\
+THREE.VertexTangentsHelper = function ( object, size, hex, linewidth ) {\n\
+\n\
+\tthis.object = object;\n\
+\n\
+\tthis.size = size || 1;\n\
+\n\
+\tvar color = hex || 0x0000ff;\n\
+\n\
+\tvar width = linewidth || 1;\n\
+\n\
+\tvar geometry = new THREE.Geometry();\n\
+\n\
+\tvar vertices = object.geometry.vertices;\n\
+\n\
+\tvar faces = object.geometry.faces;\n\
+\n\
+\tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
+\n\
+\t\tvar face = faces[ i ];\n\
+\n\
+\t\tfor ( var j = 0, jl = face.vertexTangents.length; j < jl; j ++ ) {\n\
+\n\
+\t\t\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\t\t\tgeometry.vertices.push( new THREE.Vector3() );\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
+\tTHREE.Line.call( this, geometry, new THREE.LineBasicMaterial( { color: color, linewidth: width } ), THREE.LinePieces );\n\
+\n\
+\tthis.matrixAutoUpdate = false;\n\
+\n\
+\tthis.update();\n\
+\n\
+};\n\
+\n\
+THREE.VertexTangentsHelper.prototype = Object.create( THREE.Line.prototype );\n\
+\n\
+THREE.VertexTangentsHelper.prototype.update = ( function ( object ) {\n\
+\n\
+\tvar v1 = new THREE.Vector3();\n\
+\n\
+\treturn function( object ) {\n\
+\n\
+\t\tvar keys = [ 'a', 'b', 'c', 'd' ];\n\
+\n\
+\t\tthis.object.updateMatrixWorld( true );\n\
+\n\
+\t\tvar vertices = this.geometry.vertices;\n\
+\n\
+\t\tvar verts = this.object.geometry.vertices;\n\
+\n\
+\t\tvar faces = this.object.geometry.faces;\n\
+\n\
+\t\tvar worldMatrix = this.object.matrixWorld;\n\
+\n\
+\t\tvar idx = 0;\n\
+\n\
+\t\tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
+\n\
+\t\t\tvar face = faces[ i ];\n\
+\n\
+\t\t\tfor ( var j = 0, jl = face.vertexTangents.length; j < jl; j ++ ) {\n\
+\n\
+\t\t\t\tvar vertexId = face[ keys[ j ] ];\n\
+\t\t\t\tvar vertex = verts[ vertexId ];\n\
+\n\
+\t\t\t\tvar tangent = face.vertexTangents[ j ];\n\
+\n\
+\t\t\t\tvertices[ idx ].copy( vertex ).applyMatrix4( worldMatrix );\n\
+\n\
+\t\t\t\tv1.copy( tangent ).transformDirection( worldMatrix ).multiplyScalar( this.size );\n\
+\n\
+\t\t\t\tv1.add( vertices[ idx ] );\n\
+\t\t\t\tidx = idx + 1;\n\
+\n\
+\t\t\t\tvertices[ idx ].copy( v1 );\n\
+\t\t\t\tidx = idx + 1;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t\tthis.geometry.verticesNeedUpdate = true;\n\
+\n\
+\t\treturn this;\n\
+\n\
+\t}\n\
+\n\
+}());\n\
+\n\
+/**\n\
+ * @author mrdoob / http://mrdoob.com/\n\
+ */\n\
+\n\
+THREE.WireframeHelper = function ( object ) {\n\
+\n\
+\tvar edge = [ 0, 0 ], hash = {};\n\
+\tvar sortFunction = function ( a, b ) { return a - b };\n\
+\n\
+\tvar keys = [ 'a', 'b', 'c', 'd' ];\n\
+\tvar geometry = new THREE.Geometry();\n\
+\n\
+\tvar vertices = object.geometry.vertices;\n\
+\tvar faces = object.geometry.faces;\n\
+\n\
+\tfor ( var i = 0, l = faces.length; i < l; i ++ ) {\n\
+\n\
+\t\tvar face = faces[ i ];\n\
+\n\
+\t\tfor ( var j = 0; j < 3; j ++ ) {\n\
+\n\
+\t\t\tedge[ 0 ] = face[ keys[ j ] ];\n\
+\t\t\tedge[ 1 ] = face[ keys[ ( j + 1 ) % 3 ] ];\n\
+\t\t\tedge.sort( sortFunction );\n\
+\n\
+\t\t\tvar key = edge.toString();\n\
+\n\
+\t\t\tif ( hash[ key ] === undefined ) {\n\
+\n\
+\t\t\t\tgeometry.vertices.push( vertices[ edge[ 0 ] ] );\n\
+\t\t\t\tgeometry.vertices.push( vertices[ edge[ 1 ] ] );\n\
+\n\
+\t\t\t\thash[ key ] = true;\n\
+\n\
+\t\t\t}\n\
+\n\
+\t\t}\n\
+\n\
+\t}\n\
+\n\
+\tTHREE.Line.call( this, geometry, new THREE.LineBasicMaterial( { color: 0xffffff } ), THREE.LinePieces );\n\
+\n\
+\tthis.matrixAutoUpdate = false;\n\
+\tthis.matrixWorld = object.matrixWorld;\n\
+\n\
+};\n\
+\n\
+THREE.WireframeHelper.prototype = Object.create( THREE.Line.prototype );\n\
 \n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
-THREE.ImmediateRenderObject = function ( ) {\n\
+THREE.ImmediateRenderObject = function () {\n\
 \n\
 \tTHREE.Object3D.call( this );\n\
 \n\
@@ -38273,6 +38776,7 @@ THREE.ImmediateRenderObject = function ( ) {\n\
 };\n\
 \n\
 THREE.ImmediateRenderObject.prototype = Object.create( THREE.Object3D.prototype );\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -38350,6 +38854,7 @@ THREE.LensFlare.prototype.updateLensFlares = function () {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 \n\
 \n\
 \n\
@@ -38669,19 +39174,22 @@ THREE.MorphBlendMesh.prototype.update = function ( delta ) {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
-THREE.LensFlarePlugin = function ( ) {\n\
+THREE.LensFlarePlugin = function () {\n\
 \n\
-\tvar _gl, _renderer, _lensFlare = {};\n\
+\tvar _gl, _renderer, _precision, _lensFlare = {};\n\
 \n\
 \tthis.init = function ( renderer ) {\n\
 \n\
 \t\t_gl = renderer.context;\n\
 \t\t_renderer = renderer;\n\
+\n\
+\t\t_precision = renderer.getPrecision();\n\
 \n\
 \t\t_lensFlare.vertices = new Float32Array( 8 + 8 );\n\
 \t\t_lensFlare.faces = new Uint16Array( 6 );\n\
@@ -38736,12 +39244,12 @@ THREE.LensFlarePlugin = function ( ) {\n\
 \t\tif ( _gl.getParameter( _gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS ) <= 0 ) {\n\
 \n\
 \t\t\t_lensFlare.hasVertexTexture = false;\n\
-\t\t\t_lensFlare.program = createProgram( THREE.ShaderFlares[ \"lensFlare\" ] );\n\
+\t\t\t_lensFlare.program = createProgram( THREE.ShaderFlares[ \"lensFlare\" ], _precision );\n\
 \n\
 \t\t} else {\n\
 \n\
 \t\t\t_lensFlare.hasVertexTexture = true;\n\
-\t\t\t_lensFlare.program = createProgram( THREE.ShaderFlares[ \"lensFlareVertexTexture\" ] );\n\
+\t\t\t_lensFlare.program = createProgram( THREE.ShaderFlares[ \"lensFlareVertexTexture\" ], _precision );\n\
 \n\
 \t\t}\n\
 \n\
@@ -38829,8 +39337,8 @@ THREE.LensFlarePlugin = function ( ) {\n\
 \n\
 \t\t\ttempPosition.set( flare.matrixWorld.elements[12], flare.matrixWorld.elements[13], flare.matrixWorld.elements[14] );\n\
 \n\
-\t\t\tcamera.matrixWorldInverse.multiplyVector3( tempPosition );\n\
-\t\t\tcamera.projectionMatrix.multiplyVector3( tempPosition );\n\
+\t\t\ttempPosition.applyMatrix4( camera.matrixWorldInverse );\n\
+\t\t\ttempPosition.applyProjection( camera.projectionMatrix );\n\
 \n\
 \t\t\t// setup arrays for gl programs\n\
 \n\
@@ -38945,15 +39453,18 @@ THREE.LensFlarePlugin = function ( ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction createProgram ( shader ) {\n\
+\tfunction createProgram ( shader, precision ) {\n\
 \n\
 \t\tvar program = _gl.createProgram();\n\
 \n\
 \t\tvar fragmentShader = _gl.createShader( _gl.FRAGMENT_SHADER );\n\
 \t\tvar vertexShader = _gl.createShader( _gl.VERTEX_SHADER );\n\
 \n\
-\t\t_gl.shaderSource( fragmentShader, shader.fragmentShader );\n\
-\t\t_gl.shaderSource( vertexShader, shader.vertexShader );\n\
+\t\tvar prefix = \"precision \" + precision + \" float;\\n\
+\";\n\
+\n\
+\t\t_gl.shaderSource( fragmentShader, prefix + shader.fragmentShader );\n\
+\t\t_gl.shaderSource( vertexShader, prefix + shader.vertexShader );\n\
 \n\
 \t\t_gl.compileShader( fragmentShader );\n\
 \t\t_gl.compileShader( vertexShader );\n\
@@ -38967,11 +39478,13 @@ THREE.LensFlarePlugin = function ( ) {\n\
 \n\
 \t};\n\
 \n\
-};/**\n\
+};\n\
+\n\
+/**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
-THREE.ShadowMapPlugin = function ( ) {\n\
+THREE.ShadowMapPlugin = function () {\n\
 \n\
 \tvar _gl,\n\
 \t_renderer,\n\
@@ -38981,7 +39494,9 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 \t_projScreenMatrix = new THREE.Matrix4(),\n\
 \n\
 \t_min = new THREE.Vector3(),\n\
-\t_max = new THREE.Vector3();\n\
+\t_max = new THREE.Vector3(),\n\
+\n\
+\t_matrixPosition = new THREE.Vector3();\n\
 \n\
 \tthis.init = function ( renderer ) {\n\
 \n\
@@ -39144,7 +39659,7 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 \n\
 \t\t\t\tscene.add( light.shadowCamera );\n\
 \n\
-\t\t\t\tif ( _renderer.autoUpdateScene ) scene.updateMatrixWorld();\n\
+\t\t\t\tif ( scene.autoUpdate === true ) scene.updateMatrixWorld();\n\
 \n\
 \t\t\t}\n\
 \n\
@@ -39165,8 +39680,9 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 \t\t\tshadowMatrix = light.shadowMatrix;\n\
 \t\t\tshadowCamera = light.shadowCamera;\n\
 \n\
-\t\t\tshadowCamera.position.copy( light.matrixWorld.getPosition() );\n\
-\t\t\tshadowCamera.lookAt( light.target.matrixWorld.getPosition() );\n\
+\t\t\tshadowCamera.position.getPositionFromMatrix( light.matrixWorld );\n\
+\t\t\t_matrixPosition.getPositionFromMatrix( light.target.matrixWorld );\n\
+\t\t\tshadowCamera.lookAt( _matrixPosition );\n\
 \t\t\tshadowCamera.updateMatrixWorld();\n\
 \n\
 \t\t\tshadowCamera.matrixWorldInverse.getInverse( shadowCamera.matrixWorld );\n\
@@ -39181,12 +39697,12 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 \t\t\t\t\t\t\t  0.0, 0.0, 0.5, 0.5,\n\
 \t\t\t\t\t\t\t  0.0, 0.0, 0.0, 1.0 );\n\
 \n\
-\t\t\tshadowMatrix.multiplySelf( shadowCamera.projectionMatrix );\n\
-\t\t\tshadowMatrix.multiplySelf( shadowCamera.matrixWorldInverse );\n\
+\t\t\tshadowMatrix.multiply( shadowCamera.projectionMatrix );\n\
+\t\t\tshadowMatrix.multiply( shadowCamera.matrixWorldInverse );\n\
 \n\
 \t\t\t// update camera matrices and frustum\n\
 \n\
-\t\t\t_projScreenMatrix.multiply( shadowCamera.projectionMatrix, shadowCamera.matrixWorldInverse );\n\
+\t\t\t_projScreenMatrix.multiplyMatrices( shadowCamera.projectionMatrix, shadowCamera.matrixWorldInverse );\n\
 \t\t\t_frustum.setFromMatrix( _projScreenMatrix );\n\
 \n\
 \t\t\t// render shadow map\n\
@@ -39207,9 +39723,9 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 \n\
 \t\t\t\tif ( object.visible && object.castShadow ) {\n\
 \n\
-\t\t\t\t\tif ( ! ( object instanceof THREE.Mesh || object instanceof THREE.ParticleSystem ) || ! ( object.frustumCulled ) || _frustum.contains( object ) ) {\n\
+\t\t\t\t\tif ( ! ( object instanceof THREE.Mesh || object instanceof THREE.ParticleSystem ) || ! ( object.frustumCulled ) || _frustum.intersectsObject( object ) ) {\n\
 \n\
-\t\t\t\t\t\tobject._modelViewMatrix.multiply( shadowCamera.matrixWorldInverse, object.matrixWorld );\n\
+\t\t\t\t\t\tobject._modelViewMatrix.multiplyMatrices( shadowCamera.matrixWorldInverse, object.matrixWorld );\n\
 \n\
 \t\t\t\t\t\twebglObject.render = true;\n\
 \n\
@@ -39289,7 +39805,7 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 \n\
 \t\t\t\tif ( object.visible && object.castShadow ) {\n\
 \n\
-\t\t\t\t\tobject._modelViewMatrix.multiply( shadowCamera.matrixWorldInverse, object.matrixWorld );\n\
+\t\t\t\t\tobject._modelViewMatrix.multiplyMatrices( shadowCamera.matrixWorldInverse, object.matrixWorld );\n\
 \n\
 \t\t\t\t\t_renderer.renderImmediateObject( shadowCamera, scene.__lights, fog, _depthMaterial, object );\n\
 \n\
@@ -39420,7 +39936,7 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 \t\t\tp.copy( pointsFrustum[ i ] );\n\
 \t\t\tTHREE.ShadowMapPlugin.__projector.unprojectVector( p, camera );\n\
 \n\
-\t\t\tshadowCamera.matrixWorldInverse.multiplyVector3( p );\n\
+\t\t\tp.applyMatrix4( shadowCamera.matrixWorldInverse );\n\
 \n\
 \t\t\tif ( p.x < _min.x ) _min.x = p.x;\n\
 \t\t\tif ( p.x > _max.x ) _max.x = p.x;\n\
@@ -39460,19 +39976,22 @@ THREE.ShadowMapPlugin = function ( ) {\n\
 };\n\
 \n\
 THREE.ShadowMapPlugin.__projector = new THREE.Projector();\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
-THREE.SpritePlugin = function ( ) {\n\
+THREE.SpritePlugin = function () {\n\
 \n\
-\tvar _gl, _renderer, _sprite = {};\n\
+\tvar _gl, _renderer, _precision, _sprite = {};\n\
 \n\
 \tthis.init = function ( renderer ) {\n\
 \n\
 \t\t_gl = renderer.context;\n\
 \t\t_renderer = renderer;\n\
+\n\
+\t\t_precision = renderer.getPrecision();\n\
 \n\
 \t\t_sprite.vertices = new Float32Array( 8 + 8 );\n\
 \t\t_sprite.faces    = new Uint16Array( 6 );\n\
@@ -39505,7 +40024,7 @@ THREE.SpritePlugin = function ( ) {\n\
 \t\t_gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, _sprite.elementBuffer );\n\
 \t\t_gl.bufferData( _gl.ELEMENT_ARRAY_BUFFER, _sprite.faces, _gl.STATIC_DRAW );\n\
 \n\
-\t\t_sprite.program = createProgram( THREE.ShaderSprite[ \"sprite\" ] );\n\
+\t\t_sprite.program = createProgram( THREE.ShaderSprite[ \"sprite\" ], _precision );\n\
 \n\
 \t\t_sprite.attributes = {};\n\
 \t\t_sprite.uniforms = {};\n\
@@ -39625,7 +40144,7 @@ THREE.SpritePlugin = function ( ) {\n\
 \n\
 \t\t\tif ( ! material.useScreenCoordinates ) {\n\
 \n\
-\t\t\t\tsprite._modelViewMatrix.multiply( camera.matrixWorldInverse, sprite.matrixWorld );\n\
+\t\t\t\tsprite._modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, sprite.matrixWorld );\n\
 \t\t\t\tsprite.z = - sprite._modelViewMatrix.elements[ 14 ];\n\
 \n\
 \t\t\t} else {\n\
@@ -39724,15 +40243,18 @@ THREE.SpritePlugin = function ( ) {\n\
 \n\
 \t};\n\
 \n\
-\tfunction createProgram ( shader ) {\n\
+\tfunction createProgram ( shader, precision ) {\n\
 \n\
 \t\tvar program = _gl.createProgram();\n\
 \n\
 \t\tvar fragmentShader = _gl.createShader( _gl.FRAGMENT_SHADER );\n\
 \t\tvar vertexShader = _gl.createShader( _gl.VERTEX_SHADER );\n\
 \n\
-\t\t_gl.shaderSource( fragmentShader, shader.fragmentShader );\n\
-\t\t_gl.shaderSource( vertexShader, shader.vertexShader );\n\
+\t\tvar prefix = \"precision \" + precision + \" float;\\n\
+\";\n\
+\n\
+\t\t_gl.shaderSource( fragmentShader, prefix + shader.fragmentShader );\n\
+\t\t_gl.shaderSource( vertexShader, prefix + shader.vertexShader );\n\
 \n\
 \t\t_gl.compileShader( fragmentShader );\n\
 \t\t_gl.compileShader( vertexShader );\n\
@@ -39761,11 +40283,12 @@ THREE.SpritePlugin = function ( ) {\n\
 \t};\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author alteredq / http://alteredqualia.com/\n\
  */\n\
 \n\
-THREE.DepthPassPlugin = function ( ) {\n\
+THREE.DepthPassPlugin = function () {\n\
 \n\
 \tthis.enabled = false;\n\
 \tthis.renderTarget = null;\n\
@@ -39824,13 +40347,13 @@ THREE.DepthPassPlugin = function ( ) {\n\
 \n\
 \t\t// update scene\n\
 \n\
-\t\tif ( _renderer.autoUpdateScene ) scene.updateMatrixWorld();\n\
+\t\tif ( scene.autoUpdate === true ) scene.updateMatrixWorld();\n\
 \n\
 \t\t// update camera matrices and frustum\n\
 \n\
 \t\tcamera.matrixWorldInverse.getInverse( camera.matrixWorld );\n\
 \n\
-\t\t_projScreenMatrix.multiply( camera.projectionMatrix, camera.matrixWorldInverse );\n\
+\t\t_projScreenMatrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );\n\
 \t\t_frustum.setFromMatrix( _projScreenMatrix );\n\
 \n\
 \t\t// render depth map\n\
@@ -39851,9 +40374,9 @@ THREE.DepthPassPlugin = function ( ) {\n\
 \n\
 \t\t\tif ( object.visible ) {\n\
 \n\
-\t\t\t\tif ( ! ( object instanceof THREE.Mesh || object instanceof THREE.ParticleSystem ) || ! ( object.frustumCulled ) || _frustum.contains( object ) ) {\n\
+\t\t\t\tif ( ! ( object instanceof THREE.Mesh || object instanceof THREE.ParticleSystem ) || ! ( object.frustumCulled ) || _frustum.intersectsObject( object ) ) {\n\
 \n\
-\t\t\t\t\tobject._modelViewMatrix.multiply( camera.matrixWorldInverse, object.matrixWorld );\n\
+\t\t\t\t\tobject._modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );\n\
 \n\
 \t\t\t\t\twebglObject.render = true;\n\
 \n\
@@ -39930,7 +40453,7 @@ THREE.DepthPassPlugin = function ( ) {\n\
 \n\
 \t\t\tif ( object.visible ) {\n\
 \n\
-\t\t\t\tobject._modelViewMatrix.multiply( camera.matrixWorldInverse, object.matrixWorld );\n\
+\t\t\t\tobject._modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );\n\
 \n\
 \t\t\t\t_renderer.renderImmediateObject( camera, scene.__lights, fog, _depthMaterial, object );\n\
 \n\
@@ -39961,9 +40484,9 @@ THREE.DepthPassPlugin = function ( ) {\n\
 \n\
 };\n\
 \n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
- *\n\
  */\n\
 \n\
 THREE.ShaderFlares = {\n\
@@ -39972,10 +40495,11 @@ THREE.ShaderFlares = {\n\
 \n\
 \t\tvertexShader: [\n\
 \n\
+\t\t\t\"uniform lowp int renderType;\",\n\
+\n\
 \t\t\t\"uniform vec3 screenPosition;\",\n\
 \t\t\t\"uniform vec2 scale;\",\n\
 \t\t\t\"uniform float rotation;\",\n\
-\t\t\t\"uniform int renderType;\",\n\
 \n\
 \t\t\t\"uniform sampler2D occlusionMap;\",\n\
 \n\
@@ -39993,20 +40517,20 @@ THREE.ShaderFlares = {\n\
 \n\
 \t\t\t\t\"if( renderType == 2 ) {\",\n\
 \n\
-\t\t\t\t\t\"vec4 visibility = texture2D( occlusionMap, vec2( 0.1, 0.1 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.5, 0.1 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.9, 0.1 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.9, 0.5 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.9, 0.9 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.5, 0.9 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.1, 0.9 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.1, 0.5 ) ) +\",\n\
-\t\t\t\t\t\t\t\t\t  \"texture2D( occlusionMap, vec2( 0.5, 0.5 ) );\",\n\
+\t\t\t\t\t\"vec4 visibility = texture2D( occlusionMap, vec2( 0.1, 0.1 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.5, 0.1 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.9, 0.1 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.9, 0.5 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.9, 0.9 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.5, 0.9 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.1, 0.9 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.1, 0.5 ) );\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.5, 0.5 ) );\",\n\
 \n\
-\t\t\t\t\t\"vVisibility = (       visibility.r / 9.0 ) *\",\n\
-\t\t\t\t\t\t\t\t  \"( 1.0 - visibility.g / 9.0 ) *\",\n\
-\t\t\t\t\t\t\t\t  \"(       visibility.b / 9.0 ) *\",\n\
-\t\t\t\t\t\t\t\t  \"( 1.0 - visibility.a / 9.0 );\",\n\
+\t\t\t\t\t\"vVisibility =        visibility.r / 9.0;\",\n\
+\t\t\t\t\t\"vVisibility *= 1.0 - visibility.g / 9.0;\",\n\
+\t\t\t\t\t\"vVisibility *=       visibility.b / 9.0;\",\n\
+\t\t\t\t\t\"vVisibility *= 1.0 - visibility.a / 9.0;\",\n\
 \n\
 \t\t\t\t\t\"pos.x = cos( rotation ) * position.x - sin( rotation ) * position.y;\",\n\
 \t\t\t\t\t\"pos.y = sin( rotation ) * position.x + cos( rotation ) * position.y;\",\n\
@@ -40022,11 +40546,10 @@ THREE.ShaderFlares = {\n\
 \n\
 \t\tfragmentShader: [\n\
 \n\
-\t\t\t\"precision mediump float;\",\n\
+\t\t\t\"uniform lowp int renderType;\",\n\
 \n\
 \t\t\t\"uniform sampler2D map;\",\n\
 \t\t\t\"uniform float opacity;\",\n\
-\t\t\t\"uniform int renderType;\",\n\
 \t\t\t\"uniform vec3 color;\",\n\
 \n\
 \t\t\t\"varying vec2 vUV;\",\n\
@@ -40068,10 +40591,11 @@ THREE.ShaderFlares = {\n\
 \n\
 \t\tvertexShader: [\n\
 \n\
+\t\t\t\"uniform lowp int renderType;\",\n\
+\n\
 \t\t\t\"uniform vec3 screenPosition;\",\n\
 \t\t\t\"uniform vec2 scale;\",\n\
 \t\t\t\"uniform float rotation;\",\n\
-\t\t\t\"uniform int renderType;\",\n\
 \n\
 \t\t\t\"attribute vec2 position;\",\n\
 \t\t\t\"attribute vec2 uv;\",\n\
@@ -40102,10 +40626,11 @@ THREE.ShaderFlares = {\n\
 \n\
 \t\t\t\"precision mediump float;\",\n\
 \n\
+\t\t\t\"uniform lowp int renderType;\",\n\
+\n\
 \t\t\t\"uniform sampler2D map;\",\n\
 \t\t\t\"uniform sampler2D occlusionMap;\",\n\
 \t\t\t\"uniform float opacity;\",\n\
-\t\t\t\"uniform int renderType;\",\n\
 \t\t\t\"uniform vec3 color;\",\n\
 \n\
 \t\t\t\"varying vec2 vUV;\",\n\
@@ -40128,11 +40653,10 @@ THREE.ShaderFlares = {\n\
 \n\
 \t\t\t\t\"} else {\",\n\
 \n\
-\t\t\t\t\t\"float visibility = texture2D( occlusionMap, vec2( 0.5, 0.1 ) ).a +\",\n\
-\t\t\t\t\t\t\t\t\t   \"texture2D( occlusionMap, vec2( 0.9, 0.5 ) ).a +\",\n\
-\t\t\t\t\t\t\t\t\t   \"texture2D( occlusionMap, vec2( 0.5, 0.9 ) ).a +\",\n\
-\t\t\t\t\t\t\t\t\t   \"texture2D( occlusionMap, vec2( 0.1, 0.5 ) ).a;\",\n\
-\n\
+\t\t\t\t\t\"float visibility = texture2D( occlusionMap, vec2( 0.5, 0.1 ) ).a;\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.9, 0.5 ) ).a;\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.5, 0.9 ) ).a;\",\n\
+\t\t\t\t\t\"visibility += texture2D( occlusionMap, vec2( 0.1, 0.5 ) ).a;\",\n\
 \t\t\t\t\t\"visibility = ( 1.0 - visibility / 4.0 );\",\n\
 \n\
 \t\t\t\t\t\"vec4 texture = texture2D( map, vUV );\",\n\
@@ -40150,6 +40674,7 @@ THREE.ShaderFlares = {\n\
 \t}\n\
 \n\
 };\n\
+\n\
 /**\n\
  * @author mikael emtinger / http://gomo.se/\n\
  * @author alteredq / http://alteredqualia.com/\n\
@@ -40210,8 +40735,6 @@ THREE.ShaderSprite = {\n\
 \n\
 \t\tfragmentShader: [\n\
 \n\
-\t\t\t\"precision mediump float;\",\n\
-\n\
 \t\t\t\"uniform vec3 color;\",\n\
 \t\t\t\"uniform sampler2D map;\",\n\
 \t\t\t\"uniform float opacity;\",\n\
@@ -40261,7 +40784,8 @@ THREE.ShaderSprite = {\n\
 \n\
 \t}\n\
 \n\
-};//@ sourceURL=cvdlab-three/index.js"
+};\n\
+//@ sourceURL=cvdlab-three/index.js"
 ));
 require.register("cvdlab-three-detector/index.js", Function("exports, require, module",
 "exports.canvas = !!window.CanvasRenderingContext2D,\n\
@@ -42532,20 +43056,20 @@ fun.TRANSLATE = function (dims) {\n\
 fun.STRUCT = function (items) {\n\
   var transformations = function (o) {return o;};\n\
   var objects = [];\n\
-\n\
-  temp = [];\n\
+  // var temp = [];\n\
 \n\
   items.forEach(function (item) {\n\
     if (!(item instanceof plasm.Model) && \n\
         !(item instanceof plasm.Struct)) {\n\
       transformations = COMP2([transformations, item]);\n\
     } else {\n\
-      temexports.push(APPLY([transformations, item]).clone());\n\
+    //  temp.push(APPLY([transformations, item]).clone());\n\
       objects.push(APPLY([transformations, item]));\n\
     }\n\
   });\n\
 \n\
-  return new plasm.Struct(objects, p);\n\
+//  return new plasm.Struct(objects, temp);\n\
+    return new plasm.Struct(objects);\n\
 };\n\
 \n\
 /**\n\
@@ -43562,8 +44086,8 @@ fun.COONS_PATCH = function (args) {\n\
   var s1vFn = args[3];\n\
 \n\
   return function (point) {\n\
-    u = point[0];\n\
-    v = point[1];\n\
+    var u = point[0];\n\
+    var v = point[1];\n\
 \n\
     var s00 = su0Fn([0,0]);\n\
     var s01 = s0vFn([0,1]);\n\
@@ -43759,9 +44283,9 @@ fun.TRIANGULAR_COONS_PATCH = function (args) {\n\
   var ca0Fn = args[2];\n\
 \n\
   return function (point) {\n\
-    u = point[0];\n\
-    v = point[1];\n\
-    w = point[2];\n\
+    var u = point[0];\n\
+    var v = point[1];\n\
+    var w = point[2];\n\
 \n\
     var Sab0 = ab0Fn instanceof Function ? ab0Fn(point) : ab0Fn;\n\
     var Sbc1 = bc1Fn instanceof Function ? bc1Fn(point) : bc1Fn;\n\
@@ -43808,7 +44332,7 @@ fun.INTERP_P2P = function (sel) {\n\
         var P2 = args[1];\n\
 \n\
         return function (point) {\n\
-            u = sel(point);\n\
+            var u = sel(point);\n\
 \n\
       var mapped = new Array(3);\n\
 var i;\n\
@@ -43825,7 +44349,7 @@ fun.INTERP_P2C = function (sel) {\n\
         var C1 = args[1];\n\
 \n\
         return function (point) {\n\
-            v = sel(point);\n\
+            var v = sel(point);\n\
             var C1u = C1(point);\n\
 \n\
 var mapped = new Array(3);\n\
@@ -43843,7 +44367,7 @@ fun.INTERP_P2S = function (sel) {\n\
         var S1 = args[1];\n\
 \n\
         return function (point) {\n\
-            z = sel(point);\n\
+            var z = sel(point);\n\
             var S1uv = S1(point);\n\
 \n\
       var mapped = new Array(3);\n\
@@ -43861,7 +44385,7 @@ fun.INTERP_C2C = function (sel) {\n\
         var C2 = args[1];\n\
 \n\
         return function (point) {\n\
-            v = sel(point);\n\
+            var v = sel(point);\n\
             var C1u = C1(point);\n\
             var C2u = C2(point);\n\
 \n\
@@ -43880,7 +44404,7 @@ fun.INTERP_C2S = function (sel) {\n\
         var S1 = args[1];\n\
 \n\
         return function (point) {\n\
-            z = sel(point);\n\
+            var z = sel(point);\n\
             var C1u = C1(point);\n\
             var S1uv = S1(point);\n\
 \n\
@@ -43899,7 +44423,7 @@ fun.INTERP_S2S = function (sel) {\n\
         var S2 = args[1];\n\
 \n\
         return function (point) {\n\
-            z = sel(point);\n\
+            var z = sel(point);\n\
             var S1uv = S1(point);\n\
             var S2uv = S2(point);\n\
 \n\

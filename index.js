@@ -13,12 +13,15 @@ var path_color = [0.05,0.75,0];
 var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
 var equipment_quote = [20];
+var code_color = [0.15,0.15,0.15];
+var code_quote = [1];
 
 var g = new Graph(graph);
 var current_path = null;
 
 draw_walls(walls);
 draw_equipments(equipments);
+var model_qr_code = draw_qr_code(qr_code);
 // draw_graph(graph);
 
 button_run.click(function (event){
@@ -108,6 +111,28 @@ function draw_equipments (equipments) {
     model.color(color);
     DRAW(model);
   } 
+}
+
+function draw_qr_code (qr_code) {
+  var id;
+  var code;
+  var shape;
+  var pixels = [];
+  var pixel;
+  var type;
+  var color;
+  for (id in qr_code) {
+    code = qr_code[id];
+    color = code.color || code_color;
+    pixel = CUBOID(code.dim);
+    pixel.translate([0,1], code.pos);
+    pixel = pixel.extrude(code_quote);
+    pixel.color(color);
+    pixels.push(pixel);
+  } 
+  var model = STRUCT(pixels);
+  DRAW(model);
+  return model;
 }
 
 function color_graph () {
