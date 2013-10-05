@@ -1,9 +1,0 @@
-{
-  "styles": [
-    "style.css"
-  ],
-  "dependencies": {
-    "cvdlab/plasm-fun": "*",
-    "component/jquery": "*"
-  }
-}
