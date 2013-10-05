@@ -79,7 +79,7 @@ function draw_walls (walls) {
   for (id in walls) {
     wall = walls[id];
     color = wall.color || wall_color;
-    polyline = POLYFILL(wall.points);
+    polyline = POLYFILL(2)(wall.points);
     polyline.color(color);
     polyline = polyline.extrude(wall_quote);
     DRAW(polyline);
