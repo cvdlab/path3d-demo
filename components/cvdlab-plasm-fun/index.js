@@ -185,7 +185,6 @@ fun.STRUCT = function (items) {
         !(item instanceof plasm.Struct)) {
       transformations = COMP2([transformations, item]);
     } else {
-      temexports.push(APPLY([transformations, item]).clone());
       objects.push(APPLY([transformations, item]));
     }
   });
