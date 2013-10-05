@@ -1,7 +1,3 @@
-var PLASM = require('cvdlab-plasm-fun');
-PLASM('plasm').globalize();
-
-var $ = require('jquery');
 
 var input_from = $('[name="from"]');
 var input_to = $('[name="to"]');
@@ -38,10 +34,7 @@ function draw_path (path) {
   var points = path.map(function (id) {
     return graph[id].pos;
   });
-  // var polyline = POLYLINE(points);
-  
-  var domain = INTERVALS(1)(20);
-  var polyline = SPLINE(CUBIC_CARDINAL(domain))(points);
+  var polyline = navigator(2)(points);
   
   polyline.color(path_color);
   DRAW(polyline);
@@ -130,33 +123,3 @@ function color_graph () {
 }
 
 // color_graph();
-
-function VECTDIFF (arg) {
-  var v1 = arg[0];
-  var v2 = arg[1];
-  var res = [];
-  
-  v1.forEach(function (v, i) {
-    res[i] = v - v2[i];
-  });
-
-  return res;
-}
-
-function navigator (r) {
-  function nav0(polyline) {
-    var circle = CIRCLE(r)([24,1]);
-    var square = [[0,0],[1,0],[1,1],[0,1]];
-    var fun = function (p) { return T([1,2])(p)(circle) };
-    var balls = AA(fun)(polyline);
-    var lines = [];
-    var l;
-    for (l = 1; l < polyline.length; l += 1) {
-      lines[l-1] = [polyline[l], polyline[l-1]];
-    }
-    var tangents = AA(VECTDIFF)(lines);
-    var out = [];
-    
-  }
-}
-
