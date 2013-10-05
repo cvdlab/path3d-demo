@@ -38,7 +38,7 @@ function draw_path (path) {
     return graph[id].pos;
   });
 
-  var polyline = navigator(2)(points);
+  var polyline = navigator(3)(points);
   // var polyline = POLYLINE(points);
   
   polyline.color(path_color);
@@ -79,7 +79,7 @@ function draw_walls (walls) {
   for (id in walls) {
     wall = walls[id];
     color = wall.color || wall_color;
-    polyline = POLYLINE(wall.points);
+    polyline = POLYFILL(wall.points);
     polyline.color(color);
     polyline = polyline.extrude(wall_quote);
     DRAW(polyline);

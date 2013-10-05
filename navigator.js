@@ -72,40 +72,76 @@ function balls(points, r) {
 }
     
 function navigator (r) {
-  function nav0(polyline) {
-    
-    var square = [[0,0],[1,0],[1,1],[0,1]];
-    var square_T = numeric.transpose(square);
-    var lines = [];
-    var l;
-    for (l = 1; l < polyline.length; l += 1) {
-      lines[l-1] = [polyline[l], polyline[l-1]];
+    function nav0(polyline) {
+        
+        var square = [[0,0],[1,0],[1,1],[0,1]];
+        var square_T = numeric.transpose(square);
+        var lines = [];
+        var l;
+        for (l = 1; l < polyline.length; l += 1) {
+            lines[l-1] = [polyline[l], polyline[l-1]];
+        }
+        var tangents = AA(VECTDIFF)(lines);
+        var out = [];
+        var models= [];
+        var length = tangents.length;
+        var i, p, v, size, scaling, rotation, q, rect, joint, final_add, final_diff;
+        for (i = 0; i < length; i +=1) {
+            p = polyline[i];
+            v = tangents[i];
+            vx = v[0];
+            vy = v[1];
+            size = VECTNORM(v);
+            scaling = [[size,0.0],[0.0,2*r]];
+            rotation = [[vx/size,vy/size],[vy/size,-vx/size]];
+            q = numeric.dot(rotation, scaling);
+            rect = numeric.transpose(numeric.dot(q, square_T));
+            joint = numeric.transpose(numeric.dot(q, [[0],[0.5]]))[0];
+            final_add = MATRIXADD(rect, p);
+            final_diff = MATRIXDIFF(final_add,joint);
+            out.push(final_diff);
+        }
+        Array.prototype.push.apply(models, balls(polyline, r));
+        Array.prototype.push.apply(models, AA(trianglePair)(out));
+        return STRUCT(models);
     }
-    var tangents = AA(VECTDIFF)(lines);
-    var out = [];
-    var models= [];
-    var length = tangents.length;
-    var i, p, v, size, scaling, rotation, q, rect, joint, final_add, final_diff;
-    for (i = 0; i < length; i +=1) {
-      p = polyline[i];
-      v = tangents[i];
-      vx = v[0];
-      vy = v[1];
-      size = VECTNORM(v);
-      scaling = [[size,0.0],[0.0,2*r]];
-      rotation = [[vx/size,vy/size],[vy/size,-vx/size]];
-      q = numeric.dot(rotation, scaling);
-      rect = numeric.transpose(numeric.dot(q, square_T));
-      joint = numeric.transpose(numeric.dot(q, [[0],[0.5]]))[0];
-      final_add = MATRIXADD(rect, p);
-      final_diff = MATRIXDIFF(final_add,joint);
-      out.push(final_diff);
+    return nav0;
+}
+
+function POLYFILL (r) {
+    function POLYFILL0(polyline) {
+        
+        var square = [[0,0],[1,0],[1,1],[0,1]];
+        var square_T = numeric.transpose(square);
+        var lines = [];
+        var l;
+        for (l = 1; l < polyline.length; l += 1) {
+            lines[l-1] = [polyline[l], polyline[l-1]];
+        }
+        var tangents = AA(VECTDIFF)(lines);
+        var out = [];
+        var models= [];
+        var length = tangents.length;
+        var i, p, v, size, scaling, rotation, q, rect, final_add;
+        for (i = 0; i < length; i +=1) {
+            p = polyline[i];
+            v = tangents[i];
+            vx = v[0];
+            vy = v[1];
+            size = VECTNORM(v);
+            if (size != 0.0) {
+                scaling = [[size,0.0],[0.0,r]];
+                rotation = [[vx/size,vy/size],[vy/size,-vx/size]];
+                q = numeric.dot(rotation, scaling);
+                rect = numeric.transpose(numeric.dot(q, square_T));
+                final_add = MATRIXADD(rect, p);
+                out.push(final_add);
+            }
+        }
+        Array.prototype.push.apply(models, AA(trianglePair)(out));
+        return STRUCT(models);
     }
-    Array.prototype.push.apply(models, balls(polyline, r));
-    Array.prototype.push.apply(models, AA(trianglePair)(out));
-    return STRUCT(models);
-  }
-  return nav0;
+    return POLYFILL0;
 }
 
 /**
