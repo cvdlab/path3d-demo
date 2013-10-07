@@ -8,7 +8,7 @@ var wall_quote = [30];
 var path_color = [0.85,0.05,0];
 var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
-var equipment_quote = [20];
+var equipment_quote = [5];
 var code_color = [0.15,0.15,0.15];
 var code_quote = [1];
 
@@ -17,7 +17,7 @@ var current_path = null;
 
 draw_walls(walls);
 draw_equipments(equipments);
-var model_qr_code = draw_qr_code(qr_code);
+// var model_qr_code = draw_qr_code(qr_code);
 // draw_graph(graph);
 
 button_run.click(function (event){
@@ -38,13 +38,15 @@ function draw_path (path) {
     return graph[id].pos;
   });
 
-  var polyline = navigator(3)(points);
+  var domain = INTERVALS(1)(20);
+  var spline = SPLINE(CUBIC_UBSPLINE(domain))(points);
+  var path = navigator(3)(SPLINE_TO_POINTS(spline));
   // var polyline = POLYLINE(points);
   
-  polyline.color(path_color);
-  DRAW(polyline);
-  current_path = polyline;
-  return polyline;
+  path.color(path_color);
+  DRAW(path);
+  current_path = path;
+  return path;
 }
 
 function draw_graph (graph) {
@@ -101,7 +103,7 @@ function draw_equipments (equipments) {
     } else {
       model = CUBOID(equipment.dim);
     }
-    model.translate([0,1], equipment.pos);
+    model.translate([0,1,2], equipment.pos);
     model = model.extrude(equipment_quote);
     model.color(color);
     DRAW(model);
