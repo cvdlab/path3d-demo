@@ -108,6 +108,29 @@ function navigator (r) {
     return nav0;
 }
 
+function EXTRACT_POINTS (struct) {
+  var points = [];
+
+  struct.models.forEach(function (model) {
+    Array.prototype.push.apply(points, model.complex.pointset.points);
+  });
+
+  return points;
+}
+
+function SPLINE_TO_POINTS (path) {
+  var points = EXTRACT_POINTS(path);
+  var n = points.length / 2;
+  var couples = [];
+  var i;
+
+  for (i = 0; i < n; i += 1) {
+    couples.push([points[2*i], points[2*i+1]]);
+  }
+
+  return couples;
+}
+
 function POLYFILL (r) {
     function POLYFILL0(polyline) {
         
