@@ -14,6 +14,7 @@ var code_quote = [1];
 
 var g = new Graph(graph);
 var current_path = null;
+var current_spline = null;
 
 draw_walls(walls);
 draw_equipments(equipments);
@@ -46,6 +47,7 @@ function draw_path (path) {
   path.color(path_color);
   DRAW(path);
   current_path = path;
+  current_spline = spline;
   return path;
 }
 
@@ -152,3 +154,37 @@ function color_graph () {
 }
 
 // color_graph();
+p.controls.update = function () {};
+
+var camera = p.camera.optics;
+var i = 0;
+var points = [];
+var n;
+var n_steps = 10000;
+
+var move = function () {
+  var x0 = points[i];
+  var y0 = points[i+1];
+  var x1 = points[i+2];
+  var y1 = points[i+3];
+
+  if (!x1) {
+    window.clearInterval(move);
+    return;
+  }
+
+  i+=4;
+  camera.up.set(0,0,1);
+  camera.position.set(x0, y0, 10);
+  camera.lookAt(new THREE.Vector3(x1, y1, 10));
+};
+
+var start = function () {
+  points = EXTRACT_POINTS(current_spline);
+  n = points.length;
+  camera.up.set(0,0,1);
+  move();
+}
+var go = function () {
+  window.setInterval(move, 60);
+};
