@@ -17,7 +17,7 @@ var current_path = null;
 
 draw_walls(walls);
 draw_equipments(equipments);
-var model_qr_code = draw_qr_code(qr_code);
+// var model_qr_code = draw_qr_code(qr_code);
 // draw_graph(graph);
 
 button_run.click(function (event){
@@ -25,9 +25,9 @@ button_run.click(function (event){
   var from = input_from.val();
   var to = input_to.val();
   // var path = g.min_path(from, to);
-  var path = g.findShortestPath(from, to);
+  var min_path = g.findShortestPath(from, to);
 
-  draw_path(path);
+  draw_path(min_path);
 });
 
 function draw_path (path) {
@@ -38,8 +38,11 @@ function draw_path (path) {
     return graph[id].pos;
   });
 
-  var polyline = navigator(3)(points);
+  // var polyline = navigator(3)(points);
   // var polyline = POLYLINE(points);
+  
+  var domain = INTERVALS(1)(20);
+  var polyline = SPLINE(CUBIC_UBSPLINE(domain))(points);
   
   polyline.color(path_color);
   DRAW(polyline);
