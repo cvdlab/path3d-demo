@@ -2,6 +2,7 @@
 var input_from = $('[name="from"]');
 var input_to = $('[name="to"]');
 var button_run = $('.run');
+var button_nav = $('.nav');
 
 var wall_color = [0.25,0.25,0.25,0.5];
 var wall_quote = [30];
@@ -32,6 +33,11 @@ button_run.click(function (event){
   var min_path = g.findShortestPath(from, to);
 
   draw_path(min_path);
+});
+
+button_nav.click(function (event) {
+  event.preventDefault();
+  nav();
 });
 
 function draw_path (path) {
@@ -173,37 +179,45 @@ function color_graph () {
 }
 
 // color_graph();
-p.controls.update = function () {};
 
-var camera = p.camera.optics;
-var i = 0;
-var points = [];
-var n;
-var n_steps = 10000;
+function nav () {
+  if (current_spline) {
+    p.controls.update = function () {};
 
-var move = function () {
-  var x0 = points[i];
-  var y0 = points[i+1];
-  var x1 = points[i+2];
-  var y1 = points[i+3];
+    var camera = p.camera.optics;
+    var i = 0;
+    var points = [];
+    var n;
+    var n_steps = 10000;
 
-  if (!x1) {
-    window.clearInterval(move);
-    return;
-  }
+    var move = function () {
+      var x0 = points[i];
+      var y0 = points[i+1];
+      var x1 = points[i+2];
+      var y1 = points[i+3];
 
-  i+=4;
-  camera.up.set(0,0,1);
-  camera.position.set(x0, y0, 10);
-  camera.lookAt(new THREE.Vector3(x1, y1, 10));
-};
+      if (!x1) {
+        window.clearInterval(move);
+        return;
+      }
 
-var start = function () {
-  points = EXTRACT_POINTS(current_spline);
-  n = points.length;
-  camera.up.set(0,0,1);
-  move();
+      i+=4;
+      camera.up.set(0,0,1);
+      camera.position.set(x0, y0, 10);
+      camera.lookAt(new THREE.Vector3(x1, y1, 10));
+    };
+
+    var start = function () {
+      points = EXTRACT_POINTS(current_spline);
+      n = points.length;
+      camera.up.set(0,0,1);
+      move();
+    }
+    var go = function () {
+      window.setInterval(move, 60);
+    };
+  
+    start();
+    go();
+  };
 }
-var go = function () {
-  window.setInterval(move, 60);
-};
