@@ -9,7 +9,7 @@ var wall_quote = [30];
 var path_color = [0.85,0.05,0];
 var graph_color = [0.25,0.25,0.75];
 var equipment_color = [0.25,0.25,0.75];
-var equipment_quote = [7];
+var equipment_quote = [7-0.5];
 var code_color = [1,1,1];
 var code_quote = [1];
 var qrcode_void_color = [2,2,2];
@@ -21,7 +21,7 @@ var current_spline = null;
 
 draw_walls(walls);
 draw_equipments(equipments);
-draw_qrcodes_void(qrcodes_void);
+draw_qrcodes_void(qrcodes_void,equipments);
 // var model_qr_code = draw_qr_code(qr_code);
 // draw_graph(graph);
 
@@ -143,19 +143,26 @@ function draw_qr_code (qr_code) {
   return model;
 }
 
-function draw_qrcodes_void (qrcodes_void) {
+function draw_qrcodes_void (qrcodes_void,equipments) {
   var id;
   var code;
   var model;
+  var model1;
+  var equipment;
   var type;
   var color;
   for (id in qrcodes_void) {
     qrcode = qrcodes_void[id];
+    equipment = equipments[id];
     color = qrcode.col || qrcode_void_color;
     model = CUBOID(qrcode.dim);
     model.translate([0,1,2], qrcode.pos);
     model.color(color);
     DRAW(model);
+    model1 = model.clone();
+    t = equipment.dim
+    model1.translate([0,1,2], [t[0]-1.8,t[1]-1.8,t[2]-1.8]);
+    DRAW(model1); 
   } 
 }
 
