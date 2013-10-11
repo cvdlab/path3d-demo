@@ -1,4 +1,35 @@
 
+var raf = (function () {
+  var raf = window.requestAnimationFrame
+  || window.webkitRequestAnimationFrame
+  || window.mozRequestAnimationFrame
+  || window.oRequestAnimationFrame
+  || window.msRequestAnimationFrame
+  || fallback;
+
+  var prev = new Date().getTime();
+  var fallback = function (fn) {
+    var curr = new Date().getTime();
+    var ms = Math.max(0, 16 - (curr - prev));
+    setTimeout(fn, ms);
+    prev = curr;
+  };
+
+  return raf;
+}());
+
+var caf = (function () {
+  var caf = window.cancelAnimationFrame
+    || window.webkitCancelAnimationFrame
+    || window.mozCancelAnimationFrame
+    || window.oCancelAnimationFrame
+    || window.msCancelAnimationFrame;
+
+  return function(id){
+    caf.call(window, id);
+  };
+}());
+
 var input_from = $('[name="from"]');
 var input_to = $('[name="to"]');
 var button_run = $('.run');
@@ -214,28 +245,38 @@ function color_graph () {
 function nav () {
   if (current_spline) {
     p.controls.update = function () {};
-
+    var epsilon = 0.5;
     var camera = p.camera.optics;
     var i = 0;
     var points = [];
     var n;
     var n_steps = 10000;
+    var target = new THREE.Vector3(0,0,10);
+    var sqrt = Math.sqrt;
+    var pow = Math.pow;
+    var dist = function (x0,y0,x1,y1) {
+      return sqrt(pow(x1-x0,2) - pow(y1-y0,2));
+    };
 
     var move = function () {
       var x0 = points[i];
       var y0 = points[i+1];
-      var x1 = points[i+2];
-      var y1 = points[i+3];
+      var x1 = points[i+6];
+      var y1 = points[i+6+1];
+
+      i+=6;
 
       if (!x1) {
-        window.clearInterval(move);
         return;
       }
 
-      i+=4;
-      camera.up.set(0,0,1);
+      target.set(x1, y1, 10);
+      camera.lookAt(target);
+      if (dist(x0,y0,x1,y1) < epsilon) {
+        console.log(x0,y0,x1,y1);   
+        return;
+      }
       camera.position.set(x0, y0, 10);
-      camera.lookAt(new THREE.Vector3(x1, y1, 10));
     };
 
     var start = function () {
@@ -243,11 +284,14 @@ function nav () {
       n = points.length;
       camera.up.set(0,0,1);
       move();
-    }
-    var go = function () {
-      window.setInterval(move, 60);
+      camera.up.set(0,0,1);
     };
-  
+
+    function go() {
+      raf(go);
+      move();
+    }
+
     start();
     go();
   };

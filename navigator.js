@@ -110,12 +110,42 @@ function navigator (r) {
 
 function EXTRACT_POINTS (struct) {
   var points = [];
+  var filtered = [];
 
   struct.models.forEach(function (model) {
     Array.prototype.push.apply(points, model.complex.pointset.points);
   });
 
-  return points;
+  var pow = Math.pow;
+  var sqrt = Math.sqrt;
+  var dist = function (x0,y0,x1,y1) {
+    return sqrt(pow(x1-x0,2) - pow(y1-y0,2));
+  };
+  var epsilon = 0.2;
+
+  var x0 = points[0];
+  var y0 = points[1];
+  var x1;
+  var y1;
+  var i = 0;
+  var n = points.length;
+
+  filtered.push(x0);
+  filtered.push(y0);
+  for (i = 2; i < n; i+=2) {
+    x1 = points[i];
+    y1 = points[i+1];
+    if (dist(x0,y0,x1,y1) < epsilon) {
+      continue;
+    }
+    x0 = x1;
+    y0 = y1;
+    filtered.push(x0);
+    filtered.push(y0);
+    console.log(x0,y0,x1,y1);
+  }
+
+  return filtered;
 }
 
 function SPLINE_TO_POINTS (path) {
