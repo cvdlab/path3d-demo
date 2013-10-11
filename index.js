@@ -3,6 +3,7 @@ var input_from = $('[name="from"]');
 var input_to = $('[name="to"]');
 var button_run = $('.run');
 var button_nav = $('.nav');
+var button_net = $('.net');
 
 var wall_color = [0.25,0.25,0.25,0.5];
 var wall_quote = [30];
@@ -18,12 +19,17 @@ var qrcode_void_quote = [1];
 var g = new Graph(graph);
 var current_path = null;
 var current_spline = null;
+var net_drown = false;
+var net;
 
 draw_walls(walls);
 draw_equipments(equipments);
 draw_qrcodes_void(qrcodes_void,equipments);
 // var model_qr_code = draw_qr_code(qr_code);
-// draw_graph(graph);
+net = draw_graph(graph);
+net.forEach(function(obj) {
+  obj.hide();
+});
 
 button_run.click(function (event){
   event.preventDefault();
@@ -38,6 +44,20 @@ button_run.click(function (event){
 button_nav.click(function (event) {
   event.preventDefault();
   nav();
+});
+
+button_net.click(function (event) {
+  event.preventDefault();
+  if (net_drown) {
+    net.forEach(function(obj) {
+      obj.hide();
+    });
+  } else {
+    net.forEach(function(obj) {
+      obj.show();
+    });
+  }
+  net_drown = !net_drown;
 });
 
 function draw_path (path) {
@@ -71,17 +91,21 @@ function draw_graph (graph) {
   var to_id;
   var to;
   var line;
+  var objects = [];
   for (from_id in graph) {
     from = graph[from_id];
     for (to_id in from.adj) {
       to = graph[to_id];
       line = POLYLINE([from.pos, to.pos]);
       line.color(graph_color);
+      objects.push(line);
       DRAW(line);
     }
   }
   polypoint.color(graph_color);
+  objects.push(polypoint);
   DRAW(polypoint);
+  return objects;
 }
 
 function draw_walls (walls) {
